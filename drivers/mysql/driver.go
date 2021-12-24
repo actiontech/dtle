@@ -77,6 +77,7 @@ var (
 		"key_file_path": hclspec.NewDefault(hclspec.NewAttr("key_file_path", "string", false),
 			hclspec.NewLiteral(`""`)),
 		"memory": hclspec.NewAttr("memory", "string", false),
+		"big_tx_max_jobs": hclspec.NewAttr("big_tx_max_jobs", "number", false),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -150,6 +151,8 @@ var (
 		"DependencyHistorySize": hclspec.NewDefault(hclspec.NewAttr("DependencyHistorySize", "number", false),
 			hclspec.NewLiteral(`2500`)),
 		"UseMySQLDependency": hclspec.NewDefault(hclspec.NewAttr("UseMySQLDependency", "bool", false),
+			hclspec.NewLiteral(`true`)),
+		"ForeignKeyChecks": hclspec.NewDefault(hclspec.NewAttr("ForeignKeyChecks", "bool", false),
 			hclspec.NewLiteral(`true`)),
 		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
@@ -272,6 +275,7 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 type DriverConfig struct {
 	NatsBind                string `codec:"nats_bind"`
 	NatsAdvertise           string `codec:"nats_advertise"`
+	BigTxMaxJobs            int32  `codec:"big_tx_max_jobs"`
 	ApiAddr                 string `codec:"api_addr"`
 	NomadAddr               string `codec:"nomad_addr"`
 	Consul                  string `codec:"consul"`
@@ -308,6 +312,14 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	}
 	d.logger.SetLevel(logLevel)
 	d.logger.Info("log level was set", "level", logLevel.String())
+
+	//if dconfig.Memory != "" {
+	//	g.MemAvailable = TODO
+	//}
+	if dconfig.BigTxMaxJobs != 0 {
+		g.BigTxMaxJobs = dconfig.BigTxMaxJobs
+	}
+	d.logger.Info("BigTxMaxJobs is set", "value", g.BigTxMaxJobs)
 
 	if "" != d.config.RsaPrivateKeyPath {
 		b, err := ioutil.ReadFile(d.config.RsaPrivateKeyPath)
@@ -497,10 +509,6 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 	errMsgs := []string{}
 	addErrMsgs := func(msg string) {
 		errMsgs = append(errMsgs, fmt.Sprintf("	* %v", msg))
-	}
-
-	if config.BinlogRelay {
-		addErrMsgs("BinlogRelay is BUGGY and should not be used in this version.")
 	}
 
 	if (config.ConnectionConfig == nil && config.KafkaConfig == nil) ||

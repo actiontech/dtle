@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -23,7 +24,7 @@ var (
 			Subsystem: "bindinfo",
 			Name:      "bind_usage_counter",
 			Help:      "Counter of query using sql bind",
-		}, []string{LableScope})
+		}, []string{LabelScope})
 
 	BindTotalGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -31,7 +32,7 @@ var (
 			Subsystem: "bindinfo",
 			Name:      "bind_total_gauge",
 			Help:      "Total number of sql bind",
-		}, []string{LableScope, LblType})
+		}, []string{LabelScope, LblType})
 
 	BindMemoryUsage = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -39,5 +40,5 @@ var (
 			Subsystem: "bindinfo",
 			Name:      "bind_memory_usage",
 			Help:      "Memory usage of sql bind",
-		}, []string{LableScope, LblType})
+		}, []string{LabelScope, LblType})
 )

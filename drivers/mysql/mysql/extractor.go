@@ -7,6 +7,7 @@
 package mysql
 
 import (
+	"context"
 	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
@@ -27,7 +28,7 @@ import (
 	"time"
 
 	gonats "github.com/nats-io/go-nats"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 
 	"os"
 	"regexp"
@@ -48,9 +49,9 @@ type Extractor struct {
 	mysqlContext *common.MySQLDriverConfig
 
 	systemVariables       map[string]string
-	sqlMode             string
-	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
-	MySQLVersion        string
+	sqlMode               string
+	lowerCaseTableNames   mysqlconfig.LowerCaseTableNamesValue
+	MySQLVersion          string
 	TotalTransferredBytes int
 	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
@@ -59,12 +60,13 @@ type Extractor struct {
 	natsAddr        string
 
 	mysqlVersionDigit int
+	NetWriteTimeout int
 	db                *gosql.DB
 	singletonDB       *gosql.DB
 	dumpers           []*dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
-	replicateDoDb            []*common.DataSource
+	replicateDoDb            map[string]*common.SchemaContext
 	dataChannel              chan *common.BinlogEntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
@@ -83,10 +85,11 @@ type Extractor struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	ctx          context.Context
 
 	testStub1Delay int64
 
-	context *sqle.Context
+	sqleContext *sqle.Context
 
 	// This must be `<-` after `getSchemaTablesAndMeta()`.
 	gotCoordinateCh chan struct{}
@@ -102,14 +105,15 @@ type Extractor struct {
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg         sync.WaitGroup
-	targetGtid string
+	wg              sync.WaitGroup
+	targetGtid      string
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
 	logger.Info("NewExtractor", "job", execCtx.Subject)
 
 	e := &Extractor{
+		ctx:             ctx,
 		logger:          logger.Named("extractor").With("job", execCtx.Subject),
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
@@ -118,13 +122,14 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
 		testStub1Delay:  0,
-		context:         sqle.NewContext(nil),
+		sqleContext:     sqle.NewContext(nil),
 		gotCoordinateCh: make(chan struct{}),
 		streamerReadyCh: make(chan error),
 		fullCopyDone:    make(chan struct{}),
 		storeManager:    storeManager,
 		memory1:         new(int64),
 		memory2:         new(int64),
+		replicateDoDb:   map[string]*common.SchemaContext{},
 	}
 	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
@@ -132,7 +137,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		// TODO need a more reliable method to determine queue.empty.
 	})
 
-	e.context.LoadSchemas(nil)
+	e.sqleContext.LoadSchemas(nil)
 	logger.Debug("NewExtractor. after LoadSchemas")
 	if delay, err := strconv.ParseInt(os.Getenv(g.ENV_TESTSTUB1_DELAY), 10, 64); err == nil {
 		e.logger.Info("env", g.ENV_TESTSTUB1_DELAY, delay)
@@ -399,9 +404,8 @@ func (e *Extractor) inspectTables() (err error) {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
 		for _, doDb := range e.mysqlContext.ReplicateDoDb {
-			var regex string
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
-				regex = doDb.TableSchemaRegex
+				regex := doDb.TableSchemaRegex
 				schemaRenameRegex := doDb.TableSchemaRename
 				for _, db := range dbsFiltered {
 					newdb := &common.DataSource{}
@@ -432,11 +436,9 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 		}
 		for _, doDb := range doDbs {
-			db := &common.DataSource{
-				TableSchema:       doDb.TableSchema,
-				TableSchemaRegex:  doDb.TableSchemaRegex,
-				TableSchemaRename: doDb.TableSchemaRename,
-			}
+			schemaCtx := common.NewSchemaContext(doDb.TableSchema)
+			schemaCtx.TableSchemaRename = doDb.TableSchemaRename
+			e.replicateDoDb[doDb.TableSchema] = schemaCtx
 
 			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
 			if err != nil {
@@ -444,7 +446,8 @@ func (e *Extractor) inspectTables() (err error) {
 			}
 			tbsFiltered := []*common.Table{}
 			for _, tb := range existedTables {
-				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db.TableSchema, tb.TableName) {
+				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 &&
+					common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doDb.TableSchema, tb.TableName) {
 					continue
 				}
 				tbsFiltered = append(tbsFiltered, tb)
@@ -459,7 +462,10 @@ func (e *Extractor) inspectTables() (err error) {
 							"schema", doDb.TableSchema, "table", doTb.TableName)
 						continue
 					}
-					db.Tables = append(db.Tables, doTb)
+					err = schemaCtx.AddTable(doTb)
+					if err != nil {
+						return err
+					}
 				}
 			} else { // replicate selected tables
 				for _, doTb := range doDb.Tables {
@@ -487,7 +493,10 @@ func (e *Extractor) inspectTables() (err error) {
 								e.logger.Warn("ValidateOriginalTable error", "TableSchema", doDb.TableSchema, "TableName", doTb.TableName, "err", err)
 								continue
 							}
-							db.Tables = append(db.Tables, newTable)
+							err = schemaCtx.AddTable(newTable)
+							if err != nil {
+								return err
+							}
 						}
 						//if db.Tables == nil {
 						//	return fmt.Errorf("src table was nil")
@@ -504,17 +513,17 @@ func (e *Extractor) inspectTables() (err error) {
 							}
 							newTable := &common.Table{}
 							*newTable = *doTb
-							db.Tables = append(db.Tables, newTable)
+							err = schemaCtx.AddTable(newTable)
+							if err != nil {
+								return err
+							}
 						}
 					} else {
 						return fmt.Errorf("table configuration error")
 					}
-
 				}
 			}
-			e.replicateDoDb = append(e.replicateDoDb, db)
 		}
-		//	e.mysqlContext.ReplicateDoDb = e.replicateDoDb
 	} else { // empty DoDB. replicate all db/tb
 		for _, dbName := range dbsFiltered {
 			ds := &common.DataSource{
@@ -537,29 +546,14 @@ func (e *Extractor) inspectTables() (err error) {
 
 				ds.Tables = append(ds.Tables, tb)
 			}
-			e.replicateDoDb = append(e.replicateDoDb, ds)
+			schemaCtx := common.NewSchemaContext(ds.TableSchema)
+			err = schemaCtx.AddTables(ds.Tables)
+			if err != nil {
+				return err
+			}
+			e.replicateDoDb[ds.TableSchema] = schemaCtx
 		}
 	}
-	/*if e.mysqlContext.ExpandSyntaxSupport {
-		db_mysql := &config.DataSource{
-			TableSchema: "mysql",
-		}
-		db_mysql.Tables = append(db_mysql.Tables,
-			&config.Table{
-				TableSchema: "mysql",
-				TableName:   "user",
-			},
-			&config.Table{
-				TableSchema: "mysql",
-				TableName:   "proc",
-			},
-			&config.Table{
-				TableSchema: "mysql",
-				TableName:   "func",
-			},
-		)
-		e.replicateDoDb = append(e.replicateDoDb, db_mysql)
-	}*/
 
 	return nil
 }
@@ -567,16 +561,46 @@ func (e *Extractor) inspectTables() (err error) {
 // readTableColumns reads table columns on applier
 func (e *Extractor) readTableColumns() (err error) {
 	e.logger.Info("Examining table structure on extractor")
+
+	// map parent -> child
+	fkParentMap := make(map[common.SchemaTable]map[common.SchemaTable]struct{})
+
 	for _, doDb := range e.replicateDoDb {
-		for _, doTb := range doDb.Tables {
-			doTb.OriginalTableColumns, err = base.GetTableColumnsSqle(e.context, doTb.TableSchema, doTb.TableName)
+		for _, tbCtx := range doDb.TableMap {
+			doTb := tbCtx.Table
+			tableColumns, fkParentTables, err := base.GetTableColumnsSqle(e.sqleContext, doTb.TableSchema, doTb.TableName)
 			if err != nil {
 				return err
 			}
+			doTb.OriginalTableColumns = tableColumns
 			doTb.ColumnMap = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
 
+			childST := common.SchemaTable{doTb.TableSchema, doTb.TableName}
+			for _, fkpt := range fkParentTables {
+				schema := g.StringElse(fkpt.Schema.O, doTb.TableSchema)
+				parentST := common.SchemaTable{schema, fkpt.Name.O}
+				if m, ok := fkParentMap[parentST]; ok {
+					m[childST] = struct{}{}
+				} else {
+					fkParentMap[parentST] = map[common.SchemaTable]struct{}{
+						childST: {},
+					}
+				}
+			}
 		}
 	}
+
+	for _, db := range e.replicateDoDb {
+		for _, tbCtx := range db.TableMap {
+			tb := tbCtx.Table
+			st := common.SchemaTable{tb.TableSchema, tb.TableName}
+			if m, ok := fkParentMap[st]; ok {
+				tbCtx.FKChildren = m
+				e.logger.Info("fk parent", "len", len(m), "schema", tb.TableSchema, "table", tb.TableName)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -623,7 +647,14 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 		ack := &common.BigTxAck{}
 		_, err = ack.Unmarshal(m.Data)
 		e.logger.Debug("bigtx_ack", "gno", ack.GNO, "index", ack.Index)
-		e.binlogReader.HasBigTx.Add(-1)
+
+		newVal := atomic.AddInt32(&e.binlogReader.BigTxCount, -1)
+		if newVal == 0 {
+			g.SubBigTxJob()
+		}
+		if newVal < 0 {
+			e.onError(common.TaskStateDead, fmt.Errorf("DTLE_BUG: BigTxCount is less than 0. %v", newVal))
+		}
 	})
 
 	_, err = e.natsConn.Subscribe(fmt.Sprintf("%s_progress", e.subject), func(m *gonats.Msg) {
@@ -677,6 +708,7 @@ func (e *Extractor) initDBConnections() (err error) {
 		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
 
 	e.MySQLVersion = someSysVars.Version
+	e.NetWriteTimeout = someSysVars.NetWriteTimeout
 	e.lowerCaseTableNames = someSysVars.LowerCaseTableNames
 	e.mysqlVersionDigit, err = common.MysqlVersionInDigit(e.MySQLVersion)
 	if err != nil {
@@ -708,33 +740,34 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 	}
 
 	for _, db := range e.replicateDoDb {
-		e.context.AddSchema(db.TableSchema)
-		e.context.LoadTables(db.TableSchema, nil)
+		e.sqleContext.AddSchema(db.TableSchema)
+		e.sqleContext.LoadTables(db.TableSchema, nil)
 
 		if strings.ToLower(db.TableSchema) == "mysql" {
 			continue
 		}
-		e.context.UseSchema(db.TableSchema)
+		e.sqleContext.UseSchema(db.TableSchema)
 
-		for _, tb := range db.Tables {
+		for _, tbCtx := range db.TableMap {
+			tb := tbCtx.Table
 			if strings.ToLower(tb.TableType) == "view" {
 				// TODO what to do?
 				continue
 			}
 
-			stmts, err := base.ShowCreateTable(e.db, db.TableSchema, tb.TableName, false, false)
+			stmt, err := base.ShowCreateTable(e.db, db.TableSchema, tb.TableName)
 			if err != nil {
 				e.logger.Error("error at ShowCreateTable.", "err", err)
 				return err
 			}
-			stmt := stmts[0]
 			ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
 			if err != nil {
 				e.logger.Error("error at ParseCreateTableStmt.", "err", err)
 				return err
 			}
-			e.context.UpdateContext(ast, "mysql")
-			if !e.context.HasTable(tb.TableSchema, tb.TableName) {
+
+			e.sqleContext.UpdateContext(ast, "mysql")
+			if !e.sqleContext.HasTable(tb.TableSchema, tb.TableName) {
 				err := fmt.Errorf("failed to add table to sqle context. table: %v.%v", db.TableSchema, tb.TableName)
 				e.logger.Error(err.Error())
 				return err
@@ -752,7 +785,8 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
 	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.context, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames)
+		e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
+		e.NetWriteTimeout, e.ctx)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewBinlogReader", "err", err)
 		e.streamerReadyCh <- err
@@ -1272,7 +1306,8 @@ func (e *Extractor) mysqlDump() error {
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
 	if !e.mysqlContext.SkipCreateDbTable {
-		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas", "replicateDoDb", e.replicateDoDb)
+		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas",
+			"replicateDoDb", e.replicateDoDb)
 
 		for _, db := range e.replicateDoDb {
 			var dbSQL string
@@ -1293,7 +1328,8 @@ func (e *Extractor) mysqlDump() error {
 				e.onError(common.TaskStateRestart, err)
 			}
 
-			for _, tb := range db.Tables {
+			for _, tbCtx := range db.TableMap {
+				tb := tbCtx.Table
 				if tb.TableSchema != db.TableSchema {
 					continue
 				}
@@ -1309,18 +1345,19 @@ func (e *Extractor) mysqlDump() error {
 						return err
 					}*/
 				} else if strings.ToLower(tb.TableSchema) != "mysql" {
-					tbSQL, err = base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists, true)
-					for num, sql := range tbSQL {
-						if db.TableSchemaRename != "" && strings.Contains(sql, fmt.Sprintf("USE %s", mysqlconfig.EscapeName(tb.TableSchema))) {
-							tbSQL[num] = strings.Replace(sql, tb.TableSchema, db.TableSchemaRename, 1)
-						}
-						if tb.TableRename != "" && (strings.Contains(sql, fmt.Sprintf("DROP TABLE IF EXISTS %s", mysqlconfig.EscapeName(tb.TableName))) || strings.Contains(sql, "CREATE TABLE")) {
-							tbSQL[num] = strings.Replace(sql, mysqlconfig.EscapeName(tb.TableName), tb.TableRename, 1)
-						}
+					targetSchemaEscaped := mysqlconfig.EscapeName(g.StringElse(db.TableSchemaRename, tb.TableSchema))
+					targetTableEscaped  := mysqlconfig.EscapeName(g.StringElse(tb.TableRename, tb.TableName))
+					tbSQL = append(tbSQL, fmt.Sprintf("USE %s", targetSchemaEscaped))
+					if e.mysqlContext.DropTableIfExists {
+						tbSQL = append(tbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s", targetTableEscaped))
 					}
+					ctStmt, err := base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName)
 					if err != nil {
 						return err
 					}
+					// TODO do not use string replace
+					ctStmt = strings.Replace(ctStmt, mysqlconfig.EscapeName(tb.TableName), targetTableEscaped, 1)
+					tbSQL = append(tbSQL, ctStmt)
 				}
 				entry := &common.DumpEntry{
 					TbSQL:      tbSQL,
@@ -1332,7 +1369,7 @@ func (e *Extractor) mysqlDump() error {
 					e.onError(common.TaskStateRestart, err)
 				}
 			}
-			e.tableCount += len(db.Tables)
+			e.tableCount += len(db.TableMap)
 		}
 	}
 	step++
@@ -1346,7 +1383,8 @@ func (e *Extractor) mysqlDump() error {
 	counter := 0
 	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
-		for _, t := range db.Tables {
+		for _, tbCtx := range db.TableMap {
+			t := tbCtx.Table
 			//pool.Add(1)
 			//go func(t *config.Table) {
 			counter++

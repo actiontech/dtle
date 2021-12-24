@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -15,7 +16,7 @@ package structure
 
 import (
 	"bytes"
-	"encoding/binary"
+	"context"
 	"strconv"
 
 	"github.com/pingcap/errors"
@@ -28,24 +29,10 @@ type HashPair struct {
 	Value []byte
 }
 
-type hashMeta struct {
-	FieldCount int64
-}
-
-func (meta hashMeta) Value() []byte {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf[0:8], uint64(meta.FieldCount))
-	return buf
-}
-
-func (meta hashMeta) IsEmpty() bool {
-	return meta.FieldCount <= 0
-}
-
 // HSet sets the string value of a hash field.
 func (t *TxStructure) HSet(key []byte, field []byte, value []byte) error {
 	if t.readWriter == nil {
-		return errWriteOnSnapshot
+		return ErrWriteOnSnapshot
 	}
 	return t.updateHash(key, field, func([]byte) ([]byte, error) {
 		return value, nil
@@ -55,7 +42,7 @@ func (t *TxStructure) HSet(key []byte, field []byte, value []byte) error {
 // HGet gets the value of a hash field.
 func (t *TxStructure) HGet(key []byte, field []byte) ([]byte, error) {
 	dataKey := t.encodeHashDataKey(key, field)
-	value, err := t.reader.Get(dataKey)
+	value, err := t.reader.Get(context.TODO(), dataKey)
 	if kv.ErrNotExist.Equal(err) {
 		err = nil
 	}
@@ -75,7 +62,7 @@ func (t *TxStructure) EncodeHashAutoIDKeyValue(key []byte, field []byte, val int
 // the value after the increment.
 func (t *TxStructure) HInc(key []byte, field []byte, step int64) (int64, error) {
 	if t.readWriter == nil {
-		return 0, errWriteOnSnapshot
+		return 0, ErrWriteOnSnapshot
 	}
 	base := int64(0)
 	err := t.updateHash(key, field, func(oldValue []byte) ([]byte, error) {
@@ -126,48 +113,19 @@ func (t *TxStructure) updateHash(key []byte, field []byte, fn func(oldValue []by
 		return errors.Trace(err)
 	}
 
-	metaKey := t.encodeHashMetaKey(key)
-	meta, err := t.loadHashMeta(metaKey)
-	if err != nil {
-		return errors.Trace(err)
-	}
-
-	if oldValue == nil {
-		meta.FieldCount++
-		if err = t.readWriter.Set(metaKey, meta.Value()); err != nil {
-			return errors.Trace(err)
-		}
-	}
-
 	return nil
-}
-
-// HLen gets the number of fields in a hash.
-func (t *TxStructure) HLen(key []byte) (int64, error) {
-	metaKey := t.encodeHashMetaKey(key)
-	meta, err := t.loadHashMeta(metaKey)
-	if err != nil {
-		return 0, errors.Trace(err)
-	}
-	return meta.FieldCount, nil
 }
 
 // HDel deletes one or more hash fields.
 func (t *TxStructure) HDel(key []byte, fields ...[]byte) error {
 	if t.readWriter == nil {
-		return errWriteOnSnapshot
-	}
-	metaKey := t.encodeHashMetaKey(key)
-	meta, err := t.loadHashMeta(metaKey)
-	if err != nil || meta.IsEmpty() {
-		return errors.Trace(err)
+		return ErrWriteOnSnapshot
 	}
 
-	var value []byte
 	for _, field := range fields {
 		dataKey := t.encodeHashDataKey(key, field)
 
-		value, err = t.loadHashValue(dataKey)
+		value, err := t.loadHashValue(dataKey)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -176,18 +134,10 @@ func (t *TxStructure) HDel(key []byte, fields ...[]byte) error {
 			if err = t.readWriter.Delete(dataKey); err != nil {
 				return errors.Trace(err)
 			}
-
-			meta.FieldCount--
 		}
 	}
 
-	if meta.IsEmpty() {
-		err = t.readWriter.Delete(metaKey)
-	} else {
-		err = t.readWriter.Set(metaKey, meta.Value())
-	}
-
-	return errors.Trace(err)
+	return nil
 }
 
 // HKeys gets all the fields in a hash.
@@ -235,13 +185,7 @@ func (t *TxStructure) HGetLastN(key []byte, num int) ([]HashPair, error) {
 
 // HClear removes the hash value of the key.
 func (t *TxStructure) HClear(key []byte) error {
-	metaKey := t.encodeHashMetaKey(key)
-	meta, err := t.loadHashMeta(metaKey)
-	if err != nil || meta.IsEmpty() {
-		return errors.Trace(err)
-	}
-
-	err = t.iterateHash(key, func(field []byte, value []byte) error {
+	err := t.iterateHash(key, func(field []byte, value []byte) error {
 		k := t.encodeHashDataKey(key, field)
 		return errors.Trace(t.readWriter.Delete(k))
 	})
@@ -250,7 +194,7 @@ func (t *TxStructure) HClear(key []byte) error {
 		return errors.Trace(err)
 	}
 
-	return errors.Trace(t.readWriter.Delete(metaKey))
+	return nil
 }
 
 func (t *TxStructure) iterateHash(key []byte, fn func(k []byte, v []byte) error) error {
@@ -285,6 +229,67 @@ func (t *TxStructure) iterateHash(key []byte, fn func(k []byte, v []byte) error)
 	return nil
 }
 
+// ReverseHashIterator is the reverse hash iterator.
+type ReverseHashIterator struct {
+	t      *TxStructure
+	iter   kv.Iterator
+	prefix []byte
+	done   bool
+	field  []byte
+}
+
+// Next implements the Iterator Next.
+func (i *ReverseHashIterator) Next() error {
+	err := i.iter.Next()
+	if err != nil {
+		return errors.Trace(err)
+	}
+	if !i.iter.Key().HasPrefix(i.prefix) {
+		i.done = true
+		return nil
+	}
+
+	_, field, err := i.t.decodeHashDataKey(i.iter.Key())
+	if err != nil {
+		return errors.Trace(err)
+	}
+	i.field = field
+	return nil
+}
+
+// Valid implements the Iterator Valid.
+func (i *ReverseHashIterator) Valid() bool {
+	return i.iter.Valid() && !i.done
+}
+
+// Key implements the Iterator Key.
+func (i *ReverseHashIterator) Key() []byte {
+	return i.field
+}
+
+// Value implements the Iterator Value.
+func (i *ReverseHashIterator) Value() []byte {
+	return i.iter.Value()
+}
+
+// Close Implements the Iterator Close.
+func (i *ReverseHashIterator) Close() {
+}
+
+// NewHashReverseIter creates a reverse hash iterator.
+func NewHashReverseIter(t *TxStructure, key []byte) (*ReverseHashIterator, error) {
+	dataPrefix := t.hashDataKeyPrefix(key)
+	it, err := t.reader.IterReverse(dataPrefix.PrefixNext())
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	return &ReverseHashIterator{
+		t:      t,
+		iter:   it,
+		prefix: dataPrefix,
+	}, nil
+}
+
 func (t *TxStructure) iterReverseHash(key []byte, fn func(k []byte, v []byte) (bool, error)) error {
 	dataPrefix := t.hashDataKeyPrefix(key)
 	it, err := t.reader.IterReverse(dataPrefix.PrefixNext())
@@ -316,30 +321,8 @@ func (t *TxStructure) iterReverseHash(key []byte, fn func(k []byte, v []byte) (b
 	return nil
 }
 
-func (t *TxStructure) loadHashMeta(metaKey []byte) (hashMeta, error) {
-	v, err := t.reader.Get(metaKey)
-	if kv.ErrNotExist.Equal(err) {
-		err = nil
-	}
-	if err != nil {
-		return hashMeta{}, errors.Trace(err)
-	}
-
-	meta := hashMeta{FieldCount: 0}
-	if v == nil {
-		return meta, nil
-	}
-
-	if len(v) != 8 {
-		return meta, errInvalidListMetaData
-	}
-
-	meta.FieldCount = int64(binary.BigEndian.Uint64(v[0:8]))
-	return meta, nil
-}
-
 func (t *TxStructure) loadHashValue(dataKey []byte) ([]byte, error) {
-	v, err := t.reader.Get(dataKey)
+	v, err := t.reader.Get(context.TODO(), dataKey)
 	if kv.ErrNotExist.Equal(err) {
 		err = nil
 		v = nil

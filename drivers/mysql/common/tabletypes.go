@@ -6,8 +6,38 @@ import (
 	"github.com/araddon/qlbridge/datasource"
 	"github.com/araddon/qlbridge/expr"
 	"github.com/araddon/qlbridge/vm"
+	"github.com/pkg/errors"
 	"strings"
 )
+
+type SchemaContext struct {
+	TableSchema            string
+	TableSchemaRename      string
+
+	TableMap map[string]*TableContext
+}
+func NewSchemaContext(name string) *SchemaContext {
+	return &SchemaContext{
+		TableSchema: name,
+		TableMap: map[string]*TableContext{},
+	}
+}
+func (sc *SchemaContext) AddTable(table *Table) (err error) {
+	sc.TableMap[table.TableName], err = NewTableContext(table)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (sc *SchemaContext) AddTables(tables []*Table) (err error) {
+	for _, table := range tables {
+		sc.TableMap[table.TableName], err = NewTableContext(table)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // TableName is the table configuration
 // slave restrict replication to a given table
@@ -84,14 +114,21 @@ type TableContext struct {
 	Table          *Table
 	WhereCtx       *WhereContext
 	DefChangedSent bool
+	FKChildren     map[SchemaTable]struct{}
 }
 
-func NewTableContext(table *Table, whereCtx *WhereContext) *TableContext {
+func NewTableContext(table *Table) (*TableContext, error) {
+	whereCtx, err := NewWhereCtx(table.GetWhere(), table)
+	if err != nil {
+		err = errors.Wrapf(err, "parsing where %v %v where %v", table.TableSchema, table.TableName, table.GetWhere())
+		return nil, err
+	}
 	return &TableContext{
 		Table:          table,
 		WhereCtx:       whereCtx,
 		DefChangedSent: false,
-	}
+		FKChildren:     map[SchemaTable]struct{}{},
+	}, nil
 }
 
 func (t *TableContext) WhereTrue(values *ColumnValues) (bool, error) {

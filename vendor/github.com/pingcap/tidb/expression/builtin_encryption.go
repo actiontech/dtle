@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -17,9 +18,9 @@ import (
 	"bytes"
 	"compress/zlib"
 	"crypto/aes"
-	"crypto/md5"
+	"crypto/md5" // #nosec G501
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -29,13 +30,14 @@ import (
 	"strings"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/parser/auth"
-	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/parser/auth"
+	"github.com/pingcap/tidb/parser/mysql"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/chunk"
 	"github.com/pingcap/tidb/util/encrypt"
+	"github.com/pingcap/tipb/go-tipb"
 )
 
 var (
@@ -73,12 +75,10 @@ var (
 	_ builtinFunc = &builtinUncompressedLengthSig{}
 )
 
-// ivSize indicates the initialization vector supplied to aes_decrypt
-const ivSize = aes.BlockSize
-
 // aesModeAttr indicates that the key length and iv attribute for specific block_encryption_mode.
 // keySize is the key length in bits and mode is the encryption mode.
 // ivRequired indicates that initialization vector is required or not.
+// nolint:structcheck
 type aesModeAttr struct {
 	modeName   string
 	keySize    int
@@ -86,7 +86,7 @@ type aesModeAttr struct {
 }
 
 var aesModes = map[string]*aesModeAttr{
-	//TODO support more modes, permitted mode values are: ECB, CBC, CFB1, CFB8, CFB128, OFB
+	// TODO support more modes, permitted mode values are: ECB, CBC, CFB1, CFB8, CFB128, OFB
 	"aes-128-ecb": {"ecb", 16, false},
 	"aes-192-ecb": {"ecb", 24, false},
 	"aes-256-ecb": {"ecb", 32, false},
@@ -113,7 +113,10 @@ func (c *aesDecryptFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	for range args {
 		argTps = append(argTps, types.ETString)
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, argTps...)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, argTps...)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = args[0].GetType().Flen // At most.
 	types.SetBinChsClnFlag(bf.tp)
 
@@ -126,9 +129,13 @@ func (c *aesDecryptFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 		if len(args) != 3 {
 			return nil, ErrIncorrectParameterCount.GenWithStackByArgs("aes_decrypt")
 		}
-		return &builtinAesDecryptIVSig{bf, mode}, nil
+		sig := &builtinAesDecryptIVSig{bf, mode}
+		sig.setPbCode(tipb.ScalarFuncSig_AesDecryptIV)
+		return sig, nil
 	}
-	return &builtinAesDecryptSig{bf, mode}, nil
+	sig := &builtinAesDecryptSig{bf, mode}
+	sig.setPbCode(tipb.ScalarFuncSig_AesDecrypt)
+	return sig, nil
 }
 
 type builtinAesDecryptSig struct {
@@ -240,7 +247,10 @@ func (c *aesEncryptFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	for range args {
 		argTps = append(argTps, types.ETString)
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, argTps...)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, argTps...)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = aes.BlockSize * (args[0].GetType().Flen/aes.BlockSize + 1) // At most.
 	types.SetBinChsClnFlag(bf.tp)
 
@@ -253,9 +263,13 @@ func (c *aesEncryptFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 		if len(args) != 3 {
 			return nil, ErrIncorrectParameterCount.GenWithStackByArgs("aes_encrypt")
 		}
-		return &builtinAesEncryptIVSig{bf, mode}, nil
+		sig := &builtinAesEncryptIVSig{bf, mode}
+		sig.setPbCode(tipb.ScalarFuncSig_AesEncryptIV)
+		return sig, nil
 	}
-	return &builtinAesEncryptSig{bf, mode}, nil
+	sig := &builtinAesEncryptSig{bf, mode}
+	sig.setPbCode(tipb.ScalarFuncSig_AesEncrypt)
+	return sig, nil
 }
 
 type builtinAesEncryptSig struct {
@@ -364,10 +378,14 @@ func (c *decodeFunctionClass) getFunction(ctx sessionctx.Context, args []Express
 		return nil, err
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 
 	bf.tp.Flen = args[0].GetType().Flen
 	sig := &builtinDecodeSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Decode)
 	return sig, nil
 }
 
@@ -423,10 +441,14 @@ func (c *encodeFunctionClass) getFunction(ctx sessionctx.Context, args []Express
 		return nil, err
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 
 	bf.tp.Flen = args[0].GetType().Flen
 	sig := &builtinEncodeSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Encode)
 	return sig, nil
 }
 
@@ -481,9 +503,13 @@ func (c *passwordFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = mysql.PWDHashLen + 1
 	sig := &builtinPasswordSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Password)
 	return sig, nil
 }
 
@@ -524,7 +550,10 @@ func (c *randomBytesFunctionClass) getFunction(ctx sessionctx.Context, args []Ex
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETInt)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETInt)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 1024 // Max allowed random bytes
 	types.SetBinChsClnFlag(bf.tp)
 	sig := &builtinRandomBytesSig{bf}
@@ -568,9 +597,14 @@ func (c *md5FunctionClass) getFunction(ctx sessionctx.Context, args []Expression
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
+	bf.tp.Charset, bf.tp.Collate = ctx.GetSessionVars().GetCharsetInfo()
 	bf.tp.Flen = 32
 	sig := &builtinMD5Sig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_MD5)
 	return sig, nil
 }
 
@@ -591,7 +625,7 @@ func (b *builtinMD5Sig) evalString(row chunk.Row) (string, bool, error) {
 	if isNull || err != nil {
 		return "", isNull, err
 	}
-	sum := md5.Sum([]byte(arg))
+	sum := md5.Sum([]byte(arg)) // #nosec G401
 	hexStr := fmt.Sprintf("%x", sum)
 	return hexStr, false, nil
 }
@@ -604,9 +638,14 @@ func (c *sha1FunctionClass) getFunction(ctx sessionctx.Context, args []Expressio
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
+	bf.tp.Charset, bf.tp.Collate = ctx.GetSessionVars().GetCharsetInfo()
 	bf.tp.Flen = 40
 	sig := &builtinSHA1Sig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_SHA1)
 	return sig, nil
 }
 
@@ -628,7 +667,7 @@ func (b *builtinSHA1Sig) evalString(row chunk.Row) (string, bool, error) {
 	if isNull || err != nil {
 		return "", isNull, err
 	}
-	hasher := sha1.New()
+	hasher := sha1.New() // #nosec G401
 	_, err = hasher.Write([]byte(str))
 	if err != nil {
 		return "", true, err
@@ -644,9 +683,14 @@ func (c *sha2FunctionClass) getFunction(ctx sessionctx.Context, args []Expressio
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString, types.ETInt)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString, types.ETInt)
+	if err != nil {
+		return nil, err
+	}
+	bf.tp.Charset, bf.tp.Collate = ctx.GetSessionVars().GetCharsetInfo()
 	bf.tp.Flen = 128 // sha512
 	sig := &builtinSHA2Sig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_SHA2)
 	return sig, nil
 }
 
@@ -723,6 +767,7 @@ func inflate(compressStr []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	/* #nosec G110 */
 	if _, err = io.Copy(&out, r); err != nil {
 		return nil, err
 	}
@@ -738,7 +783,10 @@ func (c *compressFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 	srcLen := args[0].GetType().Flen
 	compressBound := srcLen + (srcLen >> 12) + (srcLen >> 14) + (srcLen >> 25) + 13
 	if compressBound > mysql.MaxBlobWidth {
@@ -747,6 +795,7 @@ func (c *compressFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	bf.tp.Flen = compressBound
 	types.SetBinChsClnFlag(bf.tp)
 	sig := &builtinCompressSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Compress)
 	return sig, nil
 }
 
@@ -805,10 +854,14 @@ func (c *uncompressFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = mysql.MaxBlobWidth
 	types.SetBinChsClnFlag(bf.tp)
 	sig := &builtinUncompressSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Uncompress)
 	return sig, nil
 }
 
@@ -859,9 +912,13 @@ func (c *uncompressedLengthFunctionClass) getFunction(ctx sessionctx.Context, ar
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 10
 	sig := &builtinUncompressedLengthSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_UncompressedLength)
 	return sig, nil
 }
 

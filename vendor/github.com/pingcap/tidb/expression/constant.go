@@ -8,284 +8,330 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 package expression
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser/terror"
+	"github.com/pingcap/tidb/parser/mysql"
+	"github.com/pingcap/tidb/parser/terror"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/types/json"
 	"github.com/pingcap/tidb/util/chunk"
 	"github.com/pingcap/tidb/util/codec"
-	"github.com/pingcap/tidb/util/logutil"
-	"go.uber.org/zap"
 )
 
-var (
-	// One stands for a number 1.
-	One = &Constant{
+// NewOne stands for a number 1.
+func NewOne() *Constant {
+	retT := types.NewFieldType(mysql.TypeTiny)
+	retT.Flag |= mysql.UnsignedFlag // shrink range to avoid integral promotion
+	return &Constant{
 		Value:   types.NewDatum(1),
-		RetType: types.NewFieldType(mysql.TypeTiny),
+		RetType: retT,
 	}
+}
 
-	// Zero stands for a number 0.
-	Zero = &Constant{
+// NewZero stands for a number 0.
+func NewZero() *Constant {
+	retT := types.NewFieldType(mysql.TypeTiny)
+	retT.Flag |= mysql.UnsignedFlag // shrink range to avoid integral promotion
+	return &Constant{
 		Value:   types.NewDatum(0),
-		RetType: types.NewFieldType(mysql.TypeTiny),
+		RetType: retT,
 	}
+}
 
-	// Null stands for null constant.
-	Null = &Constant{
+// NewNull stands for null constant.
+func NewNull() *Constant {
+	return &Constant{
 		Value:   types.NewDatum(nil),
 		RetType: types.NewFieldType(mysql.TypeTiny),
 	}
-)
+}
 
 // Constant stands for a constant value.
 type Constant struct {
-	Value        types.Datum
-	RetType      *types.FieldType
-	DeferredExpr Expression // parameter getter expression
-	hashcode     []byte
+	Value   types.Datum
+	RetType *types.FieldType
+	// DeferredExpr holds deferred function in PlanCache cached plan.
+	// it's only used to represent non-deterministic functions(see expression.DeferredFunctions)
+	// in PlanCache cached plan, so let them can be evaluated until cached item be used.
+	DeferredExpr Expression
+	// ParamMarker holds param index inside sessionVars.PreparedParams.
+	// It's only used to reference a user variable provided in the `EXECUTE` statement or `COM_EXECUTE` binary protocol.
+	ParamMarker *ParamMarker
+	hashcode    []byte
+
+	collationInfo
+}
+
+// ParamMarker indicates param provided by COM_STMT_EXECUTE.
+type ParamMarker struct {
+	ctx   sessionctx.Context
+	order int
+}
+
+// GetUserVar returns the corresponding user variable presented in the `EXECUTE` statement or `COM_EXECUTE` command.
+func (d *ParamMarker) GetUserVar() types.Datum {
+	sessionVars := d.ctx.GetSessionVars()
+	return sessionVars.PreparedParams[d.order]
 }
 
 // String implements fmt.Stringer interface.
 func (c *Constant) String() string {
-	if c.DeferredExpr != nil {
-		dt, err := c.Eval(chunk.Row{})
-		if err != nil {
-			logutil.Logger(context.Background()).Error("eval constant failed", zap.Error(err))
-			return ""
-		}
-		c.Value.SetValue(dt.GetValue())
+	if c.ParamMarker != nil {
+		dt := c.ParamMarker.GetUserVar()
+		c.Value.SetValue(dt.GetValue(), c.RetType)
+	} else if c.DeferredExpr != nil {
+		return c.DeferredExpr.String()
 	}
 	return fmt.Sprintf("%v", c.Value.GetValue())
 }
 
 // MarshalJSON implements json.Marshaler interface.
 func (c *Constant) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", c)), nil
+	return []byte(fmt.Sprintf("%q", c)), nil
 }
 
 // Clone implements Expression interface.
 func (c *Constant) Clone() Expression {
-	if c.DeferredExpr != nil {
-		con := *c
-		return &con
-	}
-	return c
+	con := *c
+	return &con
 }
 
 // GetType implements Expression interface.
 func (c *Constant) GetType() *types.FieldType {
+	if c.ParamMarker != nil {
+		// GetType() may be called in multi-threaded context, e.g, in building inner executors of IndexJoin,
+		// so it should avoid data race. We achieve this by returning different FieldType pointer for each call.
+		tp := types.NewFieldType(mysql.TypeUnspecified)
+		dt := c.ParamMarker.GetUserVar()
+		types.DefaultParamTypeForValue(dt.GetValue(), tp)
+		return tp
+	}
 	return c.RetType
 }
 
+// VecEvalInt evaluates this expression in a vectorized manner.
+func (c *Constant) VecEvalInt(ctx sessionctx.Context, input *chunk.Chunk, result *chunk.Column) error {
+	if c.DeferredExpr == nil {
+		return genVecFromConstExpr(ctx, c, types.ETInt, input, result)
+	}
+	return c.DeferredExpr.VecEvalInt(ctx, input, result)
+}
+
+// VecEvalReal evaluates this expression in a vectorized manner.
+func (c *Constant) VecEvalReal(ctx sessionctx.Context, input *chunk.Chunk, result *chunk.Column) error {
+	if c.DeferredExpr == nil {
+		return genVecFromConstExpr(ctx, c, types.ETReal, input, result)
+	}
+	return c.DeferredExpr.VecEvalReal(ctx, input, result)
+}
+
+// VecEvalString evaluates this expression in a vectorized manner.
+func (c *Constant) VecEvalString(ctx sessionctx.Context, input *chunk.Chunk, result *chunk.Column) error {
+	if c.DeferredExpr == nil {
+		return genVecFromConstExpr(ctx, c, types.ETString, input, result)
+	}
+	return c.DeferredExpr.VecEvalString(ctx, input, result)
+}
+
+// VecEvalDecimal evaluates this expression in a vectorized manner.
+func (c *Constant) VecEvalDecimal(ctx sessionctx.Context, input *chunk.Chunk, result *chunk.Column) error {
+	if c.DeferredExpr == nil {
+		return genVecFromConstExpr(ctx, c, types.ETDecimal, input, result)
+	}
+	return c.DeferredExpr.VecEvalDecimal(ctx, input, result)
+}
+
+// VecEvalTime evaluates this expression in a vectorized manner.
+func (c *Constant) VecEvalTime(ctx sessionctx.Context, input *chunk.Chunk, result *chunk.Column) error {
+	if c.DeferredExpr == nil {
+		return genVecFromConstExpr(ctx, c, types.ETTimestamp, input, result)
+	}
+	return c.DeferredExpr.VecEvalTime(ctx, input, result)
+}
+
+// VecEvalDuration evaluates this expression in a vectorized manner.
+func (c *Constant) VecEvalDuration(ctx sessionctx.Context, input *chunk.Chunk, result *chunk.Column) error {
+	if c.DeferredExpr == nil {
+		return genVecFromConstExpr(ctx, c, types.ETDuration, input, result)
+	}
+	return c.DeferredExpr.VecEvalDuration(ctx, input, result)
+}
+
+// VecEvalJSON evaluates this expression in a vectorized manner.
+func (c *Constant) VecEvalJSON(ctx sessionctx.Context, input *chunk.Chunk, result *chunk.Column) error {
+	if c.DeferredExpr == nil {
+		return genVecFromConstExpr(ctx, c, types.ETJson, input, result)
+	}
+	return c.DeferredExpr.VecEvalJSON(ctx, input, result)
+}
+
+func (c *Constant) getLazyDatum(row chunk.Row) (dt types.Datum, isLazy bool, err error) {
+	if c.ParamMarker != nil {
+		return c.ParamMarker.GetUserVar(), true, nil
+	} else if c.DeferredExpr != nil {
+		dt, err = c.DeferredExpr.Eval(row)
+		return dt, true, err
+	}
+	return types.Datum{}, false, nil
+}
+
 // Eval implements Expression interface.
-func (c *Constant) Eval(_ chunk.Row) (types.Datum, error) {
-	if c.DeferredExpr != nil {
-		if sf, sfOK := c.DeferredExpr.(*ScalarFunction); sfOK {
-			dt, err := sf.Eval(chunk.Row{})
-			if err != nil {
-				return c.Value, err
-			}
-			if dt.IsNull() {
-				c.Value.SetNull()
-				return c.Value, nil
-			}
-			val, err := dt.ConvertTo(sf.GetCtx().GetSessionVars().StmtCtx, c.RetType)
-			if err != nil {
-				return dt, err
-			}
-			c.Value.SetValue(val.GetValue())
+func (c *Constant) Eval(row chunk.Row) (types.Datum, error) {
+	if dt, lazy, err := c.getLazyDatum(row); lazy {
+		if err != nil {
+			return c.Value, err
 		}
+		if dt.IsNull() {
+			c.Value.SetNull()
+			return c.Value, nil
+		}
+		if c.DeferredExpr != nil {
+			sf, sfOk := c.DeferredExpr.(*ScalarFunction)
+			if sfOk {
+				val, err := dt.ConvertTo(sf.GetCtx().GetSessionVars().StmtCtx, c.RetType)
+				if err != nil {
+					return dt, err
+				}
+				return val, nil
+			}
+		}
+		return dt, nil
 	}
 	return c.Value, nil
 }
 
 // EvalInt returns int representation of Constant.
-func (c *Constant) EvalInt(ctx sessionctx.Context, _ chunk.Row) (int64, bool, error) {
-	if c.DeferredExpr != nil {
-		dt, err := c.DeferredExpr.Eval(chunk.Row{})
-		if err != nil {
-			return 0, true, err
-		}
-		if dt.IsNull() {
-			return 0, true, nil
-		}
-		val, err := dt.ToInt64(ctx.GetSessionVars().StmtCtx)
-		if err != nil {
-			return 0, true, err
-		}
-		c.Value.SetInt64(val)
-	} else {
-		if c.GetType().Tp == mysql.TypeNull || c.Value.IsNull() {
-			return 0, true, nil
-		}
+func (c *Constant) EvalInt(ctx sessionctx.Context, row chunk.Row) (int64, bool, error) {
+	dt, lazy, err := c.getLazyDatum(row)
+	if err != nil {
+		return 0, false, err
 	}
-	if c.GetType().Hybrid() || c.Value.Kind() == types.KindBinaryLiteral || c.Value.Kind() == types.KindString {
-		res, err := c.Value.ToInt64(ctx.GetSessionVars().StmtCtx)
-		return res, err != nil, err
+	if !lazy {
+		dt = c.Value
 	}
-	return c.Value.GetInt64(), false, nil
+	if c.GetType().Tp == mysql.TypeNull || dt.IsNull() {
+		return 0, true, nil
+	} else if dt.Kind() == types.KindBinaryLiteral {
+		val, err := dt.GetBinaryLiteral().ToInt(ctx.GetSessionVars().StmtCtx)
+		return int64(val), err != nil, err
+	} else if c.GetType().Hybrid() || dt.Kind() == types.KindString {
+		res, err := dt.ToInt64(ctx.GetSessionVars().StmtCtx)
+		return res, false, err
+	}
+	return dt.GetInt64(), false, nil
 }
 
 // EvalReal returns real representation of Constant.
-func (c *Constant) EvalReal(ctx sessionctx.Context, _ chunk.Row) (float64, bool, error) {
-	if c.DeferredExpr != nil {
-		dt, err := c.DeferredExpr.Eval(chunk.Row{})
-		if err != nil {
-			return 0, true, err
-		}
-		if dt.IsNull() {
-			return 0, true, nil
-		}
-		val, err := dt.ToFloat64(ctx.GetSessionVars().StmtCtx)
-		if err != nil {
-			return 0, true, err
-		}
-		c.Value.SetFloat64(val)
-	} else {
-		if c.GetType().Tp == mysql.TypeNull || c.Value.IsNull() {
-			return 0, true, nil
-		}
+func (c *Constant) EvalReal(ctx sessionctx.Context, row chunk.Row) (float64, bool, error) {
+	dt, lazy, err := c.getLazyDatum(row)
+	if err != nil {
+		return 0, false, err
 	}
-	if c.GetType().Hybrid() || c.Value.Kind() == types.KindBinaryLiteral || c.Value.Kind() == types.KindString {
-		res, err := c.Value.ToFloat64(ctx.GetSessionVars().StmtCtx)
-		return res, err != nil, err
+	if !lazy {
+		dt = c.Value
 	}
-	return c.Value.GetFloat64(), false, nil
+	if c.GetType().Tp == mysql.TypeNull || dt.IsNull() {
+		return 0, true, nil
+	}
+	if c.GetType().Hybrid() || dt.Kind() == types.KindBinaryLiteral || dt.Kind() == types.KindString {
+		res, err := dt.ToFloat64(ctx.GetSessionVars().StmtCtx)
+		return res, false, err
+	}
+	return dt.GetFloat64(), false, nil
 }
 
 // EvalString returns string representation of Constant.
-func (c *Constant) EvalString(ctx sessionctx.Context, _ chunk.Row) (string, bool, error) {
-	if c.DeferredExpr != nil {
-		dt, err := c.DeferredExpr.Eval(chunk.Row{})
-		if err != nil {
-			return "", true, err
-		}
-		if dt.IsNull() {
-			return "", true, nil
-		}
-		val, err := dt.ToString()
-		if err != nil {
-			return "", true, err
-		}
-		c.Value.SetString(val)
-	} else {
-		if c.GetType().Tp == mysql.TypeNull || c.Value.IsNull() {
-			return "", true, nil
-		}
+func (c *Constant) EvalString(ctx sessionctx.Context, row chunk.Row) (string, bool, error) {
+	dt, lazy, err := c.getLazyDatum(row)
+	if err != nil {
+		return "", false, err
 	}
-	res, err := c.Value.ToString()
-	return res, err != nil, err
+	if !lazy {
+		dt = c.Value
+	}
+	if c.GetType().Tp == mysql.TypeNull || dt.IsNull() {
+		return "", true, nil
+	}
+	res, err := dt.ToString()
+	return res, false, err
 }
 
 // EvalDecimal returns decimal representation of Constant.
-func (c *Constant) EvalDecimal(ctx sessionctx.Context, _ chunk.Row) (*types.MyDecimal, bool, error) {
-	if c.DeferredExpr != nil {
-		dt, err := c.DeferredExpr.Eval(chunk.Row{})
-		if err != nil {
-			return nil, true, err
-		}
-		if dt.IsNull() {
-			return nil, true, nil
-		}
-		c.Value.SetValue(dt.GetValue())
-	} else {
-		if c.GetType().Tp == mysql.TypeNull || c.Value.IsNull() {
-			return nil, true, nil
-		}
+func (c *Constant) EvalDecimal(ctx sessionctx.Context, row chunk.Row) (*types.MyDecimal, bool, error) {
+	dt, lazy, err := c.getLazyDatum(row)
+	if err != nil {
+		return nil, false, err
 	}
-	res, err := c.Value.ToDecimal(ctx.GetSessionVars().StmtCtx)
-	return res, err != nil, err
+	if !lazy {
+		dt = c.Value
+	}
+	if c.GetType().Tp == mysql.TypeNull || dt.IsNull() {
+		return nil, true, nil
+	}
+	res, err := dt.ToDecimal(ctx.GetSessionVars().StmtCtx)
+	if err != nil {
+		return nil, false, err
+	}
+	// The decimal may be modified during plan building.
+	_, frac := res.PrecisionAndFrac()
+	if frac < c.GetType().Decimal {
+		err = res.Round(res, c.GetType().Decimal, types.ModeHalfEven)
+	}
+	return res, false, err
 }
 
 // EvalTime returns DATE/DATETIME/TIMESTAMP representation of Constant.
-func (c *Constant) EvalTime(ctx sessionctx.Context, _ chunk.Row) (val types.Time, isNull bool, err error) {
-	if c.DeferredExpr != nil {
-		dt, err := c.DeferredExpr.Eval(chunk.Row{})
-		if err != nil {
-			return types.Time{}, true, err
-		}
-		if dt.IsNull() {
-			return types.Time{}, true, nil
-		}
-		val, err := dt.ToString()
-		if err != nil {
-			return types.Time{}, true, err
-		}
-		tim, err := types.ParseDatetime(ctx.GetSessionVars().StmtCtx, val)
-		if err != nil {
-			return types.Time{}, true, err
-		}
-		c.Value.SetMysqlTime(tim)
-	} else {
-		if c.GetType().Tp == mysql.TypeNull || c.Value.IsNull() {
-			return types.Time{}, true, nil
-		}
+func (c *Constant) EvalTime(ctx sessionctx.Context, row chunk.Row) (val types.Time, isNull bool, err error) {
+	dt, lazy, err := c.getLazyDatum(row)
+	if err != nil {
+		return types.ZeroTime, false, err
 	}
-	return c.Value.GetMysqlTime(), false, nil
+	if !lazy {
+		dt = c.Value
+	}
+	if c.GetType().Tp == mysql.TypeNull || dt.IsNull() {
+		return types.ZeroTime, true, nil
+	}
+	return dt.GetMysqlTime(), false, nil
 }
 
 // EvalDuration returns Duration representation of Constant.
-func (c *Constant) EvalDuration(ctx sessionctx.Context, _ chunk.Row) (val types.Duration, isNull bool, err error) {
-	if c.DeferredExpr != nil {
-		dt, err := c.DeferredExpr.Eval(chunk.Row{})
-		if err != nil {
-			return types.Duration{}, true, err
-		}
-		if dt.IsNull() {
-			return types.Duration{}, true, nil
-		}
-		val, err := dt.ToString()
-		if err != nil {
-			return types.Duration{}, true, err
-		}
-		dur, err := types.ParseDuration(ctx.GetSessionVars().StmtCtx, val, types.MaxFsp)
-		if err != nil {
-			return types.Duration{}, true, err
-		}
-		c.Value.SetMysqlDuration(dur)
-	} else {
-		if c.GetType().Tp == mysql.TypeNull || c.Value.IsNull() {
-			return types.Duration{}, true, nil
-		}
+func (c *Constant) EvalDuration(ctx sessionctx.Context, row chunk.Row) (val types.Duration, isNull bool, err error) {
+	dt, lazy, err := c.getLazyDatum(row)
+	if err != nil {
+		return types.Duration{}, false, err
 	}
-	return c.Value.GetMysqlDuration(), false, nil
+	if !lazy {
+		dt = c.Value
+	}
+	if c.GetType().Tp == mysql.TypeNull || dt.IsNull() {
+		return types.Duration{}, true, nil
+	}
+	return dt.GetMysqlDuration(), false, nil
 }
 
 // EvalJSON returns JSON representation of Constant.
-func (c *Constant) EvalJSON(ctx sessionctx.Context, _ chunk.Row) (json.BinaryJSON, bool, error) {
-	if c.DeferredExpr != nil {
-		dt, err := c.DeferredExpr.Eval(chunk.Row{})
-		if err != nil {
-			return json.BinaryJSON{}, true, err
-		}
-		if dt.IsNull() {
-			return json.BinaryJSON{}, true, nil
-		}
-		val, err := dt.ConvertTo(ctx.GetSessionVars().StmtCtx, types.NewFieldType(mysql.TypeJSON))
-		if err != nil {
-			return json.BinaryJSON{}, true, err
-		}
-		fmt.Println("const eval json", val.GetMysqlJSON().String())
-		c.Value.SetMysqlJSON(val.GetMysqlJSON())
-		c.GetType().Tp = mysql.TypeJSON
-	} else {
-		if c.GetType().Tp == mysql.TypeNull || c.Value.IsNull() {
-			return json.BinaryJSON{}, true, nil
-		}
+func (c *Constant) EvalJSON(ctx sessionctx.Context, row chunk.Row) (json.BinaryJSON, bool, error) {
+	dt, lazy, err := c.getLazyDatum(row)
+	if err != nil {
+		return json.BinaryJSON{}, false, err
 	}
-	return c.Value.GetMysqlJSON(), false, nil
+	if !lazy {
+		dt = c.Value
+	}
+	if c.GetType().Tp == mysql.TypeNull || dt.IsNull() {
+		return json.BinaryJSON{}, true, nil
+	}
+	return dt.GetMysqlJSON(), false, nil
 }
 
 // Equal implements Expression interface.
@@ -312,8 +358,8 @@ func (c *Constant) IsCorrelated() bool {
 }
 
 // ConstItem implements Expression interface.
-func (c *Constant) ConstItem() bool {
-	return true
+func (c *Constant) ConstItem(sc *stmtctx.StatementContext) bool {
+	return !sc.UseCache || (c.DeferredExpr == nil && c.ParamMarker == nil)
 }
 
 // Decorrelate implements Expression interface.
@@ -326,6 +372,18 @@ func (c *Constant) HashCode(sc *stmtctx.StatementContext) []byte {
 	if len(c.hashcode) > 0 {
 		return c.hashcode
 	}
+
+	if c.DeferredExpr != nil {
+		c.hashcode = c.DeferredExpr.HashCode(sc)
+		return c.hashcode
+	}
+
+	if c.ParamMarker != nil {
+		c.hashcode = append(c.hashcode, parameterFlag)
+		c.hashcode = codec.EncodeInt(c.hashcode, int64(c.ParamMarker.order))
+		return c.hashcode
+	}
+
 	_, err := c.Eval(chunk.Row{})
 	if err != nil {
 		terror.Log(err)
@@ -345,4 +403,42 @@ func (c *Constant) ResolveIndices(_ *Schema) (Expression, error) {
 
 func (c *Constant) resolveIndices(_ *Schema) error {
 	return nil
+}
+
+// ResolveIndicesByVirtualExpr implements Expression interface.
+func (c *Constant) ResolveIndicesByVirtualExpr(_ *Schema) (Expression, bool) {
+	return c, true
+}
+
+func (c *Constant) resolveIndicesByVirtualExpr(_ *Schema) bool {
+	return true
+}
+
+// Vectorized returns if this expression supports vectorized evaluation.
+func (c *Constant) Vectorized() bool {
+	if c.DeferredExpr != nil {
+		return c.DeferredExpr.Vectorized()
+	}
+	return true
+}
+
+// SupportReverseEval checks whether the builtinFunc support reverse evaluation.
+func (c *Constant) SupportReverseEval() bool {
+	if c.DeferredExpr != nil {
+		return c.DeferredExpr.SupportReverseEval()
+	}
+	return true
+}
+
+// ReverseEval evaluates the only one column value with given function result.
+func (c *Constant) ReverseEval(sc *stmtctx.StatementContext, res types.Datum, rType types.RoundingType) (val types.Datum, err error) {
+	return c.Value, nil
+}
+
+// Coercibility returns the coercibility value which is used to check collations.
+func (c *Constant) Coercibility() Coercibility {
+	if !c.HasCoercibility() {
+		c.SetCoercibility(deriveCoercibilityForConstant(c))
+	}
+	return c.collationInfo.Coercibility()
 }

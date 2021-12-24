@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -149,40 +151,21 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 	})
 }
 
-func filterJobAddr(addrList []string, ip, port string) bool {
-	if ip == "" && port == "" {
-		return true
-	}
-
+func filterJobAddr(addrList []string, filterHost, filterPort string) bool {
 	for _, addr := range addrList {
-		// database addr =  ip:port
-		// kafka addr    =  ip
-		addrList := strings.Split(addr, ":")
-
-		if len(addrList) == 2 {
-			// ip port filter
-			if ip != "" && port != "" {
-				if addrList[0] == ip && addrList[1] == port {
-					return true
-				}
-			}
-			// port filter
-			if port != "" && ip == "" {
-				if addrList[1] == port {
-					return true
-				}
-			}
+		host, portStr, err := net.SplitHostPort(addr)
+		if err != nil {
+			return false
 		}
-		// ip filter
-		if ip != "" && port == "" {
-			if addrList[0] == ip {
+		if filterHost == host || filterHost == "" {
+			if filterPort == portStr || filterPort == "" {
 				return true
 			}
 		}
-
 	}
 	return false
 }
+
 func findJobsFromNomad() (map[string]nomadApi.JobListStub, error) {
 	url := handler.BuildUrl("/v1/jobs")
 	resp, err := http.Get(url)
@@ -366,11 +349,10 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 }
 
 func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
+	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
-
 	destTaskConfigInNomadFormat := buildDatabaseDestTaskConfigMap(jobParams.DestTask)
 	if jobParams.SrcTask.OracleSrcTaskConfig != nil {
 		// todo for oracle->MySQL applier
@@ -383,17 +365,49 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrU
 		oracleConfig["ServiceName"] = jobParams.SrcTask.ConnectionConfig.ServiceName
 		destTaskConfigInNomadFormat["OracleConfig"] = oracleConfig
 	}
-	destTask, err := buildNomadTaskGroupItem(destTaskConfigInNomadFormat, jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
+
+	destTask, destDataCenter, err := buildNomadTaskGroupItem(destTaskConfigInNomadFormat, jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
-
-	jobId := jobParams.JobId
+	dataCenters, err := buildDataCenters(srcDataCenter, destDataCenter)
+	if nil != err {
+		return nil, fmt.Errorf("build job dada center failed: %v", err)
+	}
 	return &nomadApi.Job{
-		ID:          &jobId,
-		Datacenters: []string{"dc1"},
+		ID:          &jobParams.JobId,
+		Datacenters: dataCenters,
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
+}
+
+func buildDataCenters(srcDataCenter, destDataCenter string) ([]string, error) {
+	dataCenters := make([]string, 0)
+	if srcDataCenter != "" && destDataCenter != "" {
+		dataCenters = append(dataCenters, srcDataCenter, destDataCenter)
+	} else {
+		nodes, err := FindNodeList()
+		if err != nil {
+			return nil, err
+		}
+		for _, node := range nodes {
+			dataCenters = append(dataCenters, node.Datacenter)
+		}
+	}
+	dataCenters = removeDuplicateElement(dataCenters)
+	return dataCenters, nil
+}
+
+func removeDuplicateElement(datas []string) []string {
+	result := make([]string, 0, len(datas))
+	temp := map[string]struct{}{}
+	for _, item := range datas {
+		if _, ok := temp[item]; !ok {
+			temp[item] = struct{}{}
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
@@ -405,15 +419,17 @@ func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 	}
 	logger.Debug("buildJob", "database", jobParam.SrcTask.ConnectionConfig, "database2", jobParam.DestTask.ConnectionConfig)
 	jobInfo := common.JobListItemV2{
-		JobId:           jobParam.JobId,
-		JobStatus:       common.DtleJobStatusNonPaused,
-		JobCreateTime:   time.Now().In(time.Local).Format(time.RFC3339),
+		JobId:         jobParam.JobId,
+		JobStatus:     common.DtleJobStatusNonPaused,
+		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
 		SrcDatabaseType: jobParam.SrcTask.ConnectionConfig.DatabaseType,
 		DstDatabaseType: jobParam.DestTask.ConnectionConfig.DatabaseType,
-		SrcAddrList:     []string{fmt.Sprintf("%s:%d", jobParam.SrcTask.ConnectionConfig.Host, jobParam.SrcTask.ConnectionConfig.Port)},
-		DstAddrList:     []string{fmt.Sprintf("%s:%d", jobParam.DestTask.ConnectionConfig.Host, jobParam.DestTask.ConnectionConfig.Port)},
-		User:            fmt.Sprintf("%s:%s", user.Tenant, user.Username),
-		JobSteps:        nil,
+		SrcAddrList: []string{net.JoinHostPort(jobParam.SrcTask.ConnectionConfig.Host,
+			strconv.Itoa(int(jobParam.SrcTask.ConnectionConfig.Port)))},
+		DstAddrList: []string{net.JoinHostPort(jobParam.DestTask.ConnectionConfig.Host,
+			strconv.Itoa(int(jobParam.DestTask.ConnectionConfig.Port)))},
+		User:     fmt.Sprintf("%s:%s", user.Tenant, user.Username),
+		JobSteps: nil,
 	}
 	if jobParam.Reverse {
 		jobInfo.JobStatus = common.DtleJobStatusReverseInit
@@ -444,10 +460,11 @@ func buildKafkaJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 		JobStatus:     common.DtleJobStatusNonPaused,
 		Topic:         jobParam.DestTask.Topic,
 		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
-		SrcAddrList:   []string{jobParam.SrcTask.ConnectionConfig.Host},
-		DstAddrList:   jobParam.DestTask.BrokerAddrs,
-		User:          fmt.Sprintf("%s:%s", user.Tenant, user.Username),
-		JobSteps:      nil,
+		SrcAddrList: []string{net.JoinHostPort(jobParam.SrcTask.ConnectionConfig.Host,
+			strconv.Itoa(int(jobParam.SrcTask.ConnectionConfig.Port)))},
+		DstAddrList: jobParam.DestTask.BrokerAddrs,
+		User:        fmt.Sprintf("%s:%s", user.Tenant, user.Username),
+		JobSteps:    nil,
 	}
 	if jobParam.TaskStepName == "all" {
 		jobInfo.JobSteps = append(jobInfo.JobSteps, common.NewJobStep(mysql.JobFullCopy), common.NewJobStep(mysql.JobIncrCopy))
@@ -463,17 +480,25 @@ func buildKafkaJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 	return nil
 }
 
-func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool, retryTimes int) (*nomadApi.TaskGroup, error) {
+func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, nodeId string, failover bool, retryTimes int) (*nomadApi.TaskGroup, string, error) {
+	dataCenter := ""
 	task := nomadApi.NewTask(taskName, g.PluginName)
 	task.Config = dtleTaskconfig
 	if !failover && "" == nodeId {
-		return nil, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
+		return nil, dataCenter, fmt.Errorf("node id should be provided if failover is false. task_name=%v", taskName)
 	}
 	if nodeId != "" {
 		if failover {
 			// https://www.nomadproject.io/docs/runtime/interpolation
 			newAff := nomadApi.NewAffinity("${node.unique.id}", "=", nodeId, 100)
 			task.Affinities = append(task.Affinities, newAff)
+			if node, err := GetNodeInfo(nodeId); err != nil {
+				return nil, dataCenter, err
+			} else if node.Datacenter != "" {
+				newConstraint := nomadApi.NewConstraint("${node.datacenter}", "=", node.Datacenter)
+				task.Constraints = append(task.Constraints, newConstraint)
+				dataCenter = node.Datacenter
+			}
 		} else {
 			// https://www.nomadproject.io/docs/runtime/interpolation
 			newConstraint := nomadApi.NewConstraint("${node.unique.id}", "=", nodeId)
@@ -486,7 +511,7 @@ func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, no
 	taskGroup.ReschedulePolicy = reschedulePolicy
 	taskGroup.RestartPolicy = restartPolicy
 	taskGroup.Tasks = append(taskGroup.Tasks, task)
-	return taskGroup, nil
+	return taskGroup, dataCenter, nil
 }
 
 func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomadApi.RestartPolicy) {
@@ -537,6 +562,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]inte
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.AutoGtid, "AutoGtid")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.BinlogRelay, "BinlogRelay")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.Gtid, "Gtid")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.ExpandSyntaxSupport, "ExpandSyntaxSupport")
 		taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 	}
 	// for Oracle
@@ -710,6 +736,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 		}
 		if srcTaskDetail.TaskConfig.MysqlSrcTaskConfig != nil {
 			srcConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
+				ExpandSyntaxSupport: srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.ExpandSyntaxSupport,
 				Gtid:        srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.Gtid,
 				BinlogRelay: srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.BinlogRelay,
 				WaitOnJob:   srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob,
@@ -906,6 +933,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 		connectionConfig.User = internalTaskConfig.ConnectionConfig.User
 		connectionConfig.Password = internalTaskConfig.ConnectionConfig.Password
 		srcTaskDetail.TaskConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
+			ExpandSyntaxSupport: internalTaskConfig.ExpandSyntaxSupport,
 			AutoGtid:    internalTaskConfig.AutoGtid,
 			Gtid:        internalTaskConfig.Gtid,
 			BinlogRelay: internalTaskConfig.BinlogRelay,
@@ -1189,19 +1217,22 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType 
 }
 
 func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrUpdateMysqlToKafkaJobParamV2) (*nomadApi.Job, error) {
-	srcTask, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
+	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 
-	destTask, err := buildNomadTaskGroupItem(buildKafkaDestTaskConfigMap(apiJobParams.DestTask), apiJobParams.DestTask.TaskName, apiJobParams.DestTask.NodeId, failover, apiJobParams.Retry)
+	destTask, destDataCenter, err := buildNomadTaskGroupItem(buildKafkaDestTaskConfigMap(apiJobParams.DestTask), apiJobParams.DestTask.TaskName, apiJobParams.DestTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build dest task failed: %v", err)
 	}
-
+	dataCenters, err := buildDataCenters(srcDataCenter, destDataCenter)
+	if nil != err {
+		return nil, fmt.Errorf("build job dada center failed: %v", err)
+	}
 	return &nomadApi.Job{
 		ID:          &apiJobParams.JobId,
-		Datacenters: []string{"dc1"},
+		Datacenters: dataCenters,
 		TaskGroups:  []*nomadApi.TaskGroup{srcTask, destTask},
 	}, nil
 }
@@ -1844,6 +1875,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 
 			GroupTimeout: originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupTimeout,
 			MysqlSrcTaskConfig: &models.MysqlSrcTaskConfig{
+				ExpandSyntaxSupport:   originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.ExpandSyntaxSupport,
 				BinlogRelay: originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.BinlogRelay,
 				WaitOnJob:   consulJobItem.JobId,
 				AutoGtid:    true,

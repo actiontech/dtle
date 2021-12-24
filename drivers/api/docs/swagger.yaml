@@ -6,8 +6,6 @@ definitions:
         items:
           type: string
         type: array
-      dst_database_type:
-        type: string
       job_create_time:
         type: string
       job_id:
@@ -22,8 +20,6 @@ definitions:
         items:
           type: string
         type: array
-      src_database_type:
-        type: string
       topic:
         type: string
       user:
@@ -84,11 +80,11 @@ definitions:
         $ref: '#/definitions/models.JobBaseInfo'
       replicate_do_db:
         items:
-          $ref: '#/definitions/models.DataSourceConfig'
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
         type: array
       replicate_ignore_db:
         items:
-          $ref: '#/definitions/models.DataSourceConfig'
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
         type: array
     type: object
   models.BinlogValidation:
@@ -134,23 +130,41 @@ definitions:
     type: object
   models.Configuration:
     properties:
-      dst_config:
-        $ref: '#/definitions/models.DstConfig'
+      binlog_relay:
+        type: boolean
+      chunk_size:
+        type: integer
+      dependency_history_size:
+        type: integer
+      drop_table_if_exists:
+        type: boolean
+      expand_syntax_support:
+        type: boolean
       fail_over:
         type: boolean
+      group_max_size:
+        type: integer
+      group_timeout:
+        type: integer
+      parallel_workers:
+        type: integer
+      repl_chan_buffer_size:
+        type: integer
       retry_times:
         type: integer
-      src_config:
-        $ref: '#/definitions/models.SrcConfig'
+      skip_create_db_table:
+        type: boolean
+      use_my_sql_dependency:
+        type: boolean
     type: object
   models.ConnectionInfo:
     properties:
       dst_data_base:
-        $ref: '#/definitions/models.DatabaseConnectionConfig'
+        $ref: '#/definitions/models.MysqlConnectionConfig'
       dst_kafka:
         $ref: '#/definitions/models.KafkaDestTaskConfig'
       src_data_base:
-        $ref: '#/definitions/models.DatabaseConnectionConfig'
+        $ref: '#/definitions/models.MysqlConnectionConfig'
     type: object
   models.ConnectionRespV2:
     properties:
@@ -173,14 +187,14 @@ definitions:
         description: failover default:true
         example: true
         type: boolean
-      is_password_encrypted:
+      is_mysql_password_encrypted:
         type: boolean
       job_id:
         type: string
       retry:
         type: integer
       src_task:
-        $ref: '#/definitions/models.SrcTaskConfig'
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -198,7 +212,7 @@ definitions:
         description: failover default:true
         example: true
         type: boolean
-      is_password_encrypted:
+      is_mysql_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -209,7 +223,7 @@ definitions:
       retry:
         type: integer
       src_task:
-        $ref: '#/definitions/models.SrcTaskConfig'
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -220,11 +234,11 @@ definitions:
   models.CreateOrUpdateMysqlToMysqlJobParamV2:
     properties:
       dest_task:
-        $ref: '#/definitions/models.DestTaskConfig'
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
       failover:
         example: true
         type: boolean
-      is_password_encrypted:
+      is_mysql_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -233,7 +247,7 @@ definitions:
       reverse:
         type: boolean
       src_task:
-        $ref: '#/definitions/models.SrcTaskConfig'
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -244,13 +258,13 @@ definitions:
   models.CreateOrUpdateMysqlToMysqlJobRespV2:
     properties:
       dest_task:
-        $ref: '#/definitions/models.DestTaskConfig'
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
       eval_create_index:
         type: integer
       failover:
         example: true
         type: boolean
-      is_password_encrypted:
+      is_mysql_password_encrypted:
         type: boolean
       job_id:
         type: string
@@ -263,7 +277,7 @@ definitions:
       reverse:
         type: boolean
       src_task:
-        $ref: '#/definitions/models.SrcTaskConfig'
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
       task_step_name:
         type: string
     required:
@@ -336,40 +350,6 @@ definitions:
       message:
         type: string
     type: object
-  models.DataSourceConfig:
-    properties:
-      table_schema:
-        type: string
-      table_schema_regex:
-        type: string
-      table_schema_rename:
-        type: string
-      tables:
-        items:
-          $ref: '#/definitions/models.TableConfig'
-        type: array
-    type: object
-  models.DatabaseConnectionConfig:
-    properties:
-      database_type:
-        type: string
-      host:
-        type: string
-      password:
-        type: string
-      port:
-        type: integer
-      service_name:
-        type: string
-      user:
-        type: string
-    required:
-    - database_type
-    - host
-    - password
-    - port
-    - user
-    type: object
   models.DelayCount:
     properties:
       num:
@@ -391,27 +371,6 @@ definitions:
     properties:
       message:
         type: string
-    type: object
-  models.DestTaskConfig:
-    properties:
-      connection_config:
-        $ref: '#/definitions/models.DatabaseConnectionConfig'
-      database_type:
-        type: string
-      mysql_dest_task_config:
-        $ref: '#/definitions/models.MysqlDestTaskConfig'
-      node_id:
-        type: string
-      task_name:
-        type: string
-    required:
-    - connection_config
-    - task_name
-    type: object
-  models.DstConfig:
-    properties:
-      mysql_dest_task_config:
-        $ref: '#/definitions/models.MysqlDestTaskConfig'
     type: object
   models.DtleNodeInfo:
     properties:
@@ -520,7 +479,7 @@ definitions:
       message:
         type: string
     type: object
-  models.ListSchemasRespV2:
+  models.ListMysqlSchemasRespV2:
     properties:
       message:
         type: string
@@ -528,6 +487,22 @@ definitions:
         items:
           $ref: '#/definitions/models.SchemaItem'
         type: array
+    type: object
+  models.LoginWithoutVerifyCodeReqV2:
+    properties:
+      password:
+        example: "123456"
+        type: string
+      tenant:
+        example: test
+        type: string
+      username:
+        example: test
+        type: string
+    required:
+    - password
+    - tenant
+    - username
     type: object
   models.MenuItem:
     properties:
@@ -552,14 +527,52 @@ definitions:
       text_en:
         type: string
     type: object
+  models.MysqlConnectionConfig:
+    properties:
+      mysql_host:
+        type: string
+      mysql_password:
+        type: string
+      mysql_port:
+        type: integer
+      mysql_user:
+        type: string
+    required:
+    - mysql_host
+    - mysql_password
+    - mysql_port
+    - mysql_user
+    type: object
+  models.MysqlDataSourceConfig:
+    properties:
+      table_schema:
+        type: string
+      table_schema_regex:
+        type: string
+      table_schema_rename:
+        type: string
+      tables:
+        items:
+          $ref: '#/definitions/models.MysqlTableConfig'
+        type: array
+    type: object
   models.MysqlDestTaskConfig:
     properties:
       dependency_history_size:
         type: integer
+      mysql_connection_config:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
+      node_id:
+        type: string
       parallel_workers:
         type: integer
+      task_name:
+        type: string
       use_my_sql_dependency:
         type: boolean
+    required:
+    - mysql_connection_config
+    - task_name
     type: object
   models.MysqlSrcTaskConfig:
     properties:
@@ -567,9 +580,55 @@ definitions:
         type: boolean
       binlog_relay:
         type: boolean
+      chunk_size:
+        type: integer
+      drop_table_if_exists:
+        type: boolean
+      expand_syntax_support:
+        type: boolean
+      group_max_size:
+        type: integer
+      group_timeout:
+        type: integer
       gtid:
         type: string
+      mysql_connection_config:
+        $ref: '#/definitions/models.MysqlConnectionConfig'
+      node_id:
+        type: string
+      repl_chan_buffer_size:
+        type: integer
+      replicate_do_db:
+        items:
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
+        type: array
+      replicate_ignore_db:
+        items:
+          $ref: '#/definitions/models.MysqlDataSourceConfig'
+        type: array
+      skip_create_db_table:
+        type: boolean
+      task_name:
+        type: string
       wait_on_job:
+        type: string
+    required:
+    - mysql_connection_config
+    - task_name
+    type: object
+  models.MysqlTableConfig:
+    properties:
+      column_map_from:
+        items:
+          type: string
+        type: array
+      table_name:
+        type: string
+      table_regex:
+        type: string
+      table_rename:
+        type: string
+      where:
         type: string
     type: object
   models.MysqlTaskValidationReport:
@@ -653,11 +712,6 @@ definitions:
         items:
           $ref: '#/definitions/models.NodeListItemV2'
         type: array
-    type: object
-  models.OracleSrcTaskConfig:
-    properties:
-      scn:
-        type: integer
     type: object
   models.PauseJobRespV2:
     properties:
@@ -755,76 +809,6 @@ definitions:
         type: string
       validated:
         type: boolean
-    type: object
-  models.SrcConfig:
-    properties:
-      chunk_size:
-        type: integer
-      drop_table_if_exists:
-        type: boolean
-      group_max_size:
-        type: integer
-      group_timeout:
-        type: integer
-      mysql_src_task_config:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
-      oracle_src_task_config:
-        $ref: '#/definitions/models.OracleSrcTaskConfig'
-      repl_chan_buffer_size:
-        type: integer
-      skip_create_db_table:
-        type: boolean
-    type: object
-  models.SrcTaskConfig:
-    properties:
-      chunk_size:
-        type: integer
-      connection_config:
-        $ref: '#/definitions/models.DatabaseConnectionConfig'
-      drop_table_if_exists:
-        type: boolean
-      group_max_size:
-        type: integer
-      group_timeout:
-        type: integer
-      mysql_src_task_config:
-        $ref: '#/definitions/models.MysqlSrcTaskConfig'
-      node_id:
-        type: string
-      oracle_src_task_config:
-        $ref: '#/definitions/models.OracleSrcTaskConfig'
-      repl_chan_buffer_size:
-        type: integer
-      replicate_do_db:
-        items:
-          $ref: '#/definitions/models.DataSourceConfig'
-        type: array
-      replicate_ignore_db:
-        items:
-          $ref: '#/definitions/models.DataSourceConfig'
-        type: array
-      skip_create_db_table:
-        type: boolean
-      task_name:
-        type: string
-    required:
-    - connection_config
-    - task_name
-    type: object
-  models.TableConfig:
-    properties:
-      column_map_from:
-        items:
-          type: string
-        type: array
-      table_name:
-        type: string
-      table_regex:
-        type: string
-      table_rename:
-        type: string
-      where:
-        type: string
     type: object
   models.TableItem:
     properties:
@@ -993,13 +977,13 @@ definitions:
   models.ValidateJobReqV2:
     properties:
       dest_task:
-        $ref: '#/definitions/models.DestTaskConfig'
-      is_password_encrypted:
+        $ref: '#/definitions/models.MysqlDestTaskConfig'
+      is_mysql_password_encrypted:
         type: boolean
       job_id:
         type: string
       src_task:
-        $ref: '#/definitions/models.SrcTaskConfig'
+        $ref: '#/definitions/models.MysqlSrcTaskConfig'
     required:
     - dest_task
     - job_id
@@ -1008,8 +992,7 @@ definitions:
   models.ValidateJobRespV2:
     properties:
       driver_config_validated:
-        description: DriverConfigValidated indicates whether the agent validated the
-          driver
+        description: DriverConfigValidated indicates whether the agent validated the driver
         type: boolean
       job_validation_error:
         type: string
@@ -1029,165 +1012,6 @@ info:
   title: dtle API Docs
   version: "2.0"
 paths:
-  /v2/database/columns:
-    get:
-      description: list columns of database source instance.
-      operationId: ListDatabaseColumnsV2
-      parameters:
-      - description: database host
-        in: query
-        name: host
-        required: true
-        type: string
-      - description: database port
-        in: query
-        name: port
-        required: true
-        type: integer
-      - description: database user
-        in: query
-        name: user
-        required: true
-        type: string
-      - description: database password
-        in: query
-        name: password
-        required: true
-        type: string
-      - description: database_type
-        in: query
-        name: database_type
-        required: true
-        type: string
-      - description: database service_name
-        in: query
-        name: service_name
-        type: string
-      - description: database schema
-        in: query
-        name: schema
-        required: true
-        type: string
-      - description: database table
-        in: query
-        name: table
-        required: true
-        type: string
-      - description: database character set
-        in: query
-        name: character_set
-        type: string
-      - description: indecate that database password is encrypted or not
-        in: query
-        name: is_password_encrypted
-        type: boolean
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.ListColumnsRespV2'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - database
-  /v2/database/instance_connection:
-    get:
-      description: connect to  database instance.
-      operationId: ConnectionV2
-      parameters:
-      - description: database host
-        in: query
-        name: host
-        required: true
-        type: string
-      - description: database port
-        in: query
-        name: port
-        required: true
-        type: integer
-      - description: database user
-        in: query
-        name: user
-        required: true
-        type: string
-      - description: database password
-        in: query
-        name: password
-        required: true
-        type: string
-      - description: database_type
-        in: query
-        name: database_type
-        required: true
-        type: string
-      - description: database service_name
-        in: query
-        name: service_name
-        type: string
-      - description: indecate that database password is encrypted or not
-        in: query
-        name: is_password_encrypted
-        type: boolean
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.ConnectionRespV2'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - database
-  /v2/database/schemas:
-    get:
-      description: list schemas of database source instance.
-      operationId: ListDatabaseSchemasV2
-      parameters:
-      - description: database_type
-        in: query
-        name: database_type
-        required: true
-        type: string
-      - description: database host
-        in: query
-        name: host
-        required: true
-        type: string
-      - description: database port
-        in: query
-        name: port
-        required: true
-        type: integer
-      - description: database user
-        in: query
-        name: user
-        required: true
-        type: string
-      - description: database password
-        in: query
-        name: password
-        required: true
-        type: string
-      - description: database service_name
-        in: query
-        name: service_name
-        type: string
-      - description: database character set
-        in: query
-        name: character_set
-        type: string
-      - description: indecate that database password is encrypted or not
-        in: query
-        name: is_password_encrypted
-        type: boolean
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.ListSchemasRespV2'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - database
   /v2/job/gtid:
     get:
       description: get src task current gtid.
@@ -1897,6 +1721,25 @@ paths:
       summary: create base64Captcha
       tags:
       - user
+  /v2/loginWithoutVerifyCode:
+    post:
+      description: user login Without Verify Code
+      operationId: LoginWithoutVerifyCodeV2
+      parameters:
+      - description: user login request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginWithoutVerifyCodeReqV2'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.GetUserLoginResV2'
+      summary: user LoginWithoutVerifyCodeV2
+      tags:
+      - user
   /v2/monitor/task:
     get:
       description: get progress of tasks within an allocation.
@@ -1912,8 +1755,7 @@ paths:
         name: task_name
         required: true
         type: string
-      - description: nomad_http_address is the http address of the nomad that the
-          target dtle is running with. ignore it if you are not sure what to provide
+      - description: nomad_http_address is the http address of the nomad that the target dtle is running with. ignore it if you are not sure what to provide
         in: query
         name: nomad_http_address
         type: string
@@ -1926,6 +1768,138 @@ paths:
       - ApiKeyAuth: []
       tags:
       - monitor
+  /v2/mysql/columns:
+    get:
+      description: list columns of mysql source instance.
+      operationId: ListMysqlColumnsV2
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: mysql schema
+        in: query
+        name: mysql_schema
+        required: true
+        type: string
+      - description: mysql table
+        in: query
+        name: mysql_table
+        required: true
+        type: string
+      - description: mysql character set
+        in: query
+        name: mysql_character_set
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListColumnsRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - mysql
+  /v2/mysql/instance_connection:
+    get:
+      description: connect to  mysql instance.
+      operationId: ConnectionV2
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ConnectionRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - mysql
+  /v2/mysql/schemas:
+    get:
+      description: list schemas of mysql source instance.
+      operationId: ListMysqlSchemasV2
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: mysql character set
+        in: query
+        name: mysql_character_set
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListMysqlSchemasRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - mysql
   /v2/nodes:
     get:
       description: get node list.

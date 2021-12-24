@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -17,19 +18,24 @@ package mock
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/pingcap/errors"
+	"github.com/pingcap/kvproto/pkg/kvrpcpb"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/owner"
+	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/model"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
-	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util"
+	"github.com/pingcap/tidb/util/disk"
 	"github.com/pingcap/tidb/util/kvcache"
+	"github.com/pingcap/tidb/util/memory"
+	"github.com/pingcap/tidb/util/sli"
 	"github.com/pingcap/tidb/util/sqlexec"
-	binlog "github.com/pingcap/tipb/go-binlog"
+	"github.com/pingcap/tipb/go-binlog"
+	"github.com/tikv/client-go/v2/tikv"
 )
 
 var _ sessionctx.Context = (*Context)(nil)
@@ -41,7 +47,6 @@ type Context struct {
 	txn         wrapTxn    // mock global variable
 	Store       kv.Storage // mock global variable
 	sessionVars *variable.SessionVars
-	mux         sync.Mutex // fix data race in ddl test.
 	ctx         context.Context
 	cancel      context.CancelFunc
 	sm          util.SessionManager
@@ -56,14 +61,52 @@ func (txn *wrapTxn) Valid() bool {
 	return txn.Transaction != nil && txn.Transaction.Valid()
 }
 
+func (txn *wrapTxn) CacheTableInfo(id int64, info *model.TableInfo) {
+	if txn.Transaction == nil {
+		return
+	}
+	txn.Transaction.CacheTableInfo(id, info)
+}
+
+func (txn *wrapTxn) GetTableInfo(id int64) *model.TableInfo {
+	if txn.Transaction == nil {
+		return nil
+	}
+	return txn.Transaction.GetTableInfo(id)
+}
+
 // Execute implements sqlexec.SQLExecutor Execute interface.
 func (c *Context) Execute(ctx context.Context, sql string) ([]sqlexec.RecordSet, error) {
-	return nil, errors.Errorf("Not Support.")
+	return nil, errors.Errorf("Not Supported.")
 }
+
+// ExecuteStmt implements sqlexec.SQLExecutor ExecuteStmt interface.
+func (c *Context) ExecuteStmt(ctx context.Context, stmtNode ast.StmtNode) (sqlexec.RecordSet, error) {
+	return nil, errors.Errorf("Not Supported.")
+}
+
+// SetDiskFullOpt sets allowed options of current operation in each TiKV disk usage level.
+func (c *Context) SetDiskFullOpt(level kvrpcpb.DiskFullOpt) {
+	c.txn.Transaction.SetDiskFullOpt(kvrpcpb.DiskFullOpt_AllowedOnAlmostFull)
+}
+
+// ClearDiskFullOpt clears allowed options of current operation in each TiKV disk usage level.
+func (c *Context) ClearDiskFullOpt() {
+	c.txn.Transaction.ClearDiskFullOpt()
+}
+
+// ExecuteInternal implements sqlexec.SQLExecutor ExecuteInternal interface.
+func (c *Context) ExecuteInternal(ctx context.Context, sql string, args ...interface{}) (sqlexec.RecordSet, error) {
+	return nil, errors.Errorf("Not Supported.")
+}
+
+type mockDDLOwnerChecker struct{}
+
+func (c *mockDDLOwnerChecker) IsOwner() bool { return true }
 
 // DDLOwnerChecker returns owner.DDLOwnerChecker.
 func (c *Context) DDLOwnerChecker() owner.DDLOwnerChecker {
-	return nil
+	return &mockDDLOwnerChecker{}
 }
 
 // SetValue implements sessionctx.Context SetValue interface.
@@ -80,6 +123,11 @@ func (c *Context) Value(key fmt.Stringer) interface{} {
 // ClearValue implements sessionctx.Context ClearValue interface.
 func (c *Context) ClearValue(key fmt.Stringer) {
 	delete(c.values, key)
+}
+
+// HasDirtyContent implements sessionctx.Context ClearValue interface.
+func (c *Context) HasDirtyContent(tid int64) bool {
+	return false
 }
 
 // GetSessionVars implements the sessionctx.Context GetSessionVars interface.
@@ -100,11 +148,38 @@ func (c *Context) GetClient() kv.Client {
 	return c.Store.GetClient()
 }
 
+// GetMPPClient implements sessionctx.Context GetMPPClient interface.
+func (c *Context) GetMPPClient() kv.MPPClient {
+	if c.Store == nil {
+		return nil
+	}
+	return c.Store.GetMPPClient()
+}
+
+// GetInfoSchema implements sessionctx.Context GetInfoSchema interface.
+func (c *Context) GetInfoSchema() sessionctx.InfoschemaMetaVersion {
+	vars := c.GetSessionVars()
+	if snap, ok := vars.SnapshotInfoschema.(sessionctx.InfoschemaMetaVersion); ok {
+		return snap
+	}
+	if vars.TxnCtx != nil && vars.InTxn() {
+		if is, ok := vars.TxnCtx.InfoSchema.(sessionctx.InfoschemaMetaVersion); ok {
+			return is
+		}
+	}
+	return nil
+}
+
+// GetBuiltinFunctionUsage implements sessionctx.Context GetBuiltinFunctionUsage interface.
+func (c *Context) GetBuiltinFunctionUsage() map[string]uint32 {
+	return make(map[string]uint32)
+}
+
 // GetGlobalSysVar implements GlobalVarAccessor GetGlobalSysVar interface.
 func (c *Context) GetGlobalSysVar(ctx sessionctx.Context, name string) (string, error) {
 	v := variable.GetSysVar(name)
 	if v == nil {
-		return "", variable.UnknownSystemVar.GenWithStackByArgs(name)
+		return "", variable.ErrUnknownSystemVar.GenWithStackByArgs(name)
 	}
 	return v.Value, nil
 }
@@ -113,7 +188,7 @@ func (c *Context) GetGlobalSysVar(ctx sessionctx.Context, name string) (string, 
 func (c *Context) SetGlobalSysVar(ctx sessionctx.Context, name string, value string) error {
 	v := variable.GetSysVar(name)
 	if v == nil {
-		return variable.UnknownSystemVar.GenWithStackByArgs(name)
+		return variable.ErrUnknownSystemVar.GenWithStackByArgs(name)
 	}
 	v.Value = value
 	return nil
@@ -144,9 +219,24 @@ func (c *Context) NewTxn(context.Context) error {
 	return nil
 }
 
+// NewStaleTxnWithStartTS implements the sessionctx.Context interface.
+func (c *Context) NewStaleTxnWithStartTS(ctx context.Context, startTS uint64) error {
+	return c.NewTxn(ctx)
+}
+
+// GetSnapshotWithTS return a snapshot with ts
+func (c *Context) GetSnapshotWithTS(ts uint64) kv.Snapshot {
+	return c.Store.GetSnapshot(kv.Version{Ver: ts})
+}
+
 // RefreshTxnCtx implements the sessionctx.Context interface.
 func (c *Context) RefreshTxnCtx(ctx context.Context) error {
 	return errors.Trace(c.NewTxn(ctx))
+}
+
+// RefreshVars implements the sessionctx.Context interface.
+func (c *Context) RefreshVars(ctx context.Context) error {
+	return nil
 }
 
 // InitTxnWithStartTS implements the sessionctx.Context interface with startTS.
@@ -155,15 +245,10 @@ func (c *Context) InitTxnWithStartTS(startTS uint64) error {
 		return nil
 	}
 	if c.Store != nil {
-		membufCap := kv.DefaultTxnMembufCap
-		if c.sessionVars.LightningMode {
-			membufCap = kv.ImportingTxnMembufCap
-		}
-		txn, err := c.Store.BeginWithStartTS(startTS)
+		txn, err := c.Store.BeginWithOption(tikv.DefaultStartTSOption().SetTxnScope(kv.GlobalTxnScope).SetStartTS(startTS))
 		if err != nil {
 			return errors.Trace(err)
 		}
-		txn.SetCap(membufCap)
 		c.txn.Transaction = txn
 	}
 	return nil
@@ -197,10 +282,16 @@ func (c *Context) GoCtx() context.Context {
 // StoreQueryFeedback stores the query feedback.
 func (c *Context) StoreQueryFeedback(_ interface{}) {}
 
-// StmtCommit implements the sessionctx.Context interface.
-func (c *Context) StmtCommit() error {
-	return nil
+// StoreIndexUsage strores the index usage information.
+func (c *Context) StoreIndexUsage(_ int64, _ int64, _ int64) {}
+
+// GetTxnWriteThroughputSLI implements the sessionctx.Context interface.
+func (c *Context) GetTxnWriteThroughputSLI() *sli.TxnWriteThroughputSLI {
+	return &sli.TxnWriteThroughputSLI{}
 }
+
+// StmtCommit implements the sessionctx.Context interface.
+func (c *Context) StmtCommit() {}
 
 // StmtRollback implements the sessionctx.Context interface.
 func (c *Context) StmtRollback() {
@@ -211,8 +302,43 @@ func (c *Context) StmtGetMutation(tableID int64) *binlog.TableMutation {
 	return nil
 }
 
-// StmtAddDirtyTableOP implements the sessionctx.Context interface.
-func (c *Context) StmtAddDirtyTableOP(op int, tid int64, handle int64, row []types.Datum) {
+// AddTableLock implements the sessionctx.Context interface.
+func (c *Context) AddTableLock(_ []model.TableLockTpInfo) {
+}
+
+// ReleaseTableLocks implements the sessionctx.Context interface.
+func (c *Context) ReleaseTableLocks(locks []model.TableLockTpInfo) {
+}
+
+// ReleaseTableLockByTableIDs implements the sessionctx.Context interface.
+func (c *Context) ReleaseTableLockByTableIDs(tableIDs []int64) {
+}
+
+// CheckTableLocked implements the sessionctx.Context interface.
+func (c *Context) CheckTableLocked(_ int64) (bool, model.TableLockType) {
+	return false, model.TableLockNone
+}
+
+// GetAllTableLocks implements the sessionctx.Context interface.
+func (c *Context) GetAllTableLocks() []model.TableLockTpInfo {
+	return nil
+}
+
+// ReleaseAllTableLocks implements the sessionctx.Context interface.
+func (c *Context) ReleaseAllTableLocks() {
+}
+
+// HasLockedTables implements the sessionctx.Context interface.
+func (c *Context) HasLockedTables() bool {
+	return false
+}
+
+// PrepareTSFuture implements the sessionctx.Context interface.
+func (c *Context) PrepareTSFuture(ctx context.Context) {
+}
+
+// Close implements the sessionctx.Context interface.
+func (c *Context) Close() {
 }
 
 // NewContext creates a new mocked sessionctx.Context.
@@ -227,8 +353,13 @@ func NewContext() *Context {
 	sctx.sessionVars.InitChunkSize = 2
 	sctx.sessionVars.MaxChunkSize = 32
 	sctx.sessionVars.StmtCtx.TimeZone = time.UTC
+	sctx.sessionVars.StmtCtx.MemTracker = memory.NewTracker(-1, -1)
+	sctx.sessionVars.StmtCtx.DiskTracker = disk.NewTracker(-1, -1)
 	sctx.sessionVars.GlobalVarsAccessor = variable.NewMockGlobalAccessor()
 	if err := sctx.GetSessionVars().SetSystemVar(variable.MaxAllowedPacket, "67108864"); err != nil {
+		panic(err)
+	}
+	if err := sctx.GetSessionVars().SetSystemVar(variable.CharacterSetConnection, "utf8mb4"); err != nil {
 		panic(err)
 	}
 	return sctx

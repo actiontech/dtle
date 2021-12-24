@@ -16,18 +16,49 @@ package etcd
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"path"
 	"strings"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
 	"github.com/pingcap/errors"
+	"go.etcd.io/etcd/clientv3"
 )
 
 // Node organizes the ectd query result as a Trie tree
 type Node struct {
 	Value  []byte
 	Childs map[string]*Node
+}
+
+// OpType is operation's type in etcd
+type OpType string
+
+var (
+	// CreateOp is create operation type
+	CreateOp OpType = "create"
+
+	// UpdateOp is update operation type
+	UpdateOp OpType = "update"
+
+	// DeleteOp is delete operation type
+	DeleteOp OpType = "delete"
+)
+
+// Operation represents an operation in etcd, include create, update and delete.
+type Operation struct {
+	Tp         OpType
+	Key        string
+	Value      string
+	TTL        int64
+	WithPrefix bool
+
+	Opts []clientv3.OpOption
+}
+
+// String implements Stringer interface.
+func (o *Operation) String() string {
+	return fmt.Sprintf("{Tp: %s, Key: %s, Value: %s, TTL: %d, WithPrefix: %v, Opts: %v}", o.Tp, o.Key, o.Value, o.TTL, o.WithPrefix, o.Opts)
 }
 
 // Client is a wrapped etcd client that support some simple method
@@ -69,8 +100,13 @@ func (e *Client) Close() error {
 	return nil
 }
 
+// GetClient returns client
+func (e *Client) GetClient() *clientv3.Client {
+	return e.client
+}
+
 // Create guarantees to set a key = value with some options(like ttl)
-func (e *Client) Create(ctx context.Context, key string, val string, opts []clientv3.OpOption) error {
+func (e *Client) Create(ctx context.Context, key string, val string, opts []clientv3.OpOption) (int64, error) {
 	key = keyWithPrefix(e.rootPath, key)
 	txnResp, err := e.client.KV.Txn(ctx).If(
 		clientv3.Compare(clientv3.ModRevision(key), "=", 0),
@@ -78,14 +114,19 @@ func (e *Client) Create(ctx context.Context, key string, val string, opts []clie
 		clientv3.OpPut(key, val, opts...),
 	).Commit()
 	if err != nil {
-		return errors.Trace(err)
+		return 0, errors.Trace(err)
 	}
 
 	if !txnResp.Succeeded {
-		return errors.AlreadyExistsf("key %s in etcd", key)
+		return 0, errors.AlreadyExistsf("key %s in etcd", key)
 	}
 
-	return nil
+	if txnResp.Header != nil {
+		return txnResp.Header.Revision, nil
+	}
+
+	// impossible to happen
+	return 0, errors.New("revision is unknown")
 }
 
 // Get returns a key/value matchs the given key
@@ -205,6 +246,61 @@ func (e *Client) Watch(ctx context.Context, prefix string, revision int64) clien
 		return e.client.Watch(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(revision))
 	}
 	return e.client.Watch(ctx, prefix, clientv3.WithPrefix())
+}
+
+// DoTxn does some operation in one transaction.
+// Note: should only have one opereration for one key, otherwise will get duplicate key error.
+func (e *Client) DoTxn(ctx context.Context, operations []*Operation) (int64, error) {
+	cmps := make([]clientv3.Cmp, 0, len(operations))
+	ops := make([]clientv3.Op, 0, len(operations))
+
+	for _, operation := range operations {
+		operation.Key = keyWithPrefix(e.rootPath, operation.Key)
+
+		if operation.TTL > 0 {
+			if operation.Tp == DeleteOp {
+				return 0, errors.Errorf("unexpected TTL in delete operation")
+			}
+
+			lcr, err := e.client.Lease.Grant(ctx, operation.TTL)
+			if err != nil {
+				return 0, errors.Trace(err)
+			}
+			operation.Opts = append(operation.Opts, clientv3.WithLease(lcr.ID))
+		}
+
+		if operation.WithPrefix {
+			operation.Opts = append(operation.Opts, clientv3.WithPrefix())
+		}
+
+		switch operation.Tp {
+		case CreateOp:
+			cmps = append(cmps, clientv3.Compare(clientv3.ModRevision(operation.Key), "=", 0))
+			ops = append(ops, clientv3.OpPut(operation.Key, operation.Value, operation.Opts...))
+		case UpdateOp:
+			cmps = append(cmps, clientv3.Compare(clientv3.ModRevision(operation.Key), ">", 0))
+			ops = append(ops, clientv3.OpPut(operation.Key, operation.Value, operation.Opts...))
+		case DeleteOp:
+			ops = append(ops, clientv3.OpDelete(operation.Key, operation.Opts...))
+		default:
+			return 0, errors.Errorf("unknown operation type %s", operation.Tp)
+		}
+	}
+
+	txnResp, err := e.client.KV.Txn(ctx).If(
+		cmps...,
+	).Then(
+		ops...,
+	).Commit()
+	if err != nil {
+		return 0, errors.Trace(err)
+	}
+
+	if !txnResp.Succeeded {
+		return 0, errors.Errorf("do transaction failed, operations: %+v", operations)
+	}
+
+	return txnResp.Header.Revision, nil
 }
 
 func parseToDirTree(root *Node, path string) *Node {

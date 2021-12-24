@@ -167,7 +167,7 @@ func (p *PumpStatus) WriteBinlog(req *pb.WriteBinlogReq, timeout time.Duration) 
 
 // IsUsable returns true if pump is usable.
 func (p *PumpStatus) IsUsable() bool {
-	if p.Status.State != node.Online {
+	if !p.ShouldBeUsable() {
 		return false
 	}
 
@@ -176,4 +176,10 @@ func (p *PumpStatus) IsUsable() bool {
 	}
 
 	return true
+}
+
+// ShouldBeUsable returns true if pump should be usable
+func (p *PumpStatus) ShouldBeUsable() bool {
+	return p.Status.State == node.Online
+
 }

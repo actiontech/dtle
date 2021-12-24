@@ -174,7 +174,7 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 				return nil, errors.Wrap(err, "NewExtractor")
 			}
 		} else {
-			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
+			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewOracleExtractor")
 			}
@@ -184,7 +184,7 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 		if h.driverConfig.KafkaConfig != nil {
 			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
 			runner, err = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
-				d.storeManager, d.config.NatsAdvertise, h.waitCh)
+				d.storeManager, d.config.NatsAdvertise, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
 			}
@@ -197,7 +197,7 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 			}
 		} else {
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
-				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
+				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewApplier")
 			}

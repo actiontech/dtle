@@ -14,22 +14,29 @@
 package writer
 
 import (
-	gmysql "github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
+	"context"
+
+	gmysql "github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 
 	"github.com/pingcap/dm/pkg/gtid"
 )
 
+const (
+	ignoreReasonAlreadyExists = "already exists"
+	ignoreReasonFakeRotate    = "fake rotate event"
+)
+
 // Result represents a write result.
 type Result struct {
-	Ignore bool // whether the event ignored by the writer
+	Ignore       bool   // whether the event ignored by the writer
+	IgnoreReason string // why the writer ignore the event
 }
 
 // RecoverResult represents a result for a binlog recover operation.
 type RecoverResult struct {
-	// true if recover operation has done and successfully.
-	// false if no recover operation has done or unsuccessfully.
-	Recovered bool
+	// if truncate trailing incomplete events during recovering in relay log
+	Truncated bool
 	// the latest binlog position after recover operation has done.
 	LatestPos gmysql.Position
 	// the latest binlog GTID set after recover operation has done.
@@ -54,7 +61,7 @@ type Writer interface {
 	// It is often used to recover a binlog file with some corrupt/incomplete binlog events/transactions at the end of the file.
 	// It is not safe for concurrent use by multiple goroutines.
 	// It should be called before writing to the file.
-	Recover() (RecoverResult, error)
+	Recover(ctx context.Context) (RecoverResult, error)
 
 	// WriteEvent writes an binlog event's data into disk or any other places.
 	// It is not safe for concurrent use by multiple goroutines.

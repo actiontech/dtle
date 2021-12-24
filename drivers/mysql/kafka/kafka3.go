@@ -8,6 +8,7 @@ package kafka
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -23,11 +24,10 @@ import (
 	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	gonats "github.com/nats-io/go-nats"
-	"github.com/pingcap/tidb/types"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -44,6 +44,7 @@ type KafkaRunner struct {
 	natsConn    *gonats.Conn
 	waitCh      chan *drivers.ExitResult
 
+	ctx        context.Context
 	shutdown   bool
 	shutdownCh chan struct{}
 
@@ -89,8 +90,7 @@ func (kr *KafkaRunner) Finish1() error {
 	return nil
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger g.LoggerType,
-	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult) (kr *KafkaRunner, err error) {
+func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger g.LoggerType, storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, ctx context.Context) (kr *KafkaRunner, err error) {
 
 	loc := time.UTC
 	if cfg.TimeZone != "" {
@@ -101,6 +101,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 	}
 
 	kr = &KafkaRunner{
+		ctx:          ctx,
 		subject:      execCtx.Subject,
 		kafkaConfig:  cfg,
 		logger:       logger.Named("kafka").With("job", execCtx.Subject),
@@ -705,7 +706,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 				case mysqlconfig.BitColumnType:
 					if columnList[i].ColumnType == "bit(1)" {
 						value = false
-						if types.BinaryLiteral(valueStr).Compare(types.BinaryLiteral("\x01")) == 0 {
+						if valueStr == "\x01" {
 							value = true
 						}
 					} else {
@@ -1185,7 +1186,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 		case mysqlconfig.BitColumnType:
 			if cols[i].ColumnType == "bit(1)" {
 				if defaultValue != nil {
-					if defaultValue.(types.BinaryLiteral).Compare(types.BinaryLiteral("\x01")) == 0 {
+					if string(defaultValue.([]byte)) == "\x01" {
 						defaultValue = true
 					} else {
 						defaultValue = false

@@ -18,17 +18,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pingcap/errors"
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 const (
 	// the binlog file name format is `base + '.' + seq`.
 	binlogFilenameSep = "."
-)
-
-var (
-	// ErrInvalidBinlogFilename means error about invalid binlog filename.
-	ErrInvalidBinlogFilename = errors.New("invalid binlog filename")
 )
 
 // Filename represents a binlog filename.
@@ -40,17 +35,17 @@ type Filename struct {
 
 // LessThan checks whether this filename < other filename.
 func (f Filename) LessThan(other Filename) bool {
-	return f.BaseName == other.BaseName && f.Seq < other.Seq
+	return f.BaseName == other.BaseName && f.SeqInt64 < other.SeqInt64
 }
 
 // GreaterThanOrEqualTo checks whether this filename >= other filename.
 func (f Filename) GreaterThanOrEqualTo(other Filename) bool {
-	return f.BaseName == other.BaseName && f.Seq >= other.Seq
+	return f.BaseName == other.BaseName && f.SeqInt64 >= other.SeqInt64
 }
 
 // GreaterThan checks whether this filename > other filename.
 func (f Filename) GreaterThan(other Filename) bool {
-	return f.BaseName == other.BaseName && f.Seq > other.Seq
+	return f.BaseName == other.BaseName && f.SeqInt64 > other.SeqInt64
 }
 
 // ParseFilename parses a string representation binlog filename into a `Filename`.
@@ -58,7 +53,7 @@ func ParseFilename(filename string) (Filename, error) {
 	var fn Filename
 	parts := strings.Split(filename, binlogFilenameSep)
 	if len(parts) != 2 {
-		return fn, errors.Annotatef(ErrInvalidBinlogFilename, "filename %s", filename)
+		return fn, terror.Annotatef(terror.ErrBinlogInvalidFilename.Generate(), "filename %s", filename)
 	}
 
 	var (
@@ -66,7 +61,7 @@ func ParseFilename(filename string) (Filename, error) {
 		err      error
 	)
 	if seqInt64, err = strconv.ParseInt(parts[1], 10, 64); err != nil || seqInt64 <= 0 {
-		return fn, errors.Annotatef(ErrInvalidBinlogFilename, "filename %s", filename)
+		return fn, terror.Annotatef(terror.ErrBinlogInvalidFilename.Generate(), "filename %s", filename)
 	}
 	fn.BaseName = parts[0]
 	fn.Seq = parts[1]
@@ -87,7 +82,7 @@ func VerifyFilename(filename string) bool {
 func GetFilenameIndex(filename string) (int64, error) {
 	fn, err := ParseFilename(filename)
 	if err != nil {
-		return 0, errors.Trace(err)
+		return 0, err
 	}
 	return fn.SeqInt64, nil
 }
@@ -100,4 +95,22 @@ func ConstructFilename(baseName, seq string) string {
 // ConstructFilenameWithUUIDSuffix constructs a binlog filename with UUID suffix.
 func ConstructFilenameWithUUIDSuffix(originalName Filename, uuidSuffix string) string {
 	return fmt.Sprintf("%s%s%s%s%s", originalName.BaseName, posUUIDSuffixSeparator, uuidSuffix, binlogFilenameSep, originalName.Seq)
+}
+
+// SplitFilenameWithUUIDSuffix analyzes a binlog filename with UUID suffix.
+func SplitFilenameWithUUIDSuffix(filename string) (baseName, uuidSuffix, seq string, err error) {
+	items1 := strings.Split(filename, posUUIDSuffixSeparator)
+	if len(items1) != 2 {
+		return "", "", "", terror.ErrBinlogInvalidFilenameWithUUIDSuffix.Generate(filename)
+	}
+
+	baseName = items1[0]
+	items2 := strings.Split(items1[1], binlogFilenameSep)
+
+	if len(items2) != 2 {
+		return "", "", "", terror.ErrBinlogInvalidFilenameWithUUIDSuffix.Generate(filename)
+	}
+	uuidSuffix = items2[0]
+	seq = items2[1]
+	return baseName, uuidSuffix, seq, nil
 }

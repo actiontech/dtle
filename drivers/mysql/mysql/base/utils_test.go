@@ -10,7 +10,7 @@ import (
 	gosql "database/sql"
 	"fmt"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
-	"github.com/pingcap/parser"
+	"github.com/pingcap/tidb/parser"
 	"reflect"
 	"testing"
 	"time"
@@ -18,7 +18,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
 	test "github.com/outbrain/golib/tests"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 )
 
 func TestStringContainsAll(t *testing.T) {
@@ -204,42 +204,6 @@ func TestApplyColumnTypes(t *testing.T) {
 	}
 }
 
-func TestShowCreateTable(t *testing.T) {
-	type args struct {
-		db                *gosql.DB
-		databaseName      string
-		tableName         string
-		dropTableIfExists bool
-		addUse            bool
-	}
-	tests := []struct {
-		name                     string
-		args                     args
-		wantCreateTableStatement string
-		wantErr                  bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotCreateTableStatement, err := ShowCreateTable(tt.args.db, tt.args.databaseName, tt.args.tableName, tt.args.dropTableIfExists, tt.args.addUse)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ShowCreateTable() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			exist := false
-			for _, createTableStatement := range gotCreateTableStatement {
-				if createTableStatement == tt.wantCreateTableStatement {
-					exist = true
-				}
-			}
-			if !exist {
-				t.Errorf("ShowCreateTable() = %v, want %v", gotCreateTableStatement, tt.wantCreateTableStatement)
-			}
-		})
-	}
-}
-
 func Test_stringInterval(t *testing.T) {
 	type args struct {
 		intervals gomysql.IntervalSlice
@@ -318,7 +282,7 @@ func TestGetTableColumnsSqle(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GetTableColumnsSqle(tt.args.sqleContext, tt.args.schema, tt.args.table)
+			got, _, err := GetTableColumnsSqle(tt.args.sqleContext, tt.args.schema, tt.args.table)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetTableColumnsSqle() error = %v, wantErr %v", err, tt.wantErr)
 				return

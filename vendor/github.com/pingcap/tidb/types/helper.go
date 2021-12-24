@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -15,22 +16,19 @@ package types
 
 import (
 	"math"
+	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/pingcap/errors"
 )
 
-// RoundFloat rounds float val to the nearest integer value with float64 format, like MySQL Round function.
+// RoundFloat rounds float val to the nearest even integer value with float64 format, like MySQL Round function.
 // RoundFloat uses default rounding mode, see https://dev.mysql.com/doc/refman/5.7/en/precision-math-rounding.html
-// so rounding use "round half away from zero".
+// so rounding use "round to nearest even".
 // e.g, 1.5 -> 2, -1.5 -> -2.
 func RoundFloat(f float64) float64 {
-	if math.Abs(f) < 0.5 {
-		return 0
-	}
-
-	return math.Trunc(f + math.Copysign(0.5, f))
+	return math.RoundToEven(f)
 }
 
 // Round rounds the argument f to dec decimal places.
@@ -43,7 +41,11 @@ func Round(f float64, dec int) float64 {
 	if math.IsInf(tmp, 0) {
 		return f
 	}
-	return RoundFloat(tmp) / shift
+	result := RoundFloat(tmp) / shift
+	if math.IsNaN(result) {
+		return 0
+	}
+	return result
 }
 
 // Truncate truncates the argument f to dec decimal places.
@@ -93,12 +95,23 @@ func TruncateFloat(f float64, flen int, decimal int) (float64, error) {
 	return f, errors.Trace(err)
 }
 
+// TruncateFloatToString is used to truncate float to string where dec is the number of digits after the decimal point.
+func TruncateFloatToString(f float64, dec int) string {
+	f = Truncate(f, dec)
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
 func isSpace(c byte) bool {
 	return c == ' ' || c == '\t'
 }
 
 func isDigit(c byte) bool {
 	return c >= '0' && c <= '9'
+}
+
+// Returns true if the given byte is an ASCII punctuation character (printable and non-alphanumeric).
+func isPunctuation(c byte) bool {
+	return (c >= 0x21 && c <= 0x2F) || (c >= 0x3A && c <= 0x40) || (c >= 0x5B && c <= 0x60) || (c >= 0x7B && c <= 0x7E)
 }
 
 func myMax(a, b int) int {
@@ -192,4 +205,26 @@ func strToInt(str string) (int64, error) {
 		r = -r
 	}
 	return int64(r), err
+}
+
+// DecimalLength2Precision gets the precision.
+func DecimalLength2Precision(length int, scale int, hasUnsignedFlag bool) int {
+	if scale > 0 {
+		length--
+	}
+	if hasUnsignedFlag || length > 0 {
+		length--
+	}
+	return length
+}
+
+// Precision2LengthNoTruncation gets the length.
+func Precision2LengthNoTruncation(length int, scale int, hasUnsignedFlag bool) int {
+	if scale > 0 {
+		length++
+	}
+	if hasUnsignedFlag || length > 0 {
+		length++
+	}
+	return length
 }

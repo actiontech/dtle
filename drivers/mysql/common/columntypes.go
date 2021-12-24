@@ -19,6 +19,9 @@ func (c *ColumnValues) StringColumn(index int) string {
 	}
 	return fmt.Sprintf("%+v", val)
 }
+func (c *ColumnValues) IsNull(index int) bool {
+	return c.GetAbstractValues()[index] == nil
+}
 func (c *ColumnValues) BytesColumn(index int) []byte {
 	val := c.GetAbstractValues()[index]
 	switch v := val.(type) {
@@ -45,7 +48,7 @@ func (c *ColumnValues) String() string {
 type ColumnList struct {
 	Columns  []mysqlconfig.Column
 	Ordinals mysqlconfig.ColumnsMap
-	pkIndex  []int
+	UniqueKeys []*UniqueKey
 }
 
 // NewColumnList creates an object given ordered list of column names
@@ -54,30 +57,24 @@ func NewColumnList(columns []mysqlconfig.Column) *ColumnList {
 		Columns: columns,
 	}
 	result.Ordinals = mysqlconfig.NewColumnsMap(result.Columns)
-	for i := range columns {
-		if columns[i].IsPk() {
-			result.pkIndex = append(result.pkIndex, i)
-		}
-	}
-
 	return result
 }
 
 // ParseColumnList parses a comma delimited list of column names
-func ParseColumnList(names string) *ColumnList {
-	result := &ColumnList{
+func ParseColumnList(names string, tableColumns *ColumnList) *ColumnList {
+	r := &ColumnList{
 		Columns: mysqlconfig.ParseColumns(names),
 	}
-	result.Ordinals = mysqlconfig.NewColumnsMap(result.Columns)
-	return result
+	r.Ordinals = make(mysqlconfig.ColumnsMap)
+	for i := range r.Columns {
+		colName := r.Columns[i].RawName
+		r.Ordinals[colName] = tableColumns.Ordinals[colName]
+	}
+	return r
 }
 
 func (c *ColumnList) ColumnList() []mysqlconfig.Column {
 	return c.Columns
-}
-
-func (c *ColumnList) PKIndex() []int {
-	return c.pkIndex
 }
 
 func (c *ColumnList) Names() []string {

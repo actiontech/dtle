@@ -198,7 +198,6 @@ func (u *LocalUnixSelector) Select(binlog *pb.Binlog, retryTime int) *PumpStatus
 
 // Feedback implement PumpSelector.Feedback
 func (u *LocalUnixSelector) Feedback(startTS int64, binlogType pb.BinlogType, pump *PumpStatus) {
-	return
 }
 
 // ScoreSelector select a pump by pump's score.

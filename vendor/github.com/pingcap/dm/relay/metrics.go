@@ -14,17 +14,20 @@
 package relay
 
 import (
+	"context"
 	"time"
 
-	"github.com/pingcap/dm/pkg/log"
-	"github.com/pingcap/errors"
+	"github.com/pingcap/failpoint"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/pingcap/dm/pkg/log"
+	"github.com/pingcap/dm/pkg/metricsproxy"
+	"github.com/pingcap/dm/pkg/terror"
 	"github.com/pingcap/dm/pkg/utils"
 )
 
 var (
-	relayLogPosGauge = prometheus.NewGaugeVec(
+	relayLogPosGauge = metricsproxy.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "dm",
 			Subsystem: "relay",
@@ -32,7 +35,7 @@ var (
 			Help:      "current binlog pos in current binlog file",
 		}, []string{"node"})
 
-	relayLogFileGauge = prometheus.NewGaugeVec(
+	relayLogFileGauge = metricsproxy.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "dm",
 			Subsystem: "relay",
@@ -41,8 +44,8 @@ var (
 		}, []string{"node"})
 
 	// split sub directory info from relayLogPosGauge / relayLogFileGauge
-	// to make compare relayLogFileGauge for master / relay more easier
-	relaySubDirIndex = prometheus.NewGaugeVec(
+	// to make compare relayLogFileGauge for master / relay more easier.
+	relaySubDirIndex = metricsproxy.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "dm",
 			Subsystem: "relay",
@@ -50,16 +53,16 @@ var (
 			Help:      "current relay sub directory index",
 		}, []string{"node", "uuid"})
 
-	// should alert if avaiable space < 10G
-	relayLogSpaceGauge = prometheus.NewGaugeVec(
+	// should alert if available space < 10G.
+	relayLogSpaceGauge = metricsproxy.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "dm",
 			Subsystem: "relay",
 			Name:      "space",
-			Help:      "the space of storge for relay component",
+			Help:      "the space of storage for relay component",
 		}, []string{"type"}) // type can be 'capacity' and 'available'.
 
-	// should alert
+	// should alert.
 	relayLogDataCorruptionCounter = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: "dm",
@@ -83,10 +86,10 @@ var (
 			Subsystem: "relay",
 			Name:      "write_duration",
 			Help:      "bucketed histogram of write time (s) of single relay log event",
-			Buckets:   prometheus.ExponentialBuckets(0.00005, 2, 18),
+			Buckets:   prometheus.ExponentialBuckets(0.000005, 2, 25),
 		})
 
-	// should alert
+	// should alert.
 	relayLogWriteErrorCounter = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: "dm",
@@ -95,7 +98,7 @@ var (
 			Help:      "write relay log error count",
 		})
 
-	// should alert
+	// should alert.
 	binlogReadErrorCounter = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: "dm",
@@ -110,10 +113,19 @@ var (
 			Subsystem: "relay",
 			Name:      "read_binlog_duration",
 			Help:      "bucketed histogram of read time (s) of single binlog event from the master.",
-			Buckets:   prometheus.ExponentialBuckets(0.00005, 2, 18),
+			Buckets:   prometheus.ExponentialBuckets(0.000005, 2, 25),
 		})
 
-	// should alert
+	binlogTransformDurationHistogram = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: "dm",
+			Subsystem: "relay",
+			Name:      "read_transform_duration",
+			Help:      "bucketed histogram of transform time (s) of single binlog event.",
+			Buckets:   prometheus.ExponentialBuckets(0.000005, 2, 25),
+		})
+
+	// should alert.
 	relayExitWithErrorCounter = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: "dm",
@@ -135,32 +147,35 @@ func RegisterMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(relayLogWriteErrorCounter)
 	registry.MustRegister(binlogReadErrorCounter)
 	registry.MustRegister(binlogReadDurationHistogram)
+	registry.MustRegister(binlogTransformDurationHistogram)
 	registry.MustRegister(relayExitWithErrorCounter)
 }
 
-func reportRelayLogSpaceInBackground(dirpath string, shutdown chan struct{}) error {
+func reportRelayLogSpaceInBackground(ctx context.Context, dirpath string) error {
 	if len(dirpath) == 0 {
-		return errors.New("dirpath is empty")
+		return terror.ErrRelayLogDirpathEmpty.Generate()
 	}
 
 	go func() {
-		ticker := time.NewTicker(time.Second * 10)
+		var ticker *time.Ticker
+		ticker = time.NewTicker(time.Second * 10)
+		failpoint.Inject("ReportRelayLogSpaceInBackground", func(val failpoint.Value) {
+			t := val.(int)
+			ticker = time.NewTicker(time.Duration(t) * time.Second)
+		})
 		defer ticker.Stop()
-
-		for range ticker.C {
+		for {
 			select {
-			case <-shutdown:
-				log.Infof("reportRelayLogSpaceInBackground: shutdown")
+			case <-ctx.Done():
 				return
-			default:
-			}
-
-			size, err := utils.GetStorageSize(dirpath)
-			if err != nil {
-				log.Error("update storage size err: ", err)
-			} else {
-				relayLogSpaceGauge.WithLabelValues("capacity").Set(float64(size.Capacity))
-				relayLogSpaceGauge.WithLabelValues("available").Set(float64(size.Available))
+			case <-ticker.C:
+				size, err := utils.GetStorageSize(dirpath)
+				if err != nil {
+					log.L().Error("fail to update relay log storage size", log.ShortError(err))
+				} else {
+					relayLogSpaceGauge.WithLabelValues("capacity").Set(float64(size.Capacity))
+					relayLogSpaceGauge.WithLabelValues("available").Set(float64(size.Available))
+				}
 			}
 		}
 	}()

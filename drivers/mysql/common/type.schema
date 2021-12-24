@@ -62,6 +62,8 @@ struct DataEvent {
 	Table             []byte
 	LogPos            int64
 	Timestamp         uint32
+	Flags             []byte
+	FKParent          bool
 }
 
 struct BinlogEntry {

@@ -14,23 +14,22 @@
 package relay
 
 import (
+	"context"
 	"database/sql"
 	"strings"
-
-	"github.com/pingcap/errors"
 
 	"github.com/pingcap/dm/pkg/utils"
 )
 
 // isNewServer checks whether is connecting to a new server.
-func isNewServer(prevUUID string, db *sql.DB, flavor string) (bool, error) {
+func isNewServer(ctx context.Context, prevUUID string, db *sql.DB, flavor string) (bool, error) {
 	if len(prevUUID) == 0 {
 		// no sub dir exists before
 		return true, nil
 	}
-	uuid, err := utils.GetServerUUID(db, flavor)
+	uuid, err := utils.GetServerUUID(ctx, db, flavor)
 	if err != nil {
-		return false, errors.Trace(err)
+		return false, err
 	}
 	if strings.HasPrefix(prevUUID, uuid) {
 		// same server as before

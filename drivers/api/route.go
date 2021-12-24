@@ -87,6 +87,7 @@ func SetupApiServer(logger g.LoggerType, driverConfig *mysql.DriverConfig) (err 
 	v2Router := e.Group("/v2")
 	v2Router.Use(JWTTokenAdapter(), middleware.JWT([]byte(common.JWTSecret)), AuthFilter())
 	e.POST("/v2/login", v2.LoginV2)
+	e.POST("/v2/loginWithoutVerifyCode", v2.LoginWithoutVerifyCodeV2)
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
 	v2Router.POST("/log/level", v2.UpdateLogLevelV2)

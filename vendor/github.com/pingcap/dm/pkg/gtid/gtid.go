@@ -14,11 +14,13 @@
 package gtid
 
 import (
+	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/pingcap/errors"
-	"github.com/siddontang/go-mysql/mysql"
+
+	"github.com/pingcap/dm/pkg/terror"
 )
 
-// Set provide gtid operations for syncer
+// Set provide gtid operations for syncer.
 type Set interface {
 	Set(mysql.GTIDSet) error
 	// compute set of self and other gtid set
@@ -34,70 +36,111 @@ type Set interface {
 	Equal(other Set) bool
 	Contain(other Set) bool
 
+	// Truncate truncates the current GTID sets until the `end` in-place.
+	// NOTE: the original GTID sets should contain the end GTID sets, otherwise it's invalid.
+	// like truncating `00c04543-f584-11e9-a765-0242ac120002:1-100` with `00c04543-f584-11e9-a765-0242ac120002:40-60`
+	// should become `00c04543-f584-11e9-a765-0242ac120002:1-60`.
+	Truncate(end Set) error
+
 	String() string
 }
 
-// ParserGTID parses GTID from string
+// ParserGTID parses GTID from string.
 func ParserGTID(flavor, gtidStr string) (Set, error) {
 	var (
-		m   Set
-		err error
+		m    Set
+		err  error
+		gtid mysql.GTIDSet
 	)
 
-	gtid, err := mysql.ParseGTIDSet(flavor, gtidStr)
-	if err != nil {
-		return nil, errors.Trace(err)
+	if len(flavor) == 0 && len(gtidStr) == 0 {
+		return nil, errors.Errorf("empty flavor with empty gtid is invalid")
 	}
 
-	switch flavor {
-	case mysql.MariaDBFlavor:
-		m = &mariadbGTIDSet{}
-	case mysql.MySQLFlavor:
-		m = &mySQLGTIDSet{}
+	fla := flavor
+	switch fla {
+	case mysql.MySQLFlavor, mysql.MariaDBFlavor:
+		gtid, err = mysql.ParseGTIDSet(fla, gtidStr)
+	case "":
+		fla = mysql.MySQLFlavor
+		gtid, err = mysql.ParseGTIDSet(fla, gtidStr)
+		if err != nil {
+			fla = mysql.MariaDBFlavor
+			gtid, err = mysql.ParseGTIDSet(fla, gtidStr)
+		}
 	default:
-		return nil, errors.NotSupportedf("flavor %s and gtid %s", flavor, gtidStr)
+		err = terror.ErrNotSupportedFlavor.Generate(flavor)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	switch fla {
+	case mysql.MariaDBFlavor:
+		m = &MariadbGTIDSet{}
+	case mysql.MySQLFlavor:
+		m = &MySQLGTIDSet{}
+	default:
+		return nil, terror.ErrNotSupportedFlavor.Generate(flavor)
 	}
 	err = m.Set(gtid)
-	return m, errors.Trace(err)
+	return m, err
+}
+
+// MinGTIDSet returns the min GTID set.
+func MinGTIDSet(flavor string) Set {
+	// use mysql as default
+	if flavor != mysql.MariaDBFlavor && flavor != mysql.MySQLFlavor {
+		flavor = mysql.MySQLFlavor
+	}
+
+	gset, err := ParserGTID(flavor, "")
+	if err != nil {
+		// this should not happen
+		panic(err)
+	}
+	return gset
 }
 
 /************************ mysql gtid set ***************************/
 
 // MySQLGTIDSet wraps mysql.MysqlGTIDSet to implement gtidSet interface
-// extend some functions to retrieve and compute an intersection with other MySQL GTID Set
-type mySQLGTIDSet struct {
+// extend some functions to retrieve and compute an intersection with other MySQL GTID Set.
+type MySQLGTIDSet struct {
 	set *mysql.MysqlGTIDSet
 }
 
-// replace g by other
-func (g *mySQLGTIDSet) Set(other mysql.GTIDSet) error {
+// Set implements Set.Set, replace g by other.
+func (g *MySQLGTIDSet) Set(other mysql.GTIDSet) error {
 	if other == nil {
 		return nil
 	}
 
 	gs, ok := other.(*mysql.MysqlGTIDSet)
 	if !ok {
-		return errors.Errorf("%s is not mysql GTID set", other)
+		return terror.ErrNotMySQLGTID.Generate(other)
 	}
 
 	g.set = gs
 	return nil
 }
 
-func (g *mySQLGTIDSet) Replace(other Set, masters []interface{}) error {
+// Replace implements Set.Replace.
+func (g *MySQLGTIDSet) Replace(other Set, masters []interface{}) error {
 	if other == nil {
 		return nil
 	}
 
-	otherGS, ok := other.(*mySQLGTIDSet)
+	otherGS, ok := other.(*MySQLGTIDSet)
 	if !ok {
-		return errors.Errorf("%s is not mysql GTID set", other)
+		return terror.ErrNotMySQLGTID.Generate(other)
 	}
 
 	for _, uuid := range masters {
 		uuidStr, ok := uuid.(string)
 		if !ok {
-			return errors.Errorf("%v is not string", uuid)
+			return terror.ErrNotUUIDString.Generate(uuid)
 		}
 
 		otherGS.delete(uuidStr)
@@ -117,29 +160,39 @@ func (g *mySQLGTIDSet) Replace(other Set, masters []interface{}) error {
 	return nil
 }
 
-func (g *mySQLGTIDSet) delete(uuid string) {
+func (g *MySQLGTIDSet) delete(uuid string) {
 	delete(g.set.Sets, uuid)
 }
 
-func (g *mySQLGTIDSet) get(uuid string) (*mysql.UUIDSet, bool) {
+func (g *MySQLGTIDSet) get(uuid string) (*mysql.UUIDSet, bool) {
 	uuidSet, ok := g.set.Sets[uuid]
 	return uuidSet, ok
 }
 
-func (g *mySQLGTIDSet) Clone() Set {
-	return &mySQLGTIDSet{
+// Clone implements Set.Clone.
+func (g *MySQLGTIDSet) Clone() Set {
+	if g.set == nil {
+		return MinGTIDSet(mysql.MySQLFlavor)
+	}
+
+	return &MySQLGTIDSet{
 		set: g.set.Clone().(*mysql.MysqlGTIDSet),
 	}
 }
 
-func (g *mySQLGTIDSet) Origin() mysql.GTIDSet {
+// Origin implements Set.Origin.
+func (g *MySQLGTIDSet) Origin() mysql.GTIDSet {
+	if g.set == nil {
+		return &mysql.MysqlGTIDSet{}
+	}
 	return g.set.Clone().(*mysql.MysqlGTIDSet)
 }
 
-func (g *mySQLGTIDSet) Equal(other Set) bool {
+// Equal implements Set.Equal.
+func (g *MySQLGTIDSet) Equal(other Set) bool {
 	otherIsNil := other == nil
 	if !otherIsNil {
-		otherGS, ok := other.(*mySQLGTIDSet)
+		otherGS, ok := other.(*MySQLGTIDSet)
 		if !ok {
 			return false
 		}
@@ -155,10 +208,11 @@ func (g *mySQLGTIDSet) Equal(other Set) bool {
 	return g.set.Equal(other.Origin())
 }
 
-func (g *mySQLGTIDSet) Contain(other Set) bool {
+// Contain implements Set.Contain.
+func (g *MySQLGTIDSet) Contain(other Set) bool {
 	otherIsNil := other == nil
 	if !otherIsNil {
-		otherGs, ok := other.(*mySQLGTIDSet)
+		otherGs, ok := other.(*MySQLGTIDSet)
 		if !ok {
 			return false
 		}
@@ -172,7 +226,38 @@ func (g *mySQLGTIDSet) Contain(other Set) bool {
 	return g.set.Contain(other.Origin())
 }
 
-func (g *mySQLGTIDSet) String() string {
+// Truncate implements Set.Truncate.
+func (g *MySQLGTIDSet) Truncate(end Set) error {
+	if end == nil {
+		return nil // do nothing
+	}
+	if !g.Contain(end) {
+		return terror.ErrGTIDTruncateInvalid.Generate(g, end)
+	}
+	endGs := end.(*MySQLGTIDSet) // already verify the type is `*MySQLGTIDSet` in `Contain`.
+	if endGs == nil {
+		return nil // do nothing
+	}
+
+	for sid, setG := range g.set.Sets {
+		setE, ok := endGs.set.Sets[sid]
+		if !ok {
+			continue // no need to truncate for this SID
+		}
+		for i, interG := range setG.Intervals {
+			for _, interE := range setE.Intervals {
+				if interG.Start <= interE.Start && interG.Stop >= interE.Stop {
+					interG.Stop = interE.Stop // truncate the stop
+				}
+			}
+			setG.Intervals[i] = interG // overwrite the value (because it's not a pointer)
+		}
+	}
+
+	return nil
+}
+
+func (g *MySQLGTIDSet) String() string {
 	if g.set == nil {
 		return ""
 	}
@@ -180,51 +265,61 @@ func (g *mySQLGTIDSet) String() string {
 }
 
 /************************ mariadb gtid set ***************************/
-type mariadbGTIDSet struct {
+
+// MariadbGTIDSet wraps mysql.MariadbGTIDSet to implement gtidSet interface
+// extend some functions to retrieve and compute an intersection with other Mariadb GTID Set.
+type MariadbGTIDSet struct {
 	set *mysql.MariadbGTIDSet
 }
 
-// replace g by other
-func (m *mariadbGTIDSet) Set(other mysql.GTIDSet) error {
+// Set implements Set.Set, replace g by other.
+func (m *MariadbGTIDSet) Set(other mysql.GTIDSet) error {
 	if other == nil {
 		return nil
 	}
 
 	gs, ok := other.(*mysql.MariadbGTIDSet)
 	if !ok {
-		return errors.Errorf("%s is not mariadb GTID set", other)
+		return terror.ErrNotMariaDBGTID.Generate(other)
 	}
 
 	m.set = gs
 	return nil
 }
 
-func (m *mariadbGTIDSet) Replace(other Set, masters []interface{}) error {
+// Replace implements Set.Replace.
+func (m *MariadbGTIDSet) Replace(other Set, masters []interface{}) error {
 	if other == nil {
 		return nil
 	}
 
-	otherGS, ok := other.(*mariadbGTIDSet)
+	otherGS, ok := other.(*MariadbGTIDSet)
 	if !ok {
-		return errors.Errorf("%s is not mariadb GTID set", other)
+		return terror.ErrNotMariaDBGTID.Generate(other)
 	}
 
 	for _, id := range masters {
 		domainID, ok := id.(uint32)
 		if !ok {
-			return errors.Errorf("%v is not uint32", id)
+			return terror.ErrMariaDBDomainID.Generate(id)
 		}
 
 		otherGS.delete(domainID)
 		if uuidSet, ok := m.get(domainID); ok {
-			otherGS.set.AddSet(uuidSet)
+			err := otherGS.set.AddSet(uuidSet)
+			if err != nil {
+				return terror.ErrMariaDBDomainID.AnnotateDelegate(err, "fail to add UUID set for domain %d", domainID)
+			}
 		}
 	}
 
 	for id, set := range m.set.Sets {
 		if _, ok := otherGS.get(id); ok {
 			otherGS.delete(id)
-			otherGS.set.AddSet(set)
+			err := otherGS.set.AddSet(set)
+			if err != nil {
+				return terror.ErrMariaDBDomainID.AnnotateDelegate(err, "fail to add UUID set for domain %d", id)
+			}
 		}
 	}
 
@@ -232,29 +327,38 @@ func (m *mariadbGTIDSet) Replace(other Set, masters []interface{}) error {
 	return nil
 }
 
-func (m *mariadbGTIDSet) delete(domainID uint32) {
+func (m *MariadbGTIDSet) delete(domainID uint32) {
 	delete(m.set.Sets, domainID)
 }
 
-func (m *mariadbGTIDSet) get(domainID uint32) (*mysql.MariadbGTID, bool) {
+func (m *MariadbGTIDSet) get(domainID uint32) (*mysql.MariadbGTID, bool) {
 	gtid, ok := m.set.Sets[domainID]
 	return gtid, ok
 }
 
-func (m *mariadbGTIDSet) Clone() Set {
-	return &mariadbGTIDSet{
+// Clone implements Set.Clone.
+func (m *MariadbGTIDSet) Clone() Set {
+	if m.set == nil {
+		return MinGTIDSet(mysql.MariaDBFlavor)
+	}
+	return &MariadbGTIDSet{
 		set: m.set.Clone().(*mysql.MariadbGTIDSet),
 	}
 }
 
-func (m *mariadbGTIDSet) Origin() mysql.GTIDSet {
+// Origin implements Set.Origin.
+func (m *MariadbGTIDSet) Origin() mysql.GTIDSet {
+	if m.set == nil {
+		return &mysql.MariadbGTIDSet{}
+	}
 	return m.set.Clone().(*mysql.MariadbGTIDSet)
 }
 
-func (m *mariadbGTIDSet) Equal(other Set) bool {
+// Equal implements Set.Equal.
+func (m *MariadbGTIDSet) Equal(other Set) bool {
 	otherIsNil := other == nil
 	if !otherIsNil {
-		otherGS, ok := other.(*mariadbGTIDSet)
+		otherGS, ok := other.(*MariadbGTIDSet)
 		if !ok {
 			return false
 		}
@@ -270,10 +374,11 @@ func (m *mariadbGTIDSet) Equal(other Set) bool {
 	return m.set.Equal(other.Origin())
 }
 
-func (m *mariadbGTIDSet) Contain(other Set) bool {
+// Contain implements Set.Contain.
+func (m *MariadbGTIDSet) Contain(other Set) bool {
 	otherIsNil := other == nil
 	if !otherIsNil {
-		otherGS, ok := other.(*mariadbGTIDSet)
+		otherGS, ok := other.(*MariadbGTIDSet)
 		if !ok {
 			return false
 		}
@@ -287,7 +392,34 @@ func (m *mariadbGTIDSet) Contain(other Set) bool {
 	return m.set.Contain(other.Origin())
 }
 
-func (m *mariadbGTIDSet) String() string {
+// Truncate implements Set.Truncate.
+func (m *MariadbGTIDSet) Truncate(end Set) error {
+	if end == nil {
+		return nil // do nothing
+	}
+	if !m.Contain(end) {
+		return terror.ErrGTIDTruncateInvalid.Generate(m, end)
+	}
+	endGs := end.(*MariadbGTIDSet) // already verify the type is `*MariadbGTIDSet` in `Contain`.
+	if endGs == nil {
+		return nil // do nothing
+	}
+
+	for did, mGTID := range m.set.Sets {
+		eGTID, ok := endGs.set.Sets[did]
+		if !ok {
+			continue // no need to truncate for this domain ID
+		}
+		if mGTID.SequenceNumber > eGTID.SequenceNumber {
+			mGTID.SequenceNumber = eGTID.SequenceNumber // truncate the seqNO
+			mGTID.ServerID = eGTID.ServerID             // also update server-id to match the seqNO
+		}
+	}
+
+	return nil
+}
+
+func (m *MariadbGTIDSet) String() string {
 	if m.set == nil {
 		return ""
 	}

@@ -18,14 +18,14 @@ import (
 
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 
-	"github.com/pingcap/parser/ast"
-	parsermysql "github.com/pingcap/parser/mysql"
+	"github.com/pingcap/tidb/parser/ast"
+	parsermysql "github.com/pingcap/tidb/parser/mysql"
 
 	"database/sql"
 
 	umconf "github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	usql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/siddontang/go/hack"
 )
 
@@ -76,10 +76,10 @@ func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *common.BinlogCoordinatesX, 
 
 // GetTableColumns reads column list from given table
 func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common.ColumnList, error) {
-	query := fmt.Sprintf(`show columns from %s.%s`,
-		umconf.EscapeName(databaseName),
-		umconf.EscapeName(tableName),
-	)
+	databaseNameEscaped := umconf.EscapeName(databaseName)
+	tableNameEscaped := umconf.EscapeName(tableName)
+
+	query := fmt.Sprintf(`show columns from %s.%s`, databaseNameEscaped, tableNameEscaped)
 	columns := []umconf.Column{}
 	err := usql.QueryRowsMap(db, query, func(rowMap usql.RowMap) error {
 		aColumn := umconf.Column{
@@ -97,11 +97,9 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common
 		return nil, err
 	}
 	if len(columns) == 0 {
-		return nil, fmt.Errorf("Found 0 columns on %s.%s. Bailing out",
-			umconf.EscapeName(databaseName),
-			umconf.EscapeName(tableName),
-		)
+		return nil, fmt.Errorf("found 0 columns on %s.%s", databaseName, tableName, )
 	}
+
 	return common.NewColumnList(columns), nil
 }
 
@@ -110,9 +108,10 @@ func GetSomeSysVars(db usql.QueryAble, logger g.LoggerType) (r struct {
 	Version             string
 	TimeZome            string
 	LowerCaseTableNames umconf.LowerCaseTableNamesValue
+	NetWriteTimeout     int
 }) {
-	query := `select @@version, @@time_zone, @@lower_case_table_names`
-	r.Err = db.QueryRow(query).Scan(&r.Version, &r.TimeZome, &r.LowerCaseTableNames)
+	query := `select @@version, @@time_zone, @@lower_case_table_names, @@net_write_timeout`
+	r.Err = db.QueryRow(query).Scan(&r.Version, &r.TimeZome, &r.LowerCaseTableNames, &r.NetWriteTimeout)
 	if r.Err != nil {
 		return
 	}
@@ -125,22 +124,16 @@ func GetSomeSysVars(db usql.QueryAble, logger g.LoggerType) (r struct {
 	logger.Info("got sys_var version", "value", r.Version)
 	logger.Info("got sys_var timezone", "value", r.TimeZome)
 	logger.Info("got sys_var lower_case_table_names", "value", r.LowerCaseTableNames)
+	logger.Info("got sys_var net_write_timeout", "value", r.NetWriteTimeout)
 
 	return r
 }
 
-func ShowCreateTable(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool, addUse bool) (statement []string, err error) {
+func ShowCreateTable(db usql.QueryAble, databaseName, tableName string) (statement string, err error) {
 	var dummy, createTableStatement string
 	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement)
-	if addUse {
-		statement = append(statement, fmt.Sprintf("USE %s", umconf.EscapeName(databaseName)))
-	}
-	if dropTableIfExists {
-		statement = append(statement, fmt.Sprintf("DROP TABLE IF EXISTS %s", umconf.EscapeName(tableName)))
-	}
-	statement = append(statement, createTableStatement)
-	return statement, err
+	return createTableStatement, err
 }
 
 func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
@@ -395,10 +388,11 @@ func GtidSetDiff(set1 string, set2 string) (string, error) {
 	return gExecuted.String(), nil
 }
 
-func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string) (*common.ColumnList, error) {
+func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
+	table string) (r *common.ColumnList, fkParents []*ast.TableName, err error) {
 	tableInfo, exists := sqleContext.GetTable(schema, table)
 	if !exists {
-		return nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
+		return nil, nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
 	}
 
 	cStmt := tableInfo.MergedTable
@@ -427,7 +421,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 		newColumn.ColumnType = col.Tp.String()
 
 		switch col.Tp.Tp {
-		case parsermysql.TypeDecimal, parsermysql.TypeNewDecimal:
+		case parsermysql.TypeUnspecified, parsermysql.TypeNewDecimal:
 			newColumn.Type = umconf.DecimalColumnType
 			newColumn.Precision = col.Tp.Flen
 			newColumn.Scale = col.Tp.Decimal
@@ -528,11 +522,116 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string, table string)
 		case ast.ConstraintUniqKey:
 		case ast.ConstraintUniqIndex:
 		case ast.ConstraintForeignKey:
+			fkParents = append(fkParents, cons.Refer.Table)
 		case ast.ConstraintFulltext:
 		}
 	}
 
-	r := common.NewColumnList(columns)
+	r = common.NewColumnList(columns)
 	//r.SetCharset() // TODO
-	return r, nil
+	return r, fkParents, nil
+}
+
+func GetCandidateUniqueKeys(logger g.LoggerType, db usql.QueryAble, databaseName, tableName string,
+	columns *common.ColumnList) (uniqueKeys []*common.UniqueKey, err error) {
+
+	/* example query result:
+	+------------+--------------+-------------------+--------------+
+	| INDEX_NAME | COLUMN_NAMES | is_auto_increment | has_nullable |
+	+------------+--------------+-------------------+--------------+
+	| PRIMARY    | id           |                 1 |            0 |
+	| val1       | val1,val2    |                 0 |            0 |
+	+------------+--------------+-------------------+--------------+
+	*/
+	query := `
+SELECT UNIQUES.INDEX_NAME, UNIQUES.COLUMN_NAMES, LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment, has_nullable
+FROM INFORMATION_SCHEMA.COLUMNS
+     INNER JOIN
+     (SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME,
+             GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
+             SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
+             SUM(NULLABLE='YES') > 0 AS has_nullable
+      FROM INFORMATION_SCHEMA.STATISTICS
+      WHERE NON_UNIQUE=0 AND TABLE_SCHEMA = ? AND TABLE_NAME = ?
+      GROUP BY TABLE_SCHEMA,TABLE_NAME,INDEX_NAME) AS UNIQUES
+     ON (COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA
+         AND COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME
+         AND COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME)
+WHERE COLUMNS.TABLE_SCHEMA = ? AND COLUMNS.TABLE_NAME = ?`
+	/*query := `
+	    SELECT
+	      COLUMNS.TABLE_SCHEMA,
+	      COLUMNS.TABLE_NAME,
+	      COLUMNS.COLUMN_NAME,
+	      UNIQUES.INDEX_NAME,
+	      UNIQUES.COLUMN_NAMES,
+	      UNIQUES.COUNT_COLUMN_IN_INDEX,
+	      COLUMNS.DATA_TYPE,
+	      COLUMNS.CHARACTER_SET_NAME,
+				LOCATE('auto_increment', EXTRA) > 0 as is_auto_increment,
+	      has_nullable
+	    FROM INFORMATION_SCHEMA.COLUMNS INNER JOIN (
+	      SELECT
+	        TABLE_SCHEMA,
+	        TABLE_NAME,
+	        INDEX_NAME,
+	        COUNT(*) AS COUNT_COLUMN_IN_INDEX,
+	        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC) AS COLUMN_NAMES,
+	        SUBSTRING_INDEX(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX ASC), ',', 1) AS FIRST_COLUMN_NAME,
+	        SUM(NULLABLE='YES') > 0 AS has_nullable
+	      FROM INFORMATION_SCHEMA.STATISTICS
+	      WHERE
+					NON_UNIQUE=0
+					AND TABLE_SCHEMA = ?
+	      	AND TABLE_NAME = ?
+	      GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
+	    ) AS UNIQUES
+	    ON (
+	      COLUMNS.TABLE_SCHEMA = UNIQUES.TABLE_SCHEMA AND
+	      COLUMNS.TABLE_NAME = UNIQUES.TABLE_NAME AND
+	      COLUMNS.COLUMN_NAME = UNIQUES.FIRST_COLUMN_NAME
+	    )
+	    WHERE
+	      COLUMNS.TABLE_SCHEMA = ?
+	      AND COLUMNS.TABLE_NAME = ?
+	    ORDER BY
+	      COLUMNS.TABLE_SCHEMA, COLUMNS.TABLE_NAME,
+	      CASE UNIQUES.INDEX_NAME
+	        WHEN 'PRIMARY' THEN 0
+	        ELSE 1
+	      END,
+	      CASE has_nullable
+	        WHEN 0 THEN 0
+	        ELSE 1
+	      END,
+	      CASE IFNULL(CHARACTER_SET_NAME, '')
+	          WHEN '' THEN 0
+	          ELSE 1
+	      END,
+	      CASE DATA_TYPE
+	        WHEN 'tinyint' THEN 0
+	        WHEN 'smallint' THEN 1
+	        WHEN 'int' THEN 2
+	        WHEN 'bigint' THEN 3
+	        ELSE 100
+	      END,
+	      COUNT_COLUMN_IN_INDEX
+	  `*/
+	err = usql.QueryRowsMap(db, query, func(m usql.RowMap) error {
+		columns := common.ParseColumnList(m.GetString("COLUMN_NAMES"), columns)
+		uniqueKey := &common.UniqueKey{
+			Name:            m.GetString("INDEX_NAME"),
+			Columns:         *columns,
+			HasNullable:     m.GetBool("has_nullable"),
+			IsAutoIncrement: m.GetBool("is_auto_increment"),
+			LastMaxVals:     make([]string, len(columns.Columns)),
+		}
+		uniqueKeys = append(uniqueKeys, uniqueKey)
+		return nil
+	}, databaseName, tableName, databaseName, tableName)
+	if err != nil {
+		return uniqueKeys, err
+	}
+	logger.Debug("Potential unique keys.", "schema", databaseName, "table", tableName, "uniqueKeys", uniqueKeys)
+	return uniqueKeys, nil
 }

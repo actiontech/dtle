@@ -21,12 +21,11 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
-	"github.com/pingcap/errors"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go/ioutil2"
+	"github.com/go-mysql-org/go-mysql/mysql"
 
 	"github.com/pingcap/dm/pkg/binlog"
 	"github.com/pingcap/dm/pkg/gtid"
+	"github.com/pingcap/dm/pkg/terror"
 	"github.com/pingcap/dm/pkg/utils"
 )
 
@@ -38,15 +37,15 @@ var (
 // Meta represents binlog meta information for sync source
 // when re-syncing, we should reload meta info to guarantee continuous transmission
 // in order to support master-slave switching, Meta should support switching binlog meta info to newer master
-// should support the case, where switching from A to B, then switching from B back to A
+// should support the case, where switching from A to B, then switching from B back to A.
 type Meta interface {
 	// Load loads meta information for the recently active server
 	Load() error
 
 	// AdjustWithStartPos adjusts current pos / GTID with start pos
-	// if current pos / GTID is meaningless, update to start pos
+	// if current pos / GTID is meaningless, update to start pos or last pos when start pos is meaningless
 	// else do nothing
-	AdjustWithStartPos(binlogName string, binlogGTID string, enableGTID bool) (bool, error)
+	AdjustWithStartPos(binlogName string, binlogGTID string, enableGTID bool, latestBinlogName string, latestBinlogGTID string) (bool, error)
 
 	// Save saves meta information
 	Save(pos mysql.Position, gset gtid.Set) error
@@ -58,12 +57,13 @@ type Meta interface {
 	Dirty() bool
 
 	// AddDir adds sub relay directory for server UUID (without suffix)
-	// the added sub relay directory's suffix is incremented
+	// if uuidSuffix is not zero value, add sub relay directory with uuidSuffix (bound to a new source)
+	// otherwise the added sub relay directory's suffix is incremented (master/slave switch)
 	// after sub relay directory added, the internal binlog pos should be reset
 	// and binlog pos will be set again when new binlog events received
 	// @serverUUID should be a server_uuid for MySQL or MariaDB
 	// if set @newPos / @newGTID, old value will be replaced
-	AddDir(serverUUID string, newPos *mysql.Position, newGTID gtid.Set) error
+	AddDir(serverUUID string, newPos *mysql.Position, newGTID gtid.Set, uuidSuffix int) error
 
 	// Pos returns current (UUID with suffix, Position) pair
 	Pos() (string, mysql.Position)
@@ -85,7 +85,7 @@ type Meta interface {
 	String() string
 }
 
-// LocalMeta implements Meta by save info in local
+// LocalMeta implements Meta by save info in local.
 type LocalMeta struct {
 	sync.RWMutex
 	flavor        string
@@ -102,7 +102,7 @@ type LocalMeta struct {
 	BinlogGTID string `toml:"binlog-gtid" json:"binlog-gtid"`
 }
 
-// NewLocalMeta creates a new LocalMeta
+// NewLocalMeta creates a new LocalMeta.
 func NewLocalMeta(flavor, baseDir string) Meta {
 	lm := &LocalMeta{
 		flavor:        flavor,
@@ -119,90 +119,91 @@ func NewLocalMeta(flavor, baseDir string) Meta {
 	return lm
 }
 
-// Load implements Meta.Load
+// Load implements Meta.Load.
 func (lm *LocalMeta) Load() error {
 	lm.Lock()
 	defer lm.Unlock()
 
 	uuids, err := utils.ParseUUIDIndex(lm.uuidIndexPath)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	err = lm.verifyUUIDs(uuids)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	if len(uuids) > 0 {
 		// update to the latest
 		err = lm.updateCurrentUUID(uuids[len(uuids)-1])
 		if err != nil {
-			return errors.Trace(err)
+			return err
 		}
 	}
 	lm.uuids = uuids
 
 	err = lm.loadMetaData()
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	return nil
 }
 
-// AdjustWithStartPos implements Meta.AdjustWithStartPos, return whether adjusted
-func (lm *LocalMeta) AdjustWithStartPos(binlogName string, binlogGTID string, enableGTID bool) (bool, error) {
+// AdjustWithStartPos implements Meta.AdjustWithStartPos, return whether adjusted.
+func (lm *LocalMeta) AdjustWithStartPos(binlogName string, binlogGTID string, enableGTID bool, latestBinlogName string, latestBinlogGTID string) (bool, error) {
 	lm.Lock()
 	defer lm.Unlock()
 
 	// check whether already have meaningful pos
 	if len(lm.currentUUID) > 0 {
-		_, suffix, _ := utils.ParseSuffixForUUID(lm.currentUUID)
+		_, suffix, err := utils.ParseSuffixForUUID(lm.currentUUID)
+		if err != nil {
+			return false, err
+		}
 		currPos := mysql.Position{Name: lm.BinLogName, Pos: lm.BinLogPos}
 		if suffix != minUUIDSufix || currPos.Compare(minCheckpoint) > 0 || len(lm.BinlogGTID) > 0 {
 			return false, nil // current pos is meaningful, do nothing
 		}
 	}
 
-	if (enableGTID && len(binlogGTID) == 0) || (!enableGTID && len(binlogName) == 0) {
-		return false, nil // no meaningful start pos specified
-	}
+	gset := lm.emptyGSet.Clone()
+	var err error
 
-	if !enableGTID && len(binlogName) > 0 {
-		if !binlog.VerifyFilename(binlogName) {
-			return false, errors.NotValidf("relay-binlog-name %s", binlogName)
+	if enableGTID {
+		if len(binlogGTID) == 0 {
+			binlogGTID = latestBinlogGTID
+			binlogName = latestBinlogName
 		}
-	}
-	var gset = lm.emptyGSet.Clone()
-	if enableGTID && len(binlogGTID) > 0 {
-		var err error
 		gset, err = gtid.ParserGTID(lm.flavor, binlogGTID)
 		if err != nil {
-			return false, errors.Annotatef(err, "relay-binlog-gtid %s", binlogGTID)
+			return false, terror.Annotatef(err, "relay-binlog-gtid %s", binlogGTID)
+		}
+	} else {
+		if len(binlogName) == 0 { // no meaningful start pos specified
+			binlogGTID = latestBinlogGTID
+			binlogName = latestBinlogName
+		} else if !binlog.VerifyFilename(binlogName) {
+			return false, terror.ErrRelayBinlogNameNotValid.Generate(binlogName)
 		}
 	}
 
-	// verified, update them
-	if enableGTID {
-		lm.BinLogName = minCheckpoint.Name
-	} else {
-		lm.BinLogName = binlogName
-	}
+	lm.BinLogName = binlogName
 	lm.BinLogPos = minCheckpoint.Pos // always set pos to 4
-	lm.BinlogGTID = gset.String()
+	lm.BinlogGTID = binlogGTID
 	lm.gset = gset
 
-	return true, nil
+	return true, lm.doFlush()
 }
 
-// Save implements Meta.Save
+// Save implements Meta.Save.
 func (lm *LocalMeta) Save(pos mysql.Position, gset gtid.Set) error {
 	lm.Lock()
 	defer lm.Unlock()
 
 	if len(lm.currentUUID) == 0 {
-		return errors.NotValidf("no current UUID set")
+		return terror.ErrRelayNoCurrentUUID.Generate()
 	}
 
 	lm.BinLogName = pos.Name
@@ -219,31 +220,31 @@ func (lm *LocalMeta) Save(pos mysql.Position, gset gtid.Set) error {
 	return nil
 }
 
-// Flush implements Meta.Flush
+// Flush implements Meta.Flush.
 func (lm *LocalMeta) Flush() error {
-	lm.RLock()
-	defer lm.RUnlock()
+	lm.Lock()
+	defer lm.Unlock()
 
 	return lm.doFlush()
 }
 
-// doFlush does the real flushing
+// doFlush does the real flushing.
 func (lm *LocalMeta) doFlush() error {
 	if len(lm.currentUUID) == 0 {
-		return errors.NotValidf("no current UUID set")
+		return terror.ErrRelayNoCurrentUUID.Generate()
 	}
 
 	var buf bytes.Buffer
 	enc := toml.NewEncoder(&buf)
 	err := enc.Encode(lm)
 	if err != nil {
-		return errors.Trace(err)
+		return terror.ErrRelayFlushLocalMeta.Delegate(err)
 	}
 
 	filename := filepath.Join(lm.baseDir, lm.currentUUID, utils.MetaFilename)
-	err = ioutil2.WriteFileAtomic(filename, buf.Bytes(), 0644)
+	err = utils.WriteFileAtomic(filename, buf.Bytes(), 0o644)
 	if err != nil {
-		return errors.Trace(err)
+		return terror.ErrRelayFlushLocalMeta.Delegate(err)
 	}
 
 	lm.dirty = false
@@ -251,7 +252,7 @@ func (lm *LocalMeta) doFlush() error {
 	return nil
 }
 
-// Dirty implements Meta.Dirty
+// Dirty implements Meta.Dirty.
 func (lm *LocalMeta) Dirty() bool {
 	lm.RLock()
 	defer lm.RUnlock()
@@ -259,7 +260,7 @@ func (lm *LocalMeta) Dirty() bool {
 	return lm.dirty
 }
 
-// Dir implements Meta.Dir
+// Dir implements Meta.Dir.
 func (lm *LocalMeta) Dir() string {
 	lm.RLock()
 	defer lm.RUnlock()
@@ -267,8 +268,8 @@ func (lm *LocalMeta) Dir() string {
 	return filepath.Join(lm.baseDir, lm.currentUUID)
 }
 
-// AddDir implements Meta.AddDir
-func (lm *LocalMeta) AddDir(serverUUID string, newPos *mysql.Position, newGTID gtid.Set) error {
+// AddDir implements Meta.AddDir.
+func (lm *LocalMeta) AddDir(serverUUID string, newPos *mysql.Position, newGTID gtid.Set, uuidSuffix int) error {
 	lm.Lock()
 	defer lm.Unlock()
 
@@ -276,11 +277,15 @@ func (lm *LocalMeta) AddDir(serverUUID string, newPos *mysql.Position, newGTID g
 
 	if len(lm.currentUUID) == 0 {
 		// no UUID exists yet, simply add it
-		newUUID = utils.AddSuffixForUUID(serverUUID, minUUIDSufix)
+		if uuidSuffix == 0 {
+			newUUID = utils.AddSuffixForUUID(serverUUID, minUUIDSufix)
+		} else {
+			newUUID = utils.AddSuffixForUUID(serverUUID, uuidSuffix)
+		}
 	} else {
 		_, suffix, err := utils.ParseSuffixForUUID(lm.currentUUID)
 		if err != nil {
-			return errors.Trace(err)
+			return err
 		}
 		// even newUUID == currentUUID, we still append it (for some cases, like `RESET MASTER`)
 		newUUID = utils.AddSuffixForUUID(serverUUID, suffix+1)
@@ -290,18 +295,22 @@ func (lm *LocalMeta) AddDir(serverUUID string, newPos *mysql.Position, newGTID g
 	if lm.dirty {
 		err := lm.doFlush()
 		if err != nil {
-			return errors.Trace(err)
+			return err
 		}
 	}
 
 	// make sub dir for UUID
-	os.Mkdir(filepath.Join(lm.baseDir, newUUID), 0744)
+	err := os.Mkdir(filepath.Join(lm.baseDir, newUUID), 0o744)
+	if err != nil {
+		return terror.ErrRelayMkdir.Delegate(err)
+	}
 
 	// update UUID index file
-	uuids := append(lm.uuids, newUUID)
-	err := lm.updateIndexFile(uuids)
+	uuids := lm.uuids
+	uuids = append(uuids, newUUID)
+	err = lm.updateIndexFile(uuids)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	// update current UUID
@@ -324,12 +333,10 @@ func (lm *LocalMeta) AddDir(serverUUID string, newPos *mysql.Position, newGTID g
 	} // if newGTID == nil, keep GTID not changed
 
 	// flush new meta to file
-	lm.doFlush()
-
-	return nil
+	return lm.doFlush()
 }
 
-// Pos implements Meta.Pos
+// Pos implements Meta.Pos.
 func (lm *LocalMeta) Pos() (string, mysql.Position) {
 	lm.RLock()
 	defer lm.RUnlock()
@@ -337,22 +344,25 @@ func (lm *LocalMeta) Pos() (string, mysql.Position) {
 	return lm.currentUUID, mysql.Position{Name: lm.BinLogName, Pos: lm.BinLogPos}
 }
 
-// GTID implements Meta.GTID
+// GTID implements Meta.GTID.
 func (lm *LocalMeta) GTID() (string, gtid.Set) {
 	lm.RLock()
 	defer lm.RUnlock()
 
-	return lm.currentUUID, lm.gset.Clone()
+	if lm.gset != nil {
+		return lm.currentUUID, lm.gset.Clone()
+	}
+	return lm.currentUUID, nil
 }
 
-// UUID implements Meta.UUID
+// UUID implements Meta.UUID.
 func (lm *LocalMeta) UUID() string {
 	lm.RLock()
 	defer lm.RUnlock()
 	return lm.currentUUID
 }
 
-// TrimUUIDs implements Meta.TrimUUIDs
+// TrimUUIDs implements Meta.TrimUUIDs.
 func (lm *LocalMeta) TrimUUIDs() ([]string, error) {
 	lm.Lock()
 	defer lm.Unlock()
@@ -375,7 +385,7 @@ func (lm *LocalMeta) TrimUUIDs() ([]string, error) {
 
 	err := lm.updateIndexFile(kept)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 
 	// currentUUID should be not changed
@@ -383,14 +393,14 @@ func (lm *LocalMeta) TrimUUIDs() ([]string, error) {
 	return trimmed, nil
 }
 
-// String implements Meta.String
+// String implements Meta.String.
 func (lm *LocalMeta) String() string {
 	uuid, pos := lm.Pos()
 	_, gs := lm.GTID()
 	return fmt.Sprintf("master-uuid = %s, relay-binlog = %v, relay-binlog-gtid = %v", uuid, pos, gs)
 }
 
-// updateIndexFile updates the content of server-uuid.index file
+// updateIndexFile updates the content of server-uuid.index file.
 func (lm *LocalMeta) updateIndexFile(uuids []string) error {
 	var buf bytes.Buffer
 	for _, uuid := range uuids {
@@ -398,8 +408,8 @@ func (lm *LocalMeta) updateIndexFile(uuids []string) error {
 		buf.WriteString("\n")
 	}
 
-	err := ioutil2.WriteFileAtomic(lm.uuidIndexPath, buf.Bytes(), 0644)
-	return errors.Annotatef(err, "update UUID index file %s", lm.uuidIndexPath)
+	err := utils.WriteFileAtomic(lm.uuidIndexPath, buf.Bytes(), 0o644)
+	return terror.ErrRelayUpdateIndexFile.Delegate(err, lm.uuidIndexPath)
 }
 
 func (lm *LocalMeta) verifyUUIDs(uuids []string) error {
@@ -407,11 +417,11 @@ func (lm *LocalMeta) verifyUUIDs(uuids []string) error {
 	for _, uuid := range uuids {
 		_, suffix, err := utils.ParseSuffixForUUID(uuid)
 		if err != nil {
-			return errors.Annotatef(err, "UUID %s", uuid)
+			return terror.Annotatef(err, "UUID %s", uuid)
 		}
 		if previousSuffix > 0 {
 			if previousSuffix+1 != suffix {
-				return errors.Errorf("UUID %s suffix %d should be 1 larger than previous suffix %d", uuid, suffix, previousSuffix)
+				return terror.ErrRelayUUIDSuffixNotValid.Generate(uuid, suffix, previousSuffix)
 			}
 		}
 		previousSuffix = suffix
@@ -420,20 +430,20 @@ func (lm *LocalMeta) verifyUUIDs(uuids []string) error {
 	return nil
 }
 
-// updateCurrentUUID updates current UUID
+// updateCurrentUUID updates current UUID.
 func (lm *LocalMeta) updateCurrentUUID(uuid string) error {
 	_, suffix, err := utils.ParseSuffixForUUID(uuid)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	if len(lm.currentUUID) > 0 {
 		_, previousSuffix, err := utils.ParseSuffixForUUID(lm.currentUUID)
 		if err != nil {
-			return errors.Trace(err) // should not happen
+			return err // should not happen
 		}
 		if previousSuffix > suffix {
-			return errors.Errorf("previous UUID %s has suffix larger than %s", lm.currentUUID, uuid)
+			return terror.ErrRelayUUIDSuffixLessThanPrev.Generate(lm.currentUUID, uuid)
 		}
 	}
 
@@ -441,7 +451,7 @@ func (lm *LocalMeta) updateCurrentUUID(uuid string) error {
 	return nil
 }
 
-// loadMetaData loads meta information from meta data file
+// loadMetaData loads meta information from meta data file.
 func (lm *LocalMeta) loadMetaData() error {
 	lm.gset = lm.emptyGSet.Clone()
 
@@ -455,20 +465,22 @@ func (lm *LocalMeta) loadMetaData() error {
 	if os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
-		return errors.Trace(err)
+		return terror.ErrRelayLoadMetaData.Delegate(err)
 	}
 	defer fd.Close()
 
 	_, err = toml.DecodeReader(fd, lm)
 	if err != nil {
-		return errors.Trace(err)
+		return terror.ErrRelayLoadMetaData.Delegate(err)
 	}
 
-	gset, err := gtid.ParserGTID(lm.flavor, lm.BinlogGTID)
-	if err != nil {
-		return errors.Trace(err)
+	if len(lm.BinlogGTID) != 0 {
+		gset, err := gtid.ParserGTID("", lm.BinlogGTID)
+		if err != nil {
+			return terror.ErrRelayLoadMetaData.Delegate(err)
+		}
+		lm.gset = gset
 	}
-	lm.gset = gset
 
 	return nil
 }

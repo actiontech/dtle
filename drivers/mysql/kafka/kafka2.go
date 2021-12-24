@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/pingcap/tidb/types"
 
 	"strconv"
 
@@ -494,7 +493,7 @@ func NewJsonField(optional bool, field string) *Schema {
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
-		defaultV:=defaultValue.(types.BinaryLiteral)
+		defaultV := defaultValue.([]byte)
 		defaultValue = base64.StdEncoding.EncodeToString(defaultV)
 	}
 	return &Schema{

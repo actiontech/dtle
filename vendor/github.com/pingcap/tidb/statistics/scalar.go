@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -16,8 +17,10 @@ package statistics
 import (
 	"encoding/binary"
 	"math"
+	"time"
 
-	"github.com/pingcap/parser/mysql"
+	"github.com/cznic/mathutil"
+	"github.com/pingcap/tidb/parser/mysql"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/types"
 )
@@ -43,6 +46,16 @@ func calcFraction(lower, upper, value float64) float64 {
 
 func convertDatumToScalar(value *types.Datum, commonPfxLen int) float64 {
 	switch value.Kind() {
+	case types.KindFloat32:
+		return float64(value.GetFloat32())
+	case types.KindFloat64:
+		return value.GetFloat64()
+	case types.KindInt64:
+		return float64(value.GetInt64())
+	case types.KindUint64:
+		return float64(value.GetUint64())
+	case types.KindMysqlDuration:
+		return float64(value.GetMysqlDuration().Duration)
 	case types.KindMysqlDecimal:
 		scalar, err := value.GetMysqlDecimal().ToFloat64()
 		if err != nil {
@@ -52,19 +65,11 @@ func convertDatumToScalar(value *types.Datum, commonPfxLen int) float64 {
 	case types.KindMysqlTime:
 		valueTime := value.GetMysqlTime()
 		var minTime types.Time
-		switch valueTime.Type {
+		switch valueTime.Type() {
 		case mysql.TypeDate:
-			minTime = types.Time{
-				Time: types.MinDatetime,
-				Type: mysql.TypeDate,
-				Fsp:  types.DefaultFsp,
-			}
+			minTime = types.NewTime(types.MinDatetime, mysql.TypeDate, types.DefaultFsp)
 		case mysql.TypeDatetime:
-			minTime = types.Time{
-				Time: types.MinDatetime,
-				Type: mysql.TypeDatetime,
-				Fsp:  types.DefaultFsp,
-			}
+			minTime = types.NewTime(types.MinDatetime, mysql.TypeDatetime, types.DefaultFsp)
 		case mysql.TypeTimestamp:
 			minTime = types.MinTimestamp
 		}
@@ -76,6 +81,10 @@ func convertDatumToScalar(value *types.Datum, commonPfxLen int) float64 {
 			return 0
 		}
 		return convertBytesToScalar(bytes[commonPfxLen:])
+	case types.KindMinNotNull:
+		return -math.MaxFloat64
+	case types.KindMaxValue:
+		return math.MaxFloat64
 	default:
 		// do not know how to convert
 		return 0
@@ -135,14 +144,22 @@ func (hg *Histogram) calcFraction(index int, value *types.Datum) float64 {
 	return 0.5
 }
 
-func commonPrefixLength(lower, upper []byte) int {
-	minLen := len(lower)
-	if minLen > len(upper) {
-		minLen = len(upper)
+func commonPrefixLength(strs ...[]byte) int {
+	if len(strs) == 0 {
+		return 0
+	}
+	minLen := len(strs[0])
+	for _, str := range strs {
+		if len(str) < minLen {
+			minLen = len(str)
+		}
 	}
 	for i := 0; i < minLen; i++ {
-		if lower[i] != upper[i] {
-			return i
+		a := strs[0][i]
+		for _, str := range strs {
+			if str[i] != a {
+				return i
+			}
 		}
 	}
 	return minLen
@@ -174,4 +191,124 @@ func calcFraction4Datums(lower, upper, value *types.Datum) float64 {
 		return calcFraction(convertDatumToScalar(lower, commonPfxLen), convertDatumToScalar(upper, commonPfxLen), convertDatumToScalar(value, commonPfxLen))
 	}
 	return 0.5
+}
+
+const maxNumStep = 10
+
+func enumRangeValues(low, high types.Datum, lowExclude, highExclude bool) []types.Datum {
+	if low.Kind() != high.Kind() {
+		return nil
+	}
+	exclude := 0
+	if lowExclude {
+		exclude++
+	}
+	if highExclude {
+		exclude++
+	}
+	switch low.Kind() {
+	case types.KindInt64:
+		// Overflow check.
+		lowVal, highVal := low.GetInt64(), high.GetInt64()
+		if lowVal <= 0 && highVal >= 0 {
+			if lowVal < -maxNumStep || highVal > maxNumStep {
+				return nil
+			}
+		}
+		remaining := highVal - lowVal
+		if remaining >= maxNumStep+1 {
+			return nil
+		}
+		remaining = remaining + 1 - int64(exclude)
+		if remaining >= maxNumStep || remaining < 0 {
+			return nil
+		}
+		values := make([]types.Datum, 0, remaining)
+		startValue := lowVal
+		if lowExclude {
+			startValue++
+		}
+		for i := int64(0); i < remaining; i++ {
+			values = append(values, types.NewIntDatum(startValue+i))
+		}
+		return values
+	case types.KindUint64:
+		remaining := high.GetUint64() - low.GetUint64()
+		if remaining >= maxNumStep+1 {
+			return nil
+		}
+		remaining = remaining + 1 - uint64(exclude)
+		if remaining >= maxNumStep || remaining < 0 {
+			return nil
+		}
+		values := make([]types.Datum, 0, remaining)
+		startValue := low.GetUint64()
+		if lowExclude {
+			startValue++
+		}
+		for i := uint64(0); i < remaining; i++ {
+			values = append(values, types.NewUintDatum(startValue+i))
+		}
+		return values
+	case types.KindMysqlDuration:
+		lowDur, highDur := low.GetMysqlDuration(), high.GetMysqlDuration()
+		fsp := mathutil.MaxInt8(lowDur.Fsp, highDur.Fsp)
+		stepSize := int64(math.Pow10(int(types.MaxFsp-fsp))) * int64(time.Microsecond)
+		lowDur.Duration = lowDur.Duration.Round(time.Duration(stepSize))
+		remaining := int64(highDur.Duration-lowDur.Duration)/stepSize + 1 - int64(exclude)
+		if remaining <= 0 || remaining >= maxNumStep {
+			return nil
+		}
+		startValue := int64(lowDur.Duration)
+		if lowExclude {
+			startValue += stepSize
+		}
+		values := make([]types.Datum, 0, remaining)
+		for i := int64(0); i < remaining; i++ {
+			values = append(values, types.NewDurationDatum(types.Duration{Duration: time.Duration(startValue + i*stepSize), Fsp: fsp}))
+		}
+		return values
+	case types.KindMysqlTime:
+		lowTime, highTime := low.GetMysqlTime(), high.GetMysqlTime()
+		if lowTime.Type() != highTime.Type() {
+			return nil
+		}
+		fsp := mathutil.MaxInt8(lowTime.Fsp(), highTime.Fsp())
+		var stepSize int64
+		sc := &stmtctx.StatementContext{TimeZone: time.UTC}
+		if lowTime.Type() == mysql.TypeDate {
+			stepSize = 24 * int64(time.Hour)
+			lowTime.SetCoreTime(types.FromDate(lowTime.Year(), lowTime.Month(), lowTime.Day(), 0, 0, 0, 0))
+		} else {
+			var err error
+			lowTime, err = lowTime.RoundFrac(sc, fsp)
+			if err != nil {
+				return nil
+			}
+			stepSize = int64(math.Pow10(int(types.MaxFsp-fsp))) * int64(time.Microsecond)
+		}
+		remaining := int64(highTime.Sub(sc, &lowTime).Duration)/stepSize + 1 - int64(exclude)
+		// When `highTime` is much larger than `lowTime`, `remaining` may be overflowed to a negative value.
+		if remaining <= 0 || remaining >= maxNumStep {
+			return nil
+		}
+		startValue := lowTime
+		var err error
+		if lowExclude {
+			startValue, err = lowTime.Add(sc, types.Duration{Duration: time.Duration(stepSize), Fsp: fsp})
+			if err != nil {
+				return nil
+			}
+		}
+		values := make([]types.Datum, 0, remaining)
+		for i := int64(0); i < remaining; i++ {
+			value, err := startValue.Add(sc, types.Duration{Duration: time.Duration(i * stepSize), Fsp: fsp})
+			if err != nil {
+				return nil
+			}
+			values = append(values, types.NewTimeDatum(value))
+		}
+		return values
+	}
+	return nil
 }

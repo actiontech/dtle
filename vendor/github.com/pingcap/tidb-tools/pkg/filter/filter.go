@@ -14,10 +14,13 @@
 package filter
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/pingcap/errors"
+	tfilter "github.com/pingcap/tidb-tools/pkg/table-filter"
+	selector "github.com/pingcap/tidb-tools/pkg/table-rule-selector"
 )
 
 // ActionType is do or ignore something
@@ -30,18 +33,7 @@ const (
 )
 
 // Table represents a table.
-type Table struct {
-	Schema string `toml:"db-name" json:"db-name" yaml:"db-name"`
-	Name   string `toml:"tbl-name" json:"tbl-name" yaml:"tbl-name"`
-}
-
-// String implements the fmt.Stringer interface.
-func (t *Table) String() string {
-	if len(t.Name) > 0 {
-		return fmt.Sprintf("`%s`.`%s`", t.Schema, t.Name)
-	}
-	return fmt.Sprintf("`%s`", t.Schema)
-}
+type Table = tfilter.Table
 
 type cache struct {
 	sync.RWMutex
@@ -63,38 +55,11 @@ func (c *cache) set(key string, action ActionType) {
 }
 
 // Rules contains Filter rules.
-type Rules struct {
-	DoTables []*Table `json:"do-tables" toml:"do-tables" yaml:"do-tables"`
-	DoDBs    []string `json:"do-dbs" toml:"do-dbs" yaml:"do-dbs"`
+type Rules = tfilter.MySQLReplicationRules
 
-	IgnoreTables []*Table `json:"ignore-tables" toml:"ignore-tables" yaml:"ignore-tables"`
-	IgnoreDBs    []string `json:"ignore-dbs" toml:"ignore-dbs" yaml:"ignore-dbs"`
-}
-
-// ToLower convert all entries to lowercase
-func (r *Rules) ToLower() {
-	if r == nil {
-		return
-	}
-
-	for _, table := range r.DoTables {
-		table.Name = strings.ToLower(table.Name)
-		table.Schema = strings.ToLower(table.Schema)
-	}
-	for _, table := range r.IgnoreTables {
-		table.Name = strings.ToLower(table.Name)
-		table.Schema = strings.ToLower(table.Schema)
-	}
-	for i, db := range r.IgnoreDBs {
-		r.IgnoreDBs[i] = strings.ToLower(db)
-	}
-	for i, db := range r.DoDBs {
-		r.DoDBs[i] = strings.ToLower(db)
-	}
-}
-
-// Filter implements whitelist and blacklist filters.
+// Filter implements table filter in the style of MySQL replication rules.
 type Filter struct {
+	selector.Selector
 	patternMap map[string]*regexp.Regexp
 	rules      *Rules
 
@@ -104,8 +69,13 @@ type Filter struct {
 }
 
 // New creates a filter use the rules.
-func New(caseSensitive bool, rules *Rules) *Filter {
+func New(caseSensitive bool, rules *Rules) (*Filter, error) {
+	if !caseSensitive {
+		rules.ToLower()
+	}
+
 	f := &Filter{
+		Selector:      selector.NewTrieSelector(),
 		caseSensitive: caseSensitive,
 		rules:         rules,
 	}
@@ -114,50 +84,151 @@ func New(caseSensitive bool, rules *Rules) *Filter {
 	f.c = &cache{
 		items: make(map[string]ActionType),
 	}
-	f.genRegexMap()
-	return f
+	err := f.initRules()
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
-func (f *Filter) genRegexMap() {
+const (
+	dbRule = iota
+	tblRuleFull
+	tblRuleOnlyDBPart
+	tblRuleOnlyTblPart
+)
+
+type nodeEndRule struct {
+	kind        int
+	r           *regexp.Regexp
+	isAllowList bool
+}
+
+// initRules initialize the rules to regex expr or trie node.
+func (f *Filter) initRules() (err error) {
 	if f.rules == nil {
 		return
 	}
 
 	for _, db := range f.rules.DoDBs {
-		f.addOneRegex(db)
+		if len(db) == 0 {
+			return errors.Errorf("DoDB rule's DB string cannot be empty")
+		}
+		err = f.initSchemaRule(db, true)
+		if err != nil {
+			return
+		}
 	}
 
 	for _, table := range f.rules.DoTables {
-		f.addOneRegex(table.Schema)
-		f.addOneRegex(table.Name)
+		if len(table.Schema) == 0 || len(table.Name) == 0 {
+			return errors.Errorf("DoTables rule's DB string or Table string cannot be empty")
+		}
+		err = f.initTableRule(table.Schema, table.Name, true)
+		if err != nil {
+			return
+		}
 	}
 
 	for _, db := range f.rules.IgnoreDBs {
-		f.addOneRegex(db)
+		if len(db) == 0 {
+			return errors.Errorf("IgnoreDB rule's DB string cannot be empty")
+		}
+		err = f.initSchemaRule(db, false)
+		if err != nil {
+			return
+		}
 	}
 
 	for _, table := range f.rules.IgnoreTables {
-		f.addOneRegex(table.Schema)
-		f.addOneRegex(table.Name)
+		if len(table.Schema) == 0 || len(table.Name) == 0 {
+			return errors.Errorf("IgnoreTables rule's DB string or Table string cannot be empty")
+		}
+		err = f.initTableRule(table.Schema, table.Name, false)
+		if err != nil {
+			return
+		}
 	}
+
+	return
 }
 
-func (f *Filter) addOneRegex(originStr string) {
+func (f *Filter) initOneRegex(originStr string) error {
 	if _, ok := f.patternMap[originStr]; !ok {
-		var pattern string
-		if strings.HasPrefix(originStr, "~") {
-			pattern = originStr[1:]
-		} else {
-			pattern = "^" + regexp.QuoteMeta(originStr) + "$"
-		}
+		compileStr := originStr
 		if !f.caseSensitive {
-			pattern = "(?i)" + pattern
+			compileStr = "(?i)" + compileStr
 		}
-		f.patternMap[originStr] = regexp.MustCompile(pattern)
+		reg, err := regexp.Compile(compileStr)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		f.patternMap[originStr] = reg
 	}
+	return nil
 }
 
-// ApplyOn applies filter rules on tables
+func (f *Filter) initSchemaRule(dbStr string, isAllowList bool) error {
+	if strings.HasPrefix(dbStr, "~") {
+		return f.initOneRegex(dbStr[1:])
+	}
+	return f.Selector.Insert(dbStr, "", &nodeEndRule{
+		kind:        dbRule,
+		isAllowList: isAllowList,
+	}, selector.Append)
+}
+
+func (f *Filter) initTableRule(dbStr, tableStr string, isAllowList bool) error {
+	dbIsRegex := strings.HasPrefix(dbStr, "~")
+	tblIsRegex := strings.HasPrefix(tableStr, "~")
+	if dbIsRegex && tblIsRegex {
+		err := f.initOneRegex(dbStr[1:])
+		if err != nil {
+			return err
+		}
+		err = f.initOneRegex(tableStr[1:])
+		if err != nil {
+			return err
+		}
+	} else if dbIsRegex && !tblIsRegex {
+		err := f.initOneRegex(dbStr[1:])
+		if err != nil {
+			return err
+		}
+		err = f.Selector.Insert(tableStr, "", &nodeEndRule{
+			kind:        tblRuleOnlyTblPart,
+			isAllowList: isAllowList,
+		}, selector.Append)
+		if err != nil {
+			return err
+		}
+	} else if !dbIsRegex && tblIsRegex {
+		err := f.initOneRegex(tableStr[1:])
+		if err != nil {
+			return err
+		}
+		err = f.Selector.Insert(dbStr, "", &nodeEndRule{
+			kind:        tblRuleOnlyDBPart,
+			r:           f.patternMap[tableStr[1:]],
+			isAllowList: isAllowList,
+		}, selector.Append)
+		if err != nil {
+			return err
+		}
+	} else {
+		err := f.Selector.Insert(dbStr, tableStr, &nodeEndRule{
+			kind:        tblRuleFull,
+			isAllowList: isAllowList,
+		}, selector.Append)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// deprecated
+// ApplyOn applies filter rules on tables and convert schema/table name to lower case if not caseSensitive
 // rules like
 // https://dev.mysql.com/doc/refman/8.0/en/replication-rules-table-options.html
 // https://dev.mysql.com/doc/refman/8.0/en/replication-rules-db-options.html
@@ -168,19 +239,63 @@ func (f *Filter) ApplyOn(stbs []*Table) []*Table {
 
 	var tbs []*Table
 	for _, tb := range stbs {
-		name := tb.String()
-		do, exist := f.c.query(name)
-		if !exist {
-			do = ActionType(f.filterOnSchemas(tb) && f.filterOnTables(tb))
-			f.c.set(tb.String(), do)
+		newTb := tb.Clone()
+		if !f.caseSensitive {
+			newTb.Schema = strings.ToLower(newTb.Schema)
+			newTb.Name = strings.ToLower(newTb.Name)
 		}
 
-		if do {
-			tbs = append(tbs, tb)
+		if f.Match(newTb) {
+			tbs = append(tbs, newTb)
 		}
 	}
 
 	return tbs
+}
+
+// ApplyOn applies filter rules on tables
+// rules like
+// https://dev.mysql.com/doc/refman/8.0/en/replication-rules-table-options.html
+// https://dev.mysql.com/doc/refman/8.0/en/replication-rules-db-options.html
+func (f *Filter) Apply(stbs []*Table) []*Table {
+	if f == nil || f.rules == nil {
+		return stbs
+	}
+	tbs := make([]*Table, 0)
+	for _, tb := range stbs {
+		newTb := tb
+		if !f.caseSensitive {
+			newTb = &Table{
+				Schema: strings.ToLower(newTb.Schema),
+				Name:   strings.ToLower(newTb.Name),
+			}
+		}
+
+		if f.Match(newTb) {
+			tbs = append(tbs, tb)
+		}
+	}
+	return tbs
+}
+
+// Match returns true if the specified table should not be removed.
+func (f *Filter) Match(tb *Table) bool {
+	if f == nil || f.rules == nil {
+		return true
+	}
+	newTb := tb.Clone()
+	if !f.caseSensitive {
+		newTb.Schema = strings.ToLower(newTb.Schema)
+		newTb.Name = strings.ToLower(newTb.Name)
+	}
+
+	name := newTb.String()
+	do, exist := f.c.query(name)
+	if !exist {
+		do = ActionType(f.filterOnSchemas(newTb) && f.filterOnTables(newTb))
+		f.c.set(newTb.String(), do)
+	}
+	return do == Do
 }
 
 func (f *Filter) filterOnSchemas(tb *Table) bool {
@@ -200,11 +315,11 @@ func (f *Filter) filterOnSchemas(tb *Table) bool {
 }
 
 func (f *Filter) findMatchedDoDBs(tb *Table) bool {
-	return f.matchDB(f.rules.DoDBs, tb.Schema)
+	return f.matchDB(f.rules.DoDBs, tb.Schema, true)
 }
 
 func (f *Filter) findMatchedIgnoreDBs(tb *Table) bool {
-	return f.matchDB(f.rules.IgnoreDBs, tb.Schema)
+	return f.matchDB(f.rules.IgnoreDBs, tb.Schema, false)
 }
 
 func (f *Filter) filterOnTables(tb *Table) bool {
@@ -214,13 +329,13 @@ func (f *Filter) filterOnTables(tb *Table) bool {
 	}
 
 	if len(f.rules.DoTables) > 0 {
-		if f.findMatchedDoTables(tb) {
+		if f.matchTable(f.rules.DoTables, tb, true) {
 			return true
 		}
 	}
 
 	if len(f.rules.IgnoreTables) > 0 {
-		if f.findMatchedIgnoreTables(tb) {
+		if f.matchTable(f.rules.IgnoreTables, tb, false) {
 			return false
 		}
 	}
@@ -228,27 +343,55 @@ func (f *Filter) filterOnTables(tb *Table) bool {
 	return len(f.rules.DoTables) == 0
 }
 
-func (f *Filter) findMatchedDoTables(tb *Table) bool {
-	return f.matchTable(f.rules.DoTables, tb)
-}
-
-func (f *Filter) findMatchedIgnoreTables(tb *Table) bool {
-	return f.matchTable(f.rules.IgnoreTables, tb)
-}
-
-func (f *Filter) matchDB(patternDBS []string, a string) bool {
+func (f *Filter) matchDB(patternDBS []string, a string, isAllowListCheck bool) bool {
 	for _, b := range patternDBS {
-		if f.matchString(b, a) {
+		isRegex := strings.HasPrefix(b, "~")
+		if isRegex && f.matchString(b[1:], a) {
+			return true
+		}
+	}
+	ruleSet := f.Selector.Match(a, "")
+	for _, r := range ruleSet {
+		rule := r.(*nodeEndRule)
+		if rule.kind == dbRule && rule.isAllowList == isAllowListCheck {
 			return true
 		}
 	}
 	return false
 }
 
-func (f *Filter) matchTable(patternTBS []*Table, tb *Table) bool {
+func (f *Filter) matchTable(patternTBS []*Table, tb *Table, isAllowListCheck bool) bool {
 	for _, ptb := range patternTBS {
-		if f.matchString(ptb.Schema, tb.Schema) && f.matchString(ptb.Name, tb.Name) {
-			return true
+		dbIsRegex, tblIsRegex := strings.HasPrefix(ptb.Schema, "~"), strings.HasPrefix(ptb.Name, "~")
+		if dbIsRegex && tblIsRegex {
+			if f.matchString(ptb.Schema[1:], tb.Schema) && f.matchString(ptb.Name[1:], tb.Name) {
+				return true
+			}
+		} else if dbIsRegex && !tblIsRegex {
+			if !f.matchString(ptb.Schema[1:], tb.Schema) {
+				continue
+			}
+			ruleSet := f.Selector.Match(tb.Name, "")
+			for _, r := range ruleSet {
+				rule := r.(*nodeEndRule)
+				if rule.kind == tblRuleOnlyTblPart && rule.isAllowList == isAllowListCheck {
+					return true
+				}
+			}
+		}
+		ruleSet := f.Selector.Match(tb.Schema, "")
+		for _, r := range ruleSet {
+			rule := r.(*nodeEndRule)
+			if rule.kind == tblRuleOnlyDBPart && rule.isAllowList == isAllowListCheck && rule.r.MatchString(tb.Name) {
+				return true
+			}
+		}
+		ruleSet = f.Selector.Match(tb.Schema, tb.Name)
+		for _, r := range ruleSet {
+			rule := r.(*nodeEndRule)
+			if rule.kind == tblRuleFull && rule.isAllowList == isAllowListCheck {
+				return true
+			}
 		}
 	}
 

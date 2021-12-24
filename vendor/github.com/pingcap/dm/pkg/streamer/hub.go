@@ -18,9 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pingcap/errors"
-
 	"github.com/pingcap/dm/pkg/binlog"
+	"github.com/pingcap/dm/pkg/terror"
 	"github.com/pingcap/dm/pkg/utils"
 )
 
@@ -29,7 +28,7 @@ var (
 	once      sync.Once
 )
 
-// RelayLogInfo represents information for relay log
+// RelayLogInfo represents information for relay log.
 type RelayLogInfo struct {
 	TaskName   string
 	UUID       string
@@ -37,7 +36,7 @@ type RelayLogInfo struct {
 	Filename   string
 }
 
-// Earlier checks whether this relay log file is earlier than the other
+// Earlier checks whether this relay log file is earlier than the other.
 func (info *RelayLogInfo) Earlier(other *RelayLogInfo) bool {
 	if info.UUIDSuffix < other.UUIDSuffix {
 		return true
@@ -47,12 +46,12 @@ func (info *RelayLogInfo) Earlier(other *RelayLogInfo) bool {
 	return strings.Compare(info.Filename, other.Filename) < 0
 }
 
-// String implements Stringer.String
+// String implements Stringer.String.
 func (info *RelayLogInfo) String() string {
 	return filepath.Join(info.UUID, info.Filename)
 }
 
-// relayLogInfoHub holds information for all active relay logs
+// relayLogInfoHub holds information for all active relay logs.
 type relayLogInfoHub struct {
 	mu   sync.RWMutex
 	logs map[string]RelayLogInfo
@@ -67,10 +66,10 @@ func newRelayLogInfoHub() *relayLogInfoHub {
 func (h *relayLogInfoHub) update(taskName, uuid, filename string) error {
 	_, suffix, err := utils.ParseSuffixForUUID(uuid)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 	if !binlog.VerifyFilename(filename) {
-		return errors.NotValidf("binlog filename %s", filename)
+		return terror.ErrBinlogInvalidFilename.Generatef("binlog filename %s not valid", filename)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -108,12 +107,12 @@ func (h *relayLogInfoHub) earliest() (taskName string, earliest *RelayLogInfo) {
 	return
 }
 
-// ReaderHub holds information for all active Readers
+// ReaderHub holds information for all active Readers.
 type ReaderHub struct {
 	rlih *relayLogInfoHub
 }
 
-// GetReaderHub gets singleton instance of ReaderHub
+// GetReaderHub gets singleton instance of ReaderHub.
 func GetReaderHub() *ReaderHub {
 	once.Do(func() {
 		readerHub = &ReaderHub{
@@ -123,17 +122,17 @@ func GetReaderHub() *ReaderHub {
 	return readerHub
 }
 
-// UpdateActiveRelayLog updates active relay log for taskName
+// UpdateActiveRelayLog updates active relay log for taskName.
 func (h *ReaderHub) UpdateActiveRelayLog(taskName, uuid, filename string) error {
 	return h.rlih.update(taskName, uuid, filename)
 }
 
-// RemoveActiveRelayLog removes active relay log for taskName
+// RemoveActiveRelayLog removes active relay log for taskName.
 func (h *ReaderHub) RemoveActiveRelayLog(taskName string) {
 	h.rlih.remove(taskName)
 }
 
-// EarliestActiveRelayLog implements RelayOperator.EarliestActiveRelayLog
+// EarliestActiveRelayLog implements RelayOperator.EarliestActiveRelayLog.
 func (h *ReaderHub) EarliestActiveRelayLog() *RelayLogInfo {
 	_, rli := h.rlih.earliest()
 	return rli

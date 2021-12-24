@@ -3,7 +3,7 @@ package g
 
 import (
 	hclog "github.com/hashicorp/go-hclog"
-	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/v3/mem"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -79,6 +79,8 @@ var (
 	lowMemory = false
 	memoryMonitorCount = int32(0)
 	MemAvailable = uint64(0)
+	bigTxJobs    = int32(0)
+	BigTxMaxJobs = int32(1)
 )
 
 func FreeMemoryWorker() {
@@ -147,4 +149,20 @@ func UUIDStrToMySQLHex(u string) string {
 
 func LowerString(s *string) {
 	*s = strings.ToLower(*s)
+}
+
+func AddBigTxJob() {
+	nv := atomic.AddInt32(&bigTxJobs, 1)
+	if nv >= BigTxMaxJobs {
+		Logger.Debug("big tx job number reaches max", "jobs", nv, "max", BigTxMaxJobs)
+	}
+}
+func SubBigTxJob() {
+	nv := atomic.AddInt32(&bigTxJobs, -1)
+	if nv == BigTxMaxJobs - 1 {
+		Logger.Debug("big tx job number decreased", "jobs", nv, "max", BigTxMaxJobs)
+	}
+}
+func BigTxReachMax() bool {
+	return atomic.LoadInt32(&bigTxJobs) >= BigTxMaxJobs
 }

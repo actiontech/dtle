@@ -16,21 +16,16 @@ package reader
 import (
 	"context"
 	"sync"
-	"time"
 
-	"github.com/pingcap/errors"
-	"github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
+	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
+	"go.uber.org/zap"
 
 	"github.com/pingcap/dm/pkg/binlog/common"
 	br "github.com/pingcap/dm/pkg/binlog/reader"
 	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/log"
-)
-
-const (
-	// event timeout when trying to read events from upstream master server.
-	eventTimeout = 10 * time.Minute
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 // Result represents a read operation result.
@@ -74,14 +69,17 @@ type reader struct {
 
 	in  br.Reader // the underlying reader used to read binlog events.
 	out chan *replication.BinlogEvent
+
+	logger log.Logger
 }
 
 // NewReader creates a Reader instance.
 func NewReader(cfg *Config) Reader {
 	return &reader{
-		cfg: cfg,
-		in:  br.NewTCPReader(cfg.SyncConfig),
-		out: make(chan *replication.BinlogEvent),
+		cfg:    cfg,
+		in:     br.NewTCPReader(cfg.SyncConfig),
+		out:    make(chan *replication.BinlogEvent),
+		logger: log.With(zap.String("component", "relay reader")),
 	}
 }
 
@@ -91,13 +89,13 @@ func (r *reader) Start() error {
 	defer r.mu.Unlock()
 
 	if r.stage != common.StageNew {
-		return errors.Errorf("stage %s, expect %s, already started", r.stage, common.StageNew)
+		return terror.ErrRelayReaderNotStateNew.Generate(r.stage, common.StageNew)
 	}
 	r.stage = common.StagePrepared
 
 	defer func() {
 		status := r.in.Status()
-		log.Infof("[relay] set up binlog reader for master %s with status %s", r.cfg.MasterID, status)
+		r.logger.Info("set up binlog reader", zap.String("master", r.cfg.MasterID), zap.Reflect("status", status))
 	}()
 
 	var err error
@@ -107,7 +105,7 @@ func (r *reader) Start() error {
 		err = r.setUpReaderByPos()
 	}
 
-	return errors.Trace(err)
+	return err
 }
 
 // Close implements Reader.Close.
@@ -116,12 +114,12 @@ func (r *reader) Close() error {
 	defer r.mu.Unlock()
 
 	if r.stage != common.StagePrepared {
-		return errors.Errorf("stage %s, expect %s, can not close", r.stage, common.StagePrepared)
+		return terror.ErrRelayReaderStateCannotClose.Generate(r.stage, common.StagePrepared)
 	}
 
 	err := r.in.Close()
 	r.stage = common.StageClosed
-	return errors.Trace(err)
+	return err
 }
 
 // GetEvent implements Reader.GetEvent.
@@ -132,32 +130,32 @@ func (r *reader) GetEvent(ctx context.Context) (Result, error) {
 
 	var result Result
 	if r.stage != common.StagePrepared {
-		return result, errors.Errorf("stage %s, expect %s, please start the reader first", r.stage, common.StagePrepared)
+		return result, terror.ErrRelayReaderNeedStart.Generate(r.stage, common.StagePrepared)
 	}
 
 	for {
-		ctx2, cancel2 := context.WithTimeout(ctx, eventTimeout)
+		ctx2, cancel2 := context.WithTimeout(ctx, common.SlaveReadTimeout)
 		ev, err := r.in.GetEvent(ctx2)
 		cancel2()
 
 		if err == nil {
 			result.Event = ev
 		} else if isRetryableError(err) {
-			log.Infof("[relay] get retryable error %v when reading binlog event", err)
+			r.logger.Info("get retryable error when reading binlog event", log.ShortError(err))
 			continue
 		}
-		return result, errors.Trace(err)
+		return result, err
 	}
 }
 
 func (r *reader) setUpReaderByGTID() error {
 	gs := r.cfg.GTIDs
-	log.Infof("[relay] start sync for master %s from GTID set %s", r.cfg.MasterID, gs)
+	r.logger.Info("start sync", zap.String("master", r.cfg.MasterID), zap.Stringer("from GTID set", gs))
 	return r.in.StartSyncByGTID(gs)
 }
 
 func (r *reader) setUpReaderByPos() error {
 	pos := r.cfg.Pos
-	log.Infof("[relay] start sync for master %s from position %s", r.cfg.MasterID, pos)
+	r.logger.Info("start sync", zap.String("master", r.cfg.MasterID), zap.Stringer("from position", pos))
 	return r.in.StartSyncByPos(pos)
 }

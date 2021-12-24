@@ -13,11 +13,11 @@
 
 package filter
 
-import "github.com/pingcap/parser/ast"
+import "github.com/pingcap/tidb/parser/ast"
 
 // AstToDDLEvent returns filter.DDLEvent
 func AstToDDLEvent(node ast.StmtNode) EventType {
-	switch node.(type) {
+	switch n := node.(type) {
 	case *ast.CreateDatabaseStmt:
 		return CreateDatabase
 	case *ast.DropDatabaseStmt:
@@ -25,6 +25,9 @@ func AstToDDLEvent(node ast.StmtNode) EventType {
 	case *ast.CreateTableStmt:
 		return CreateTable
 	case *ast.DropTableStmt:
+		if n.IsView {
+			return DropView
+		}
 		return DropTable
 	case *ast.TruncateTableStmt:
 		return TruncateTable
@@ -36,6 +39,8 @@ func AstToDDLEvent(node ast.StmtNode) EventType {
 		return DropIndex
 	case *ast.AlterTableStmt:
 		return AlertTable
+	case *ast.CreateViewStmt:
+		return CreateView
 	}
 
 	return NullEvent

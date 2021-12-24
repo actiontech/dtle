@@ -144,6 +144,7 @@ type SrcTaskConfig struct {
 }
 
 type MysqlSrcTaskConfig struct {
+	ExpandSyntaxSupport   bool                     `json:"expand_syntax_support"`
 	Gtid        string `json:"gtid"`
 	BinlogRelay bool   `json:"binlog_relay"`
 	WaitOnJob   string `json:"wait_on_job"`

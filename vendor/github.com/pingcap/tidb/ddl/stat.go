@@ -8,12 +8,15 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
 package ddl
 
 import (
+	"context"
+
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/sessionctx/variable"
@@ -21,22 +24,20 @@ import (
 )
 
 var (
-	serverID             = "server_id"
-	ddlSchemaVersion     = "ddl_schema_version"
-	ddlOwnerID           = "ddl_owner_id"
-	ddlOwnerLastUpdateTS = "ddl_owner_last_update_ts"
-	ddlJobID             = "ddl_job_id"
-	ddlJobAction         = "ddl_job_action"
-	ddlJobStartTS        = "ddl_job_start_ts"
-	ddlJobState          = "ddl_job_state"
-	ddlJobError          = "ddl_job_error"
-	ddlJobRows           = "ddl_job_row_count"
-	ddlJobSchemaState    = "ddl_job_schema_state"
-	ddlJobSchemaID       = "ddl_job_schema_id"
-	ddlJobTableID        = "ddl_job_table_id"
-	ddlJobSnapshotVer    = "ddl_job_snapshot_ver"
-	ddlJobReorgHandle    = "ddl_job_reorg_handle"
-	ddlJobArgs           = "ddl_job_args"
+	serverID          = "server_id"
+	ddlSchemaVersion  = "ddl_schema_version"
+	ddlJobID          = "ddl_job_id"
+	ddlJobAction      = "ddl_job_action"
+	ddlJobStartTS     = "ddl_job_start_ts"
+	ddlJobState       = "ddl_job_state"
+	ddlJobError       = "ddl_job_error"
+	ddlJobRows        = "ddl_job_row_count"
+	ddlJobSchemaState = "ddl_job_schema_state"
+	ddlJobSchemaID    = "ddl_job_schema_id"
+	ddlJobTableID     = "ddl_job_table_id"
+	ddlJobSnapshotVer = "ddl_job_snapshot_ver"
+	ddlJobReorgHandle = "ddl_job_reorg_handle"
+	ddlJobArgs        = "ddl_job_args"
 )
 
 // GetScope gets the status variables scope.
@@ -51,7 +52,7 @@ func (d *ddl) Stats(vars *variable.SessionVars) (map[string]interface{}, error) 
 	m[serverID] = d.uuid
 	var ddlInfo *admin.DDLInfo
 
-	err := kv.RunInNewTxn(d.store, false, func(txn kv.Transaction) error {
+	err := kv.RunInNewTxn(context.Background(), d.store, false, func(ctx context.Context, txn kv.Transaction) error {
 		var err1 error
 		ddlInfo, err1 = admin.GetDDLInfo(txn)
 		if err1 != nil {
@@ -84,7 +85,7 @@ func (d *ddl) Stats(vars *variable.SessionVars) (map[string]interface{}, error) 
 	m[ddlJobSchemaID] = job.SchemaID
 	m[ddlJobTableID] = job.TableID
 	m[ddlJobSnapshotVer] = job.SnapshotVer
-	m[ddlJobReorgHandle] = ddlInfo.ReorgHandle
+	m[ddlJobReorgHandle] = tryDecodeToHandleString(ddlInfo.ReorgHandle)
 	m[ddlJobArgs] = job.Args
 	return m, nil
 }

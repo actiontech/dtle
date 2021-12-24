@@ -17,10 +17,10 @@ import (
 	"bytes"
 	"time"
 
-	"github.com/pingcap/errors"
-	"github.com/siddontang/go-mysql/replication"
+	"github.com/go-mysql-org/go-mysql/replication"
 
 	"github.com/pingcap/dm/pkg/gtid"
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 // DMLData represents data used to generate events for DML statements.
@@ -37,17 +37,17 @@ type DMLData struct {
 // NOTE: multi <TableMapEvent, RowsEvent> pairs can be in events.
 func GenDMLEvents(flavor string, serverID uint32, latestPos uint32, latestGTID gtid.Set, eventType replication.EventType, xid uint64, dmlData []*DMLData) (*DDLDMLResult, error) {
 	if len(dmlData) == 0 {
-		return nil, errors.NotValidf("empty data")
+		return nil, terror.ErrBinlogDMLEmptyData.Generate()
 	}
 
 	// GTIDEvent, increase GTID first.
 	latestGTID, err := GTIDIncrease(flavor, latestGTID)
 	if err != nil {
-		return nil, errors.Annotatef(err, "increase GTID %s", latestGTID)
+		return nil, terror.Annotatef(err, "increase GTID %s", latestGTID)
 	}
 	gtidEv, err := GenCommonGTIDEvent(flavor, serverID, latestPos, latestGTID)
 	if err != nil {
-		return nil, errors.Annotate(err, "generate GTIDEvent")
+		return nil, terror.Annotate(err, "generate GTIDEvent")
 	}
 	latestPos = gtidEv.Header.LogPos
 
@@ -60,7 +60,7 @@ func GenDMLEvents(flavor string, serverID uint32, latestPos uint32, latestGTID g
 	query := []byte("BEGIN")
 	queryEv, err := GenQueryEvent(header, latestPos, defaultSlaveProxyID, defaultExecutionTime, defaultErrorCode, defaultStatusVars, nil, query)
 	if err != nil {
-		return nil, errors.Annotate(err, "generate QueryEvent for `BEGIN` statement")
+		return nil, terror.Annotate(err, "generate QueryEvent for `BEGIN` statement")
 	}
 	latestPos = queryEv.Header.LogPos
 
@@ -74,15 +74,15 @@ func GenDMLEvents(flavor string, serverID uint32, latestPos uint32, latestGTID g
 		// TableMapEvent
 		tableMapEv, err2 := GenTableMapEvent(header, latestPos, data.TableID, []byte(data.Schema), []byte(data.Table), data.ColumnType)
 		if err2 != nil {
-			return nil, errors.Annotatef(err2, "generate TableMapEvent for `%s`.`%s`", data.Schema, data.Table)
+			return nil, terror.Annotatef(err2, "generate TableMapEvent for `%s`.`%s`", data.Schema, data.Table)
 		}
 		latestPos = tableMapEv.Header.LogPos
 		events = append(events, tableMapEv)
 
 		// RowsEvent
-		rowsEv, err2 := GenRowsEvent(header, latestPos, eventType, data.TableID, defaultRowsFlag, data.Rows, data.ColumnType)
+		rowsEv, err2 := GenRowsEvent(header, latestPos, eventType, data.TableID, defaultRowsFlag, data.Rows, data.ColumnType, tableMapEv)
 		if err2 != nil {
-			return nil, errors.Annotatef(err2, "generate RowsEvent for `%s`.`%s`", data.Schema, data.Table)
+			return nil, terror.Annotatef(err2, "generate RowsEvent for `%s`.`%s`", data.Schema, data.Table)
 		}
 		latestPos = rowsEv.Header.LogPos
 		events = append(events, rowsEv)
@@ -91,7 +91,7 @@ func GenDMLEvents(flavor string, serverID uint32, latestPos uint32, latestGTID g
 	// XIDEvent
 	xidEv, err := GenXIDEvent(header, latestPos, xid)
 	if err != nil {
-		return nil, errors.Annotatef(err, "generate XIDEvent for %d", xid)
+		return nil, terror.Annotatef(err, "generate XIDEvent for %d", xid)
 	}
 	latestPos = xidEv.Header.LogPos
 	events = append(events, xidEv)
@@ -100,7 +100,7 @@ func GenDMLEvents(flavor string, serverID uint32, latestPos uint32, latestGTID g
 	for _, ev := range events {
 		_, err = buf.Write(ev.RawData)
 		if err != nil {
-			return nil, errors.Annotatef(err, "write %d data % X", ev.Header.EventType, ev.RawData)
+			return nil, terror.ErrBinlogWriteDataToBuffer.AnnotateDelegate(err, "write %d data % X", ev.Header.EventType, ev.RawData)
 		}
 	}
 

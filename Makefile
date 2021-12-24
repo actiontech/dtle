@@ -20,7 +20,7 @@ GOFLAGS := -mod=vendor
 default: driver
 
 driver:
-	GO111MODULE=on go build $(GOFLAGS) -o dist/dtle -ldflags \
+	go build $(GOFLAGS) -o dist/dtle -ldflags \
 "-X github.com/actiontech/dtle/g.Version=$(VERSION) \
 -X github.com/actiontech/dtle/g.GitCommit=$(COMMIT) \
 -X github.com/actiontech/dtle/g.GitBranch=$(BRANCH)" \
@@ -33,7 +33,7 @@ docker_build:
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build
 
 build-coverage-report-tool:
-	GO111MODULE=on go install $(GOFLAGS) github.com/actiontech/dtle/vendor/github.com/actiontech/golang-live-coverage-report/cmd/golang-live-coverage-report
+	go install $(GOFLAGS) github.com/actiontech/dtle/vendor/github.com/actiontech/golang-live-coverage-report/cmd/golang-live-coverage-report
 
 coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
@@ -87,7 +87,7 @@ test:
 	cd drivers && go test -cover -v -mod=vendor ./...
 
 mtswatcher: helper/mtswatcher/mtswatcher.go
-	GO111MODULE=on go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
+	go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
 
 docker_rpm:
 	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm -e PROJECT_NAME=$(PROJECT_NAME) $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make RELEASE_FTPD_HOST=${RELEASE_FTPD_HOST} package ;chmod -R ugo+rw dist;"

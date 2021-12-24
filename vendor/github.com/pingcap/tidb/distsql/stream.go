@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -15,21 +16,26 @@ package distsql
 
 import (
 	"context"
+	"time"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/parser/terror"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/metrics"
+	"github.com/pingcap/tidb/parser/terror"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/statistics"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/chunk"
 	"github.com/pingcap/tidb/util/codec"
+	"github.com/pingcap/tidb/util/dbterror"
 	"github.com/pingcap/tipb/go-tipb"
 )
 
 // streamResult implements the SelectResult interface.
 type streamResult struct {
+	label   string
+	sqlType string
+
 	resp       kv.Response
 	rowLen     int
 	fieldTypes []*types.FieldType
@@ -39,9 +45,10 @@ type streamResult struct {
 	curr         *tipb.Chunk
 	partialCount int64
 	feedback     *statistics.QueryFeedback
-}
 
-func (r *streamResult) Fetch(context.Context) {}
+	fetchDuration    time.Duration
+	durationReported bool
+}
 
 func (r *streamResult) Next(ctx context.Context, chk *chunk.Chunk) error {
 	chk.Reset()
@@ -64,11 +71,20 @@ func (r *streamResult) Next(ctx context.Context, chk *chunk.Chunk) error {
 
 // readDataFromResponse read the data to result. Returns true means the resp is finished.
 func (r *streamResult) readDataFromResponse(ctx context.Context, resp kv.Response, result *tipb.Chunk) (bool, error) {
+	startTime := time.Now()
 	resultSubset, err := resp.Next(ctx)
+	duration := time.Since(startTime)
+	r.fetchDuration += duration
 	if err != nil {
 		return false, err
 	}
 	if resultSubset == nil {
+		if !r.durationReported {
+			// TODO: Add a label to distinguish between success or failure.
+			// https://github.com/pingcap/tidb/issues/11397
+			metrics.DistSQLQueryHistogram.WithLabelValues(r.label, r.sqlType).Observe(r.fetchDuration.Seconds())
+			r.durationReported = true
+		}
 		return true, nil
 	}
 
@@ -81,15 +97,24 @@ func (r *streamResult) readDataFromResponse(ctx context.Context, resp kv.Respons
 		return false, errors.Errorf("stream response error: [%d]%s\n", stream.Error.Code, stream.Error.Msg)
 	}
 	for _, warning := range stream.Warnings {
-		r.ctx.GetSessionVars().StmtCtx.AppendWarning(terror.ClassTiKV.New(terror.ErrCode(warning.Code), warning.Msg))
+		r.ctx.GetSessionVars().StmtCtx.AppendWarning(dbterror.ClassTiKV.Synthesize(terror.ErrCode(warning.Code), warning.Msg))
 	}
 
 	err = result.Unmarshal(stream.Data)
 	if err != nil {
 		return false, errors.Trace(err)
 	}
-	r.feedback.Update(resultSubset.GetStartKey(), stream.OutputCounts)
+	r.feedback.Update(resultSubset.GetStartKey(), stream.OutputCounts, stream.Ndvs)
 	r.partialCount++
+
+	hasStats, ok := resultSubset.(CopRuntimeStats)
+	if ok {
+		copStats := hasStats.GetCopRuntimeStats()
+		if copStats != nil {
+			copStats.CopTime = duration
+			r.ctx.GetSessionVars().StmtCtx.MergeExecDetails(&copStats.ExecDetails, nil)
+		}
+	}
 	return false, nil
 }
 
@@ -123,10 +148,9 @@ func (r *streamResult) flushToChunk(chk *chunk.Chunk) (err error) {
 			}
 		}
 	}
+	r.curr.RowsData = remainRowsData
 	if len(remainRowsData) == 0 {
 		r.curr = nil // Current chunk is finished.
-	} else {
-		r.curr.RowsData = remainRowsData
 	}
 	return nil
 }
@@ -146,5 +170,8 @@ func (r *streamResult) Close() error {
 		metrics.DistSQLScanKeysHistogram.Observe(float64(r.feedback.Actual()))
 	}
 	metrics.DistSQLPartialCountHistogram.Observe(float64(r.partialCount))
+	if r.resp != nil {
+		return r.resp.Close()
+	}
 	return nil
 }

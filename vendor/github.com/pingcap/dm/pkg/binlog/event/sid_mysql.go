@@ -19,8 +19,9 @@ package event
 import (
 	"encoding/hex"
 
-	"github.com/pingcap/errors"
-	"github.com/siddontang/go-mysql/replication"
+	"github.com/go-mysql-org/go-mysql/replication"
+
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 // SID represents a SERVER_UUID in GTIDEvent/PrevGTIDEvent.
@@ -46,7 +47,7 @@ func (sid SID) String() string {
 func ParseSID(s string) (SID, error) {
 	var sid SID
 	if len(s) != 36 || s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
-		return sid, errors.NotValidf("SID string %s", s)
+		return sid, terror.ErrBinlogParseSID.Generatef("SID string %s not valid", s)
 	}
 
 	// drop the dashes so we can just check the error of Decode once.
@@ -58,7 +59,7 @@ func ParseSID(s string) (SID, error) {
 	b = append(b, s[24:]...)
 
 	if _, err := hex.Decode(sid[:], b); err != nil {
-		return sid, errors.Annotatef(err, "decode % X", b)
+		return sid, terror.ErrBinlogParseSID.SetMessage("decode % X").Delegate(err, b)
 	}
 	return sid, nil
 }

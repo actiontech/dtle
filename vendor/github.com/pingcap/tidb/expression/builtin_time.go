@@ -1,7 +1,3 @@
-// Copyright 2013 The ql Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSES/QL-LICENSE file.
-
 // Copyright 2015 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,13 +8,17 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// Copyright 2013 The ql Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSES/QL-LICENSE file.
 
 package expression
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"regexp"
@@ -28,16 +28,19 @@ import (
 
 	"github.com/cznic/mathutil"
 	"github.com/pingcap/errors"
-	"github.com/pingcap/parser/mysql"
-	"github.com/pingcap/parser/terror"
+	"github.com/pingcap/failpoint"
+	"github.com/pingcap/tidb/config"
+	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/mysql"
+	"github.com/pingcap/tidb/parser/terror"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/chunk"
 	"github.com/pingcap/tidb/util/logutil"
 	"github.com/pingcap/tipb/go-tipb"
+	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 )
 
@@ -121,6 +124,10 @@ var (
 	_ functionClass = &lastDayFunctionClass{}
 	_ functionClass = &addDateFunctionClass{}
 	_ functionClass = &subDateFunctionClass{}
+)
+
+var (
+	_ builtinFuncNew = &builtinUnixTimestampIntSig{}
 )
 
 var (
@@ -213,6 +220,7 @@ var (
 	_ builtinFunc = &builtinStrToDateDurationSig{}
 	_ builtinFunc = &builtinFromUnixTime1ArgSig{}
 	_ builtinFunc = &builtinFromUnixTime2ArgSig{}
+	_ builtinFunc = &builtinExtractDatetimeFromStringSig{}
 	_ builtinFunc = &builtinExtractDatetimeSig{}
 	_ builtinFunc = &builtinExtractDurationSig{}
 	_ builtinFunc = &builtinAddDateStringStringSig{}
@@ -241,7 +249,7 @@ var (
 	_ builtinFunc = &builtinSubDateDatetimeDecimalSig{}
 )
 
-func convertTimeToMysqlTime(t time.Time, fsp int, roundMode types.RoundMode) (types.Time, error) {
+func convertTimeToMysqlTime(t time.Time, fsp int8, roundMode types.RoundMode) (types.Time, error) {
 	var tr time.Time
 	var err error
 	if roundMode == types.ModeTruncate {
@@ -250,14 +258,10 @@ func convertTimeToMysqlTime(t time.Time, fsp int, roundMode types.RoundMode) (ty
 		tr, err = types.RoundFrac(t, fsp)
 	}
 	if err != nil {
-		return types.Time{}, err
+		return types.ZeroTime, err
 	}
 
-	return types.Time{
-		Time: types.FromGoTime(tr),
-		Type: mysql.TypeDatetime,
-		Fsp:  fsp,
-	}, nil
+	return types.NewTime(types.FromGoTime(tr), mysql.TypeDatetime, fsp), nil
 }
 
 type dateFunctionClass struct {
@@ -268,9 +272,13 @@ func (c *dateFunctionClass) getFunction(ctx sessionctx.Context, args []Expressio
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, types.ETDatetime)
-	bf.tp.Tp, bf.tp.Flen, bf.tp.Decimal = mysql.TypeDate, 10, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDate()
 	sig := &builtinDateSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Date)
 	return sig, nil
 }
 
@@ -289,15 +297,15 @@ func (b *builtinDateSig) Clone() builtinFunc {
 func (b *builtinDateSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	expr, isNull, err := b.args[0].EvalTime(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, err)
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
 	}
 
 	if expr.IsZero() {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(expr.String()))
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, expr.String()))
 	}
 
-	expr.Time = types.FromDate(expr.Time.Year(), expr.Time.Month(), expr.Time.Day(), 0, 0, 0, 0)
-	expr.Type = mysql.TypeDate
+	expr.SetCoreTime(types.FromDate(expr.Year(), expr.Month(), expr.Day(), 0, 0, 0, 0))
+	expr.SetType(mysql.TypeDate)
 	return expr, false, nil
 }
 
@@ -319,14 +327,17 @@ func (c *dateLiteralFunctionClass) getFunction(ctx sessionctx.Context, args []Ex
 	}
 	str := dt.GetString()
 	if !datePattern.MatchString(str) {
-		return nil, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(str)
+		return nil, types.ErrWrongValue.GenWithStackByArgs(types.DateStr, str)
 	}
 	tm, err := types.ParseDate(ctx.GetSessionVars().StmtCtx, str)
 	if err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, []Expression{}, types.ETDatetime)
-	bf.tp.Tp, bf.tp.Flen, bf.tp.Decimal = mysql.TypeDate, 10, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, []Expression{}, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDate()
 	sig := &builtinDateLiteralSig{bf, tm}
 	return sig, nil
 }
@@ -347,10 +358,10 @@ func (b *builtinDateLiteralSig) Clone() builtinFunc {
 func (b *builtinDateLiteralSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	mode := b.ctx.GetSessionVars().SQLMode
 	if mode.HasNoZeroDateMode() && b.literal.IsZero() {
-		return b.literal, true, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(b.literal.String())
+		return b.literal, true, types.ErrWrongValue.GenWithStackByArgs(types.DateStr, b.literal.String())
 	}
 	if mode.HasNoZeroInDateMode() && (b.literal.InvalidZero() && !b.literal.IsZero()) {
-		return b.literal, true, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(b.literal.String())
+		return b.literal, true, types.ErrWrongValue.GenWithStackByArgs(types.DateStr, b.literal.String())
 	}
 	return b.literal, false, nil
 }
@@ -363,8 +374,12 @@ func (c *dateDiffFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	sig := &builtinDateDiffSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_DateDiff)
 	return sig, nil
 }
 
@@ -391,14 +406,14 @@ func (b *builtinDateDiffSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 	if invalidLHS, invalidRHS := lhs.InvalidZero(), rhs.InvalidZero(); invalidLHS || invalidRHS {
 		if invalidLHS {
-			err = handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(lhs.String()))
+			err = handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, lhs.String()))
 		}
 		if invalidRHS {
-			err = handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(rhs.String()))
+			err = handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, rhs.String()))
 		}
 		return 0, true, err
 	}
-	return int64(types.DateDiff(lhs.Time, rhs.Time)), false, nil
+	return int64(types.DateDiff(lhs.CoreTime(), rhs.CoreTime())), false, nil
 }
 
 type timeDiffFunctionClass struct {
@@ -421,8 +436,6 @@ func (c *timeDiffFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 
 	arg0FieldTp, arg1FieldTp := args[0].GetType(), args[1].GetType()
 	arg0Tp, arg1Tp := c.getArgEvalTp(arg0FieldTp), c.getArgEvalTp(arg1FieldTp)
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, arg0Tp, arg1Tp)
-
 	arg0Dec, err := getExpressionFsp(ctx, args[0])
 	if err != nil {
 		return nil, err
@@ -431,40 +444,51 @@ func (c *timeDiffFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	if err != nil {
 		return nil, err
 	}
-	bf.tp.Decimal = mathutil.Max(arg0Dec, arg1Dec)
+	fsp := mathutil.Max(arg0Dec, arg1Dec)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, arg0Tp, arg1Tp)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForTime(fsp)
 
 	var sig builtinFunc
 	// arg0 and arg1 must be the same time type(compatible), or timediff will return NULL.
-	// TODO: we don't really need Duration type, actually in MySQL, it use Time class to represent
-	// all the time type, and use filed type to distinguish datetime, date, timestamp or time(duration).
-	// With the duration type, we are hard to port all the MySQL behavior.
 	switch arg0Tp {
 	case types.ETDuration:
 		switch arg1Tp {
 		case types.ETDuration:
 			sig = &builtinDurationDurationTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_DurationDurationTimeDiff)
 		case types.ETDatetime, types.ETTimestamp:
 			sig = &builtinNullTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_NullTimeDiff)
 		default:
 			sig = &builtinDurationStringTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_DurationStringTimeDiff)
 		}
 	case types.ETDatetime, types.ETTimestamp:
 		switch arg1Tp {
 		case types.ETDuration:
 			sig = &builtinNullTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_NullTimeDiff)
 		case types.ETDatetime, types.ETTimestamp:
 			sig = &builtinTimeTimeTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_TimeTimeTimeDiff)
 		default:
 			sig = &builtinTimeStringTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_TimeStringTimeDiff)
 		}
 	default:
 		switch arg1Tp {
 		case types.ETDuration:
 			sig = &builtinStringDurationTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_StringDurationTimeDiff)
 		case types.ETDatetime, types.ETTimestamp:
 			sig = &builtinStringTimeTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_StringTimeTimeDiff)
 		default:
 			sig = &builtinStringStringTimeDiffSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_StringStringTimeDiff)
 		}
 	}
 	return sig, nil
@@ -549,7 +573,7 @@ func (b *builtinDurationStringTimeDiffSig) evalDuration(row chunk.Row) (d types.
 	}
 
 	sc := b.ctx.GetSessionVars().StmtCtx
-	rhs, _, isDuration, err := convertStringToDuration(sc, rhsStr, b.tp.Decimal)
+	rhs, _, isDuration, err := convertStringToDuration(sc, rhsStr, int8(b.tp.Decimal))
 	if err != nil || !isDuration {
 		return d, true, err
 	}
@@ -582,7 +606,7 @@ func (b *builtinStringDurationTimeDiffSig) evalDuration(row chunk.Row) (d types.
 	}
 
 	sc := b.ctx.GetSessionVars().StmtCtx
-	lhs, _, isDuration, err := convertStringToDuration(sc, lhsStr, b.tp.Decimal)
+	lhs, _, isDuration, err := convertStringToDuration(sc, lhsStr, int8(b.tp.Decimal))
 	if err != nil || !isDuration {
 		return d, true, err
 	}
@@ -640,7 +664,7 @@ func (b *builtinTimeStringTimeDiffSig) evalDuration(row chunk.Row) (d types.Dura
 	}
 
 	sc := b.ctx.GetSessionVars().StmtCtx
-	_, rhs, isDuration, err := convertStringToDuration(sc, rhsStr, b.tp.Decimal)
+	_, rhs, isDuration, err := convertStringToDuration(sc, rhsStr, int8(b.tp.Decimal))
 	if err != nil || isDuration {
 		return d, true, err
 	}
@@ -673,7 +697,7 @@ func (b *builtinStringTimeTimeDiffSig) evalDuration(row chunk.Row) (d types.Dura
 	}
 
 	sc := b.ctx.GetSessionVars().StmtCtx
-	_, lhs, isDuration, err := convertStringToDuration(sc, lhsStr, b.tp.Decimal)
+	_, lhs, isDuration, err := convertStringToDuration(sc, lhsStr, int8(b.tp.Decimal))
 	if err != nil || isDuration {
 		return d, true, err
 	}
@@ -706,7 +730,7 @@ func (b *builtinStringStringTimeDiffSig) evalDuration(row chunk.Row) (d types.Du
 	}
 
 	sc := b.ctx.GetSessionVars().StmtCtx
-	fsp := b.tp.Decimal
+	fsp := int8(b.tp.Decimal)
 	lhsDur, lhsTime, lhsIsDuration, err := convertStringToDuration(sc, lhs, fsp)
 	if err != nil {
 		return d, true, err
@@ -748,12 +772,12 @@ func (b *builtinNullTimeDiffSig) evalDuration(row chunk.Row) (d types.Duration, 
 
 // convertStringToDuration converts string to duration, it return types.Time because in some case
 // it will converts string to datetime.
-func convertStringToDuration(sc *stmtctx.StatementContext, str string, fsp int) (d types.Duration, t types.Time,
+func convertStringToDuration(sc *stmtctx.StatementContext, str string, fsp int8) (d types.Duration, t types.Time,
 	isDuration bool, err error) {
 	if n := strings.IndexByte(str, '.'); n >= 0 {
 		lenStrFsp := len(str[n+1:])
-		if lenStrFsp <= types.MaxFsp {
-			fsp = mathutil.Max(lenStrFsp, fsp)
+		if lenStrFsp <= int(types.MaxFsp) {
+			fsp = mathutil.MaxInt8(int8(lenStrFsp), fsp)
 		}
 	}
 	return types.StrToDuration(sc, str, fsp)
@@ -767,7 +791,10 @@ func (c *dateFormatFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETDatetime, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETDatetime, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 	// worst case: formatMask=%r%r%r...%r, each %r takes 11 characters
 	bf.tp.Flen = (args[1].GetType().Flen + 1) / 2 * 11
 	sig := &builtinDateFormatSig{bf}
@@ -792,12 +819,27 @@ func (b *builtinDateFormatSig) evalString(row chunk.Row) (string, bool, error) {
 	if isNull || err != nil {
 		return "", isNull, handleInvalidTimeError(b.ctx, err)
 	}
-	if t.InvalidZero() {
-		return "", true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(t.String()))
-	}
 	formatMask, isNull, err := b.args[1].EvalString(b.ctx, row)
 	if isNull || err != nil {
 		return "", isNull, err
+	}
+	// MySQL compatibility, #11203
+	// If format mask is 0 then return 0 without warnings
+	if formatMask == "0" {
+		return "0", false, nil
+	}
+
+	if t.InvalidZero() {
+		// MySQL compatibility, #11203
+		// 0 | 0.0 should be converted to null without warnings
+		n, err := t.ToNumber().ToInt()
+		isOriginalIntOrDecimalZero := err == nil && n == 0
+		// Args like "0000-00-00", "0000-00-00 00:00:00" set Fsp to 6
+		isOriginalStringZero := t.Fsp() > 0
+		if isOriginalIntOrDecimalZero && !isOriginalStringZero {
+			return "", true, nil
+		}
+		return "", true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, t.String()))
 	}
 
 	res, err := t.DateFormat(formatMask)
@@ -812,9 +854,13 @@ func (c *fromDaysFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, types.ETInt)
-	bf.tp.Flen, bf.tp.Decimal = 10, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETInt)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDate()
 	sig := &builtinFromDaysSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_FromDays)
 	return sig, nil
 }
 
@@ -833,7 +879,7 @@ func (b *builtinFromDaysSig) Clone() builtinFunc {
 func (b *builtinFromDaysSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	n, isNull, err := b.args[0].EvalInt(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	return types.TimeFromDays(n), false, nil
@@ -847,9 +893,13 @@ func (c *hourFunctionClass) getFunction(ctx sessionctx.Context, args []Expressio
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDuration)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDuration)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen, bf.tp.Decimal = 3, 0
 	sig := &builtinHourSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Hour)
 	return sig, nil
 }
 
@@ -882,9 +932,13 @@ func (c *minuteFunctionClass) getFunction(ctx sessionctx.Context, args []Express
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDuration)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDuration)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen, bf.tp.Decimal = 2, 0
 	sig := &builtinMinuteSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Minute)
 	return sig, nil
 }
 
@@ -917,9 +971,13 @@ func (c *secondFunctionClass) getFunction(ctx sessionctx.Context, args []Express
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDuration)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDuration)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen, bf.tp.Decimal = 2, 0
 	sig := &builtinSecondSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Second)
 	return sig, nil
 }
 
@@ -952,9 +1010,13 @@ func (c *microSecondFunctionClass) getFunction(ctx sessionctx.Context, args []Ex
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDuration)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDuration)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen, bf.tp.Decimal = 6, 0
 	sig := &builtinMicroSecondSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_MicroSecond)
 	return sig, nil
 }
 
@@ -987,9 +1049,13 @@ func (c *monthFunctionClass) getFunction(ctx sessionctx.Context, args []Expressi
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen, bf.tp.Decimal = 2, 0
 	sig := &builtinMonthSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Month)
 	return sig, nil
 }
 
@@ -1014,12 +1080,13 @@ func (b *builtinMonthSig) evalInt(row chunk.Row) (int64, bool, error) {
 
 	if date.IsZero() {
 		if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() {
-			return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+			isNull, err = handleInvalidZeroTime(b.ctx, date)
+			return 0, isNull, err
 		}
 		return 0, false, nil
 	}
 
-	return int64(date.Time.Month()), false, nil
+	return int64(date.Month()), false, nil
 }
 
 // monthNameFunctionClass see https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_monthname
@@ -1031,9 +1098,14 @@ func (c *monthNameFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.tp.Charset, bf.tp.Collate = ctx.GetSessionVars().GetCharsetInfo()
 	bf.tp.Flen = 10
 	sig := &builtinMonthNameSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_MonthName)
 	return sig, nil
 }
 
@@ -1052,9 +1124,9 @@ func (b *builtinMonthNameSig) evalString(row chunk.Row) (string, bool, error) {
 	if isNull || err != nil {
 		return "", true, handleInvalidTimeError(b.ctx, err)
 	}
-	mon := arg.Time.Month()
+	mon := arg.Month()
 	if (arg.IsZero() && b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode()) || mon < 0 || mon > len(types.MonthNames) {
-		return "", true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+		return "", true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, arg.String()))
 	} else if mon == 0 || arg.IsZero() {
 		return "", true, nil
 	}
@@ -1069,9 +1141,14 @@ func (c *dayNameFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.tp.Charset, bf.tp.Collate = ctx.GetSessionVars().GetCharsetInfo()
 	bf.tp.Flen = 10
 	sig := &builtinDayNameSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_DayName)
 	return sig, nil
 }
 
@@ -1091,12 +1168,12 @@ func (b *builtinDayNameSig) evalIndex(row chunk.Row) (int64, bool, error) {
 		return 0, isNull, err
 	}
 	if arg.InvalidZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, arg.String()))
 	}
 	// Monday is 0, ... Sunday = 6 in MySQL
 	// but in go, Sunday is 0, ... Saturday is 6
 	// w will do a conversion.
-	res := (int64(arg.Time.Weekday()) + 6) % 7
+	res := (int64(arg.Weekday()) + 6) % 7
 	return res, false, nil
 }
 
@@ -1134,9 +1211,13 @@ func (c *dayOfMonthFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 2
 	sig := &builtinDayOfMonthSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_DayOfMonth)
 	return sig, nil
 }
 
@@ -1159,11 +1240,12 @@ func (b *builtinDayOfMonthSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 	if arg.IsZero() {
 		if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() {
-			return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+			isNull, err = handleInvalidZeroTime(b.ctx, arg)
+			return 0, isNull, err
 		}
 		return 0, false, nil
 	}
-	return int64(arg.Time.Day()), false, nil
+	return int64(arg.Day()), false, nil
 }
 
 type dayOfWeekFunctionClass struct {
@@ -1174,9 +1256,13 @@ func (c *dayOfWeekFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 1
 	sig := &builtinDayOfWeekSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_DayOfWeek)
 	return sig, nil
 }
 
@@ -1198,10 +1284,11 @@ func (b *builtinDayOfWeekSig) evalInt(row chunk.Row) (int64, bool, error) {
 		return 0, true, handleInvalidTimeError(b.ctx, err)
 	}
 	if arg.InvalidZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+		isNull, err = handleInvalidZeroTime(b.ctx, arg)
+		return 0, isNull, err
 	}
 	// 1 is Sunday, 2 is Monday, .... 7 is Saturday
-	return int64(arg.Time.Weekday() + 1), false, nil
+	return int64(arg.Weekday() + 1), false, nil
 }
 
 type dayOfYearFunctionClass struct {
@@ -1212,9 +1299,13 @@ func (c *dayOfYearFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 3
 	sig := &builtinDayOfYearSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_DayOfYear)
 	return sig, nil
 }
 
@@ -1236,10 +1327,11 @@ func (b *builtinDayOfYearSig) evalInt(row chunk.Row) (int64, bool, error) {
 		return 0, isNull, handleInvalidTimeError(b.ctx, err)
 	}
 	if arg.InvalidZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+		isNull, err := handleInvalidZeroTime(b.ctx, arg)
+		return 0, isNull, err
 	}
 
-	return int64(arg.Time.YearDay()), false, nil
+	return int64(arg.YearDay()), false, nil
 }
 
 type weekFunctionClass struct {
@@ -1256,15 +1348,20 @@ func (c *weekFunctionClass) getFunction(ctx sessionctx.Context, args []Expressio
 		argTps = append(argTps, types.ETInt)
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, argTps...)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, argTps...)
+	if err != nil {
+		return nil, err
+	}
 
 	bf.tp.Flen, bf.tp.Decimal = 2, 0
 
 	var sig builtinFunc
 	if len(args) == 2 {
 		sig = &builtinWeekWithModeSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_WeekWithMode)
 	} else {
 		sig = &builtinWeekWithoutModeSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_WeekWithoutMode)
 	}
 	return sig, nil
 }
@@ -1289,7 +1386,7 @@ func (b *builtinWeekWithModeSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 
 	if date.IsZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, date.String()))
 	}
 
 	mode, isNull, err := b.args[1].EvalInt(b.ctx, row)
@@ -1297,7 +1394,7 @@ func (b *builtinWeekWithModeSig) evalInt(row chunk.Row) (int64, bool, error) {
 		return 0, isNull, err
 	}
 
-	week := date.Time.Week(int(mode))
+	week := date.Week(int(mode))
 	return int64(week), false, nil
 }
 
@@ -1321,7 +1418,7 @@ func (b *builtinWeekWithoutModeSig) evalInt(row chunk.Row) (int64, bool, error) 
 	}
 
 	if date.IsZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, date.String()))
 	}
 
 	mode := 0
@@ -1333,7 +1430,7 @@ func (b *builtinWeekWithoutModeSig) evalInt(row chunk.Row) (int64, bool, error) 
 		}
 	}
 
-	week := date.Time.Week(mode)
+	week := date.Week(mode)
 	return int64(week), false, nil
 }
 
@@ -1346,10 +1443,14 @@ func (c *weekDayFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 		return nil, err
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 1
 
 	sig := &builtinWeekDaySig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_WeekDay)
 	return sig, nil
 }
 
@@ -1371,10 +1472,10 @@ func (b *builtinWeekDaySig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 
 	if date.IsZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, date.String()))
 	}
 
-	return int64(date.Time.Weekday()+6) % 7, false, nil
+	return int64(date.Weekday()+6) % 7, false, nil
 }
 
 type weekOfYearFunctionClass struct {
@@ -1385,9 +1486,13 @@ func (c *weekOfYearFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen, bf.tp.Decimal = 2, 0
 	sig := &builtinWeekOfYearSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_WeekOfYear)
 	return sig, nil
 }
 
@@ -1411,10 +1516,10 @@ func (b *builtinWeekOfYearSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 
 	if date.IsZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, date.String()))
 	}
 
-	week := date.Time.Week(3)
+	week := date.Week(3)
 	return int64(week), false, nil
 }
 
@@ -1426,9 +1531,13 @@ func (c *yearFunctionClass) getFunction(ctx sessionctx.Context, args []Expressio
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen, bf.tp.Decimal = 4, 0
 	sig := &builtinYearSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Year)
 	return sig, nil
 }
 
@@ -1453,11 +1562,12 @@ func (b *builtinYearSig) evalInt(row chunk.Row) (int64, bool, error) {
 
 	if date.IsZero() {
 		if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() {
-			return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+			isNull, err := handleInvalidZeroTime(b.ctx, date)
+			return 0, isNull, err
 		}
 		return 0, false, nil
 	}
-	return int64(date.Time.Year()), false, nil
+	return int64(date.Year()), false, nil
 }
 
 type yearWeekFunctionClass struct {
@@ -1473,15 +1583,20 @@ func (c *yearWeekFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 		argTps = append(argTps, types.ETInt)
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, argTps...)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, argTps...)
+	if err != nil {
+		return nil, err
+	}
 
 	bf.tp.Flen, bf.tp.Decimal = 6, 0
 
 	var sig builtinFunc
 	if len(args) == 2 {
 		sig = &builtinYearWeekWithModeSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_YearWeekWithMode)
 	} else {
 		sig = &builtinYearWeekWithoutModeSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_YearWeekWithoutMode)
 	}
 	return sig, nil
 }
@@ -1504,7 +1619,7 @@ func (b *builtinYearWeekWithModeSig) evalInt(row chunk.Row) (int64, bool, error)
 		return 0, isNull, handleInvalidTimeError(b.ctx, err)
 	}
 	if date.IsZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, date.String()))
 	}
 
 	mode, isNull, err := b.args[1].EvalInt(b.ctx, row)
@@ -1515,7 +1630,7 @@ func (b *builtinYearWeekWithModeSig) evalInt(row chunk.Row) (int64, bool, error)
 		mode = 0
 	}
 
-	year, week := date.Time.YearWeek(int(mode))
+	year, week := date.YearWeek(int(mode))
 	result := int64(week + year*100)
 	if result < 0 {
 		return int64(math.MaxUint32), false, nil
@@ -1542,10 +1657,10 @@ func (b *builtinYearWeekWithoutModeSig) evalInt(row chunk.Row) (int64, bool, err
 	}
 
 	if date.InvalidZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, date.String()))
 	}
 
-	year, week := date.Time.YearWeek(0)
+	year, week := date.YearWeek(0)
 	result := int64(week + year*100)
 	if result < 0 {
 		return int64(math.MaxUint32), false, nil
@@ -1569,36 +1684,33 @@ func (c *fromUnixTimeFunctionClass) getFunction(ctx sessionctx.Context, args []E
 		argTps = append(argTps, types.ETString)
 	}
 
-	_, isArg0Con := args[0].(*Constant)
 	isArg0Str := args[0].GetType().EvalType() == types.ETString
-	bf := newBaseBuiltinFuncWithTp(ctx, args, retTp, argTps...)
-	if len(args) == 1 {
-		if isArg0Str {
-			bf.tp.Decimal = types.MaxFsp
-		} else if isArg0Con {
-			arg0, _, err1 := args[0].EvalDecimal(ctx, chunk.Row{})
-			if err1 != nil {
-				return sig, err1
-			}
-			fsp := int(arg0.GetDigitsFrac())
-			if fsp > types.MaxFsp {
-				fsp = types.MaxFsp
-			}
-			bf.tp.Decimal = fsp
-		}
-		sig = &builtinFromUnixTime1ArgSig{bf}
-	} else {
-		bf.tp.Flen = args[1].GetType().Flen
-		sig = &builtinFromUnixTime2ArgSig{bf}
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, retTp, argTps...)
+	if err != nil {
+		return nil, err
 	}
+
+	if len(args) > 1 {
+		sig = &builtinFromUnixTime2ArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_FromUnixTime2Arg)
+		return sig, nil
+	}
+
+	// Calculate the time fsp.
+	fsp := int(types.MaxFsp)
+	if !isArg0Str {
+		if args[0].GetType().Decimal != types.UnspecifiedLength {
+			fsp = mathutil.Min(bf.tp.Decimal, args[0].GetType().Decimal)
+		}
+	}
+	bf.setDecimalAndFlenForDatetime(fsp)
+
+	sig = &builtinFromUnixTime1ArgSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_FromUnixTime1Arg)
 	return sig, nil
 }
 
-func evalFromUnixTime(ctx sessionctx.Context, fsp int, row chunk.Row, arg Expression) (res types.Time, isNull bool, err error) {
-	unixTimeStamp, isNull, err := arg.EvalDecimal(ctx, row)
-	if err != nil || isNull {
-		return res, isNull, err
-	}
+func evalFromUnixTime(ctx sessionctx.Context, fsp int8, unixTimeStamp *types.MyDecimal) (res types.Time, isNull bool, err error) {
 	// 0 <= unixTimeStamp <= INT32_MAX
 	if unixTimeStamp.IsNegative() {
 		return res, true, nil
@@ -1630,12 +1742,7 @@ func evalFromUnixTime(ctx sessionctx.Context, fsp int, row chunk.Row, arg Expres
 	if err != nil && !terror.ErrorEqual(err, types.ErrTruncated) {
 		return res, true, err
 	}
-	fracDigitsNumber := int(unixTimeStamp.GetDigitsFrac())
 	if fsp < 0 {
-		fsp = types.MaxFsp
-	}
-	fsp = mathutil.Max(fracDigitsNumber, fsp)
-	if fsp > types.MaxFsp {
 		fsp = types.MaxFsp
 	}
 
@@ -1661,7 +1768,11 @@ func (b *builtinFromUnixTime1ArgSig) Clone() builtinFunc {
 // evalTime evals a builtinFromUnixTime1ArgSig.
 // See https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_from-unixtime
 func (b *builtinFromUnixTime1ArgSig) evalTime(row chunk.Row) (res types.Time, isNull bool, err error) {
-	return evalFromUnixTime(b.ctx, b.tp.Decimal, row, b.args[0])
+	unixTimeStamp, isNull, err := b.args[0].EvalDecimal(b.ctx, row)
+	if err != nil || isNull {
+		return res, isNull, err
+	}
+	return evalFromUnixTime(b.ctx, int8(b.tp.Decimal), unixTimeStamp)
 }
 
 type builtinFromUnixTime2ArgSig struct {
@@ -1681,7 +1792,11 @@ func (b *builtinFromUnixTime2ArgSig) evalString(row chunk.Row) (res string, isNu
 	if isNull || err != nil {
 		return "", true, err
 	}
-	t, isNull, err := evalFromUnixTime(b.ctx, b.tp.Decimal, row, b.args[0])
+	unixTimeStamp, isNull, err := b.args[0].EvalDecimal(b.ctx, row)
+	if err != nil || isNull {
+		return "", isNull, err
+	}
+	t, isNull, err := evalFromUnixTime(b.ctx, int8(b.tp.Decimal), unixTimeStamp)
 	if isNull || err != nil {
 		return "", isNull, err
 	}
@@ -1697,9 +1812,13 @@ func (c *getFormatFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 17
 	sig := &builtinGetFormatSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_GetFormat)
 	return sig, nil
 }
 
@@ -1725,49 +1844,7 @@ func (b *builtinGetFormatSig) evalString(row chunk.Row) (string, bool, error) {
 		return "", isNull, err
 	}
 
-	var res string
-	switch t {
-	case dateFormat:
-		switch l {
-		case usaLocation:
-			res = "%m.%d.%Y"
-		case jisLocation:
-			res = "%Y-%m-%d"
-		case isoLocation:
-			res = "%Y-%m-%d"
-		case eurLocation:
-			res = "%d.%m.%Y"
-		case internalLocation:
-			res = "%Y%m%d"
-		}
-	case datetimeFormat, timestampFormat:
-		switch l {
-		case usaLocation:
-			res = "%Y-%m-%d %H.%i.%s"
-		case jisLocation:
-			res = "%Y-%m-%d %H:%i:%s"
-		case isoLocation:
-			res = "%Y-%m-%d %H:%i:%s"
-		case eurLocation:
-			res = "%Y-%m-%d %H.%i.%s"
-		case internalLocation:
-			res = "%Y%m%d%H%i%s"
-		}
-	case timeFormat:
-		switch l {
-		case usaLocation:
-			res = "%h:%i:%s %p"
-		case jisLocation:
-			res = "%H:%i:%s"
-		case isoLocation:
-			res = "%H:%i:%s"
-		case eurLocation:
-			res = "%H.%i.%s"
-		case internalLocation:
-			res = "%H%i%s"
-		}
-	}
-
+	res := b.getFormat(t, l)
 	return res, false, nil
 }
 
@@ -1775,7 +1852,7 @@ type strToDateFunctionClass struct {
 	baseFunctionClass
 }
 
-func (c *strToDateFunctionClass) getRetTp(ctx sessionctx.Context, arg Expression) (tp byte, fsp int) {
+func (c *strToDateFunctionClass) getRetTp(ctx sessionctx.Context, arg Expression) (tp byte, fsp int8) {
 	tp = mysql.TypeDatetime
 	if _, ok := arg.(*Constant); !ok {
 		return tp, types.MaxFsp
@@ -1785,6 +1862,7 @@ func (c *strToDateFunctionClass) getRetTp(ctx sessionctx.Context, arg Expression
 	if err != nil || isNull {
 		return
 	}
+
 	isDuration, isDate := types.GetFormatType(format)
 	if isDuration && !isDate {
 		tp = mysql.TypeDuration
@@ -1805,25 +1883,29 @@ func (c *strToDateFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	retTp, fsp := c.getRetTp(ctx, args[1])
 	switch retTp {
 	case mysql.TypeDate:
-		bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, types.ETString, types.ETString)
-		bf.tp.Tp, bf.tp.Flen, bf.tp.Decimal = mysql.TypeDate, mysql.MaxDateWidth, types.MinFsp
+		bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETString, types.ETString)
+		if err != nil {
+			return nil, err
+		}
+		bf.setDecimalAndFlenForDate()
 		sig = &builtinStrToDateDateSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_StrToDateDate)
 	case mysql.TypeDatetime:
-		bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, types.ETString, types.ETString)
-		if fsp == types.MinFsp {
-			bf.tp.Flen, bf.tp.Decimal = mysql.MaxDatetimeWidthNoFsp, types.MinFsp
-		} else {
-			bf.tp.Flen, bf.tp.Decimal = mysql.MaxDatetimeWidthWithFsp, types.MaxFsp
+		bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETString, types.ETString)
+		if err != nil {
+			return nil, err
 		}
+		bf.setDecimalAndFlenForDatetime(int(fsp))
 		sig = &builtinStrToDateDatetimeSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_StrToDateDatetime)
 	case mysql.TypeDuration:
-		bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, types.ETString, types.ETString)
-		if fsp == types.MinFsp {
-			bf.tp.Flen, bf.tp.Decimal = mysql.MaxDurationWidthNoFsp, types.MinFsp
-		} else {
-			bf.tp.Flen, bf.tp.Decimal = mysql.MaxDurationWidthWithFsp, types.MaxFsp
+		bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, types.ETString, types.ETString)
+		if err != nil {
+			return nil, err
 		}
+		bf.setDecimalAndFlenForTime(int(fsp))
 		sig = &builtinStrToDateDurationSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_StrToDateDuration)
 	}
 	return sig, nil
 }
@@ -1841,22 +1923,23 @@ func (b *builtinStrToDateDateSig) Clone() builtinFunc {
 func (b *builtinStrToDateDateSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	date, isNull, err := b.args[0].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 	format, isNull, err := b.args[1].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 	var t types.Time
 	sc := b.ctx.GetSessionVars().StmtCtx
 	succ := t.StrToDate(sc, date, format)
 	if !succ {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(t.String()))
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, t.String()))
 	}
-	if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() && (t.Time.Year() == 0 || t.Time.Month() == 0 || t.Time.Day() == 0) {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(t.String()))
+	if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() && (t.Year() == 0 || t.Month() == 0 || t.Day() == 0) {
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, types.ErrWrongValueForType.GenWithStackByArgs(types.DateTimeStr, date, ast.StrToDate))
 	}
-	t.Type, t.Fsp = mysql.TypeDate, types.MinFsp
+	t.SetType(mysql.TypeDate)
+	t.SetFsp(types.MinFsp)
 	return t, false, nil
 }
 
@@ -1873,22 +1956,23 @@ func (b *builtinStrToDateDatetimeSig) Clone() builtinFunc {
 func (b *builtinStrToDateDatetimeSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	date, isNull, err := b.args[0].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 	format, isNull, err := b.args[1].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 	var t types.Time
 	sc := b.ctx.GetSessionVars().StmtCtx
 	succ := t.StrToDate(sc, date, format)
 	if !succ {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(t.String()))
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, t.String()))
 	}
-	if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() && (t.Time.Year() == 0 || t.Time.Month() == 0 || t.Time.Day() == 0) {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(t.String()))
+	if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() && (t.Year() == 0 || t.Month() == 0 || t.Day() == 0) {
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, t.String()))
 	}
-	t.Type, t.Fsp = mysql.TypeDatetime, b.tp.Decimal
+	t.SetType(mysql.TypeDatetime)
+	t.SetFsp(int8(b.tp.Decimal))
 	return t, false, nil
 }
 
@@ -1918,12 +2002,9 @@ func (b *builtinStrToDateDurationSig) evalDuration(row chunk.Row) (types.Duratio
 	sc := b.ctx.GetSessionVars().StmtCtx
 	succ := t.StrToDate(sc, date, format)
 	if !succ {
-		return types.Duration{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(t.String()))
+		return types.Duration{}, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, t.String()))
 	}
-	if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() && (t.Time.Year() == 0 || t.Time.Month() == 0 || t.Time.Day() == 0) {
-		return types.Duration{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(t.String()))
-	}
-	t.Fsp = b.tp.Decimal
+	t.SetFsp(int8(b.tp.Decimal))
 	dur, err := t.ConvertToDuration()
 	return dur, err != nil, err
 }
@@ -1936,18 +2017,29 @@ func (c *sysDateFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
+	fsp, err := getFspByIntArg(ctx, args)
+	if err != nil {
+		return nil, err
+	}
 	var argTps = make([]types.EvalType, 0)
 	if len(args) == 1 {
 		argTps = append(argTps, types.ETInt)
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, argTps...)
-	bf.tp.Flen, bf.tp.Decimal = 19, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, argTps...)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDatetime(fsp)
+	// Illegal parameters have been filtered out in the parser, so the result is always not null.
+	bf.tp.Flag |= mysql.NotNullFlag
 
 	var sig builtinFunc
 	if len(args) == 1 {
 		sig = &builtinSysDateWithFspSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_SysDateWithFsp)
 	} else {
 		sig = &builtinSysDateWithoutFspSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_SysDateWithoutFsp)
 	}
 	return sig, nil
 }
@@ -1967,14 +2059,14 @@ func (b *builtinSysDateWithFspSig) Clone() builtinFunc {
 func (b *builtinSysDateWithFspSig) evalTime(row chunk.Row) (d types.Time, isNull bool, err error) {
 	fsp, isNull, err := b.args[0].EvalInt(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 
 	loc := b.ctx.GetSessionVars().Location()
 	now := time.Now().In(loc)
-	result, err := convertTimeToMysqlTime(now, int(fsp), types.ModeHalfEven)
+	result, err := convertTimeToMysqlTime(now, int8(fsp), types.ModeHalfEven)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	return result, false, nil
 }
@@ -1996,7 +2088,7 @@ func (b *builtinSysDateWithoutFspSig) evalTime(row chunk.Row) (d types.Time, isN
 	now := time.Now().In(tz)
 	result, err := convertTimeToMysqlTime(now, 0, types.ModeHalfEven)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	return result, false, nil
 }
@@ -2009,8 +2101,11 @@ func (c *currentDateFunctionClass) getFunction(ctx sessionctx.Context, args []Ex
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime)
-	bf.tp.Flen, bf.tp.Decimal = 10, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDate()
 	sig := &builtinCurrentDateSig{bf}
 	return sig, nil
 }
@@ -2031,13 +2126,10 @@ func (b *builtinCurrentDateSig) evalTime(row chunk.Row) (d types.Time, isNull bo
 	tz := b.ctx.GetSessionVars().Location()
 	nowTs, err := getStmtTimestamp(b.ctx)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	year, month, day := nowTs.In(tz).Date()
-	result := types.Time{
-		Time: types.FromDate(year, int(month), day, 0, 0, 0, 0),
-		Type: mysql.TypeDate,
-		Fsp:  0}
+	result := types.NewTime(types.FromDate(year, int(month), day, 0, 0, 0, 0), mysql.TypeDate, 0)
 	return result, false, nil
 }
 
@@ -2050,29 +2142,29 @@ func (c *currentTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Ex
 		return nil, err
 	}
 
+	fsp, err := getFspByIntArg(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	var argTps = make([]types.EvalType, 0)
+	if len(args) == 1 {
+		argTps = append(argTps, types.ETInt)
+	}
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, argTps...)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForTime(fsp)
+	// 1. no sign.
+	// 2. hour is in the 2-digit range.
+	bf.tp.Flen -= 2
 	if len(args) == 0 {
-		bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration)
-		bf.tp.Flen, bf.tp.Decimal = mysql.MaxDurationWidthNoFsp, types.MinFsp
 		sig = &builtinCurrentTime0ArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_CurrentTime0Arg)
 		return sig, nil
 	}
-	// args[0] must be a constant which should not be null.
-	_, ok := args[0].(*Constant)
-	fsp := int64(types.MaxFsp)
-	if ok {
-		fsp, _, err = args[0].EvalInt(ctx, chunk.Row{})
-		if err != nil {
-			return nil, err
-		}
-		if fsp > int64(types.MaxFsp) {
-			return nil, errors.Errorf("Too-big precision %v specified for 'curtime'. Maximum is %v.", fsp, types.MaxFsp)
-		} else if fsp < int64(types.MinFsp) {
-			return nil, errors.Errorf("Invalid negative %d specified, must in [0, 6].", fsp)
-		}
-	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, types.ETInt)
-	bf.tp.Flen, bf.tp.Decimal = mysql.MaxDurationWidthWithFsp, int(fsp)
 	sig = &builtinCurrentTime1ArgSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_CurrentTime1Arg)
 	return sig, nil
 }
 
@@ -2121,7 +2213,7 @@ func (b *builtinCurrentTime1ArgSig) evalDuration(row chunk.Row) (types.Duration,
 		return types.Duration{}, true, err
 	}
 	dur := nowTs.In(tz).Format(types.TimeFSPFormat)
-	res, err := types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, dur, int(fsp))
+	res, err := types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, dur, int8(fsp))
 	if err != nil {
 		return types.Duration{}, true, err
 	}
@@ -2137,12 +2229,17 @@ func (c *timeFunctionClass) getFunction(ctx sessionctx.Context, args []Expressio
 	if err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, types.ETString)
-	bf.tp.Decimal, err = getExpressionFsp(ctx, args[0])
+	fsp, err := getExpressionFsp(ctx, args[0])
 	if err != nil {
 		return nil, err
 	}
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, types.ETString)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForTime(fsp)
 	sig := &builtinTimeSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Time)
 	return sig, nil
 }
 
@@ -2169,12 +2266,14 @@ func (b *builtinTimeSig) evalDuration(row chunk.Row) (res types.Duration, isNull
 		fsp = len(expr) - idx - 1
 	}
 
-	if fsp, err = types.CheckFsp(fsp); err != nil {
+	var tmpFsp int8
+	if tmpFsp, err = types.CheckFsp(fsp); err != nil {
 		return res, isNull, err
 	}
+	fsp = int(tmpFsp)
 
 	sc := b.ctx.GetSessionVars().StmtCtx
-	res, err = types.ParseDuration(sc, expr, fsp)
+	res, err = types.ParseDuration(sc, expr, int8(fsp))
 	if types.ErrTruncatedWrongVal.Equal(err) {
 		err = sc.HandleTruncate(err)
 	}
@@ -2199,17 +2298,17 @@ func (c *timeLiteralFunctionClass) getFunction(ctx sessionctx.Context, args []Ex
 	}
 	str := dt.GetString()
 	if !isDuration(str) {
-		return nil, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(str)
+		return nil, types.ErrWrongValue.GenWithStackByArgs(types.TimeStr, str)
 	}
 	duration, err := types.ParseDuration(ctx.GetSessionVars().StmtCtx, str, types.GetFsp(str))
 	if err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, []Expression{}, types.ETDuration)
-	bf.tp.Flen, bf.tp.Decimal = 10, duration.Fsp
-	if duration.Fsp > 0 {
-		bf.tp.Flen += 1 + duration.Fsp
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, []Expression{}, types.ETDuration)
+	if err != nil {
+		return nil, err
 	}
+	bf.setDecimalAndFlenForTime(int(duration.Fsp))
 	sig := &builtinTimeLiteralSig{bf, duration}
 	return sig, nil
 }
@@ -2239,8 +2338,11 @@ func (c *utcDateFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime)
-	bf.tp.Flen, bf.tp.Decimal = 10, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDate()
 	sig := &builtinUTCDateSig{bf}
 	return sig, nil
 }
@@ -2260,37 +2362,15 @@ func (b *builtinUTCDateSig) Clone() builtinFunc {
 func (b *builtinUTCDateSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	nowTs, err := getStmtTimestamp(b.ctx)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	year, month, day := nowTs.UTC().Date()
-	result := types.Time{
-		Time: types.FromGoTime(time.Date(year, month, day, 0, 0, 0, 0, time.UTC)),
-		Type: mysql.TypeDate,
-		Fsp:  types.UnspecifiedFsp}
+	result := types.NewTime(types.FromGoTime(time.Date(year, month, day, 0, 0, 0, 0, time.UTC)), mysql.TypeDate, types.UnspecifiedFsp)
 	return result, false, nil
 }
 
 type utcTimestampFunctionClass struct {
 	baseFunctionClass
-}
-
-func getFlenAndDecimal4UTCTimestampAndNow(ctx sessionctx.Context, arg Expression) (flen, decimal int) {
-	if constant, ok := arg.(*Constant); ok {
-		fsp, isNull, err := constant.EvalInt(ctx, chunk.Row{})
-		if isNull || err != nil || fsp > int64(types.MaxFsp) {
-			decimal = types.MaxFsp
-		} else if fsp < int64(types.MinFsp) {
-			decimal = types.MinFsp
-		} else {
-			decimal = int(fsp)
-		}
-	}
-	if decimal > 0 {
-		flen = 19 + 1 + decimal
-	} else {
-		flen = 19
-	}
-	return flen, decimal
 }
 
 func (c *utcTimestampFunctionClass) getFunction(ctx sessionctx.Context, args []Expression) (builtinFunc, error) {
@@ -2301,31 +2381,35 @@ func (c *utcTimestampFunctionClass) getFunction(ctx sessionctx.Context, args []E
 	if len(args) == 1 {
 		argTps = append(argTps, types.ETInt)
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, argTps...)
-
-	if len(args) == 1 {
-		bf.tp.Flen, bf.tp.Decimal = getFlenAndDecimal4UTCTimestampAndNow(bf.ctx, args[0])
-	} else {
-		bf.tp.Flen, bf.tp.Decimal = 19, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, argTps...)
+	if err != nil {
+		return nil, err
 	}
 
+	fsp, err := getFspByIntArg(bf.ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDatetime(fsp)
 	var sig builtinFunc
 	if len(args) == 1 {
 		sig = &builtinUTCTimestampWithArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_UTCTimestampWithArg)
 	} else {
 		sig = &builtinUTCTimestampWithoutArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_UTCTimestampWithoutArg)
 	}
 	return sig, nil
 }
 
-func evalUTCTimestampWithFsp(ctx sessionctx.Context, fsp int) (types.Time, bool, error) {
+func evalUTCTimestampWithFsp(ctx sessionctx.Context, fsp int8) (types.Time, bool, error) {
 	nowTs, err := getStmtTimestamp(ctx)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	result, err := convertTimeToMysqlTime(nowTs.UTC(), fsp, types.ModeHalfEven)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	return result, false, nil
 }
@@ -2345,17 +2429,17 @@ func (b *builtinUTCTimestampWithArgSig) Clone() builtinFunc {
 func (b *builtinUTCTimestampWithArgSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	num, isNull, err := b.args[0].EvalInt(b.ctx, row)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	if !isNull && num > int64(types.MaxFsp) {
-		return types.Time{}, true, errors.Errorf("Too-big precision %v specified for 'utc_timestamp'. Maximum is %v.", num, types.MaxFsp)
+		return types.ZeroTime, true, errors.Errorf("Too-big precision %v specified for 'utc_timestamp'. Maximum is %v.", num, types.MaxFsp)
 	}
 	if !isNull && num < int64(types.MinFsp) {
-		return types.Time{}, true, errors.Errorf("Invalid negative %d specified, must in [0, 6].", num)
+		return types.ZeroTime, true, errors.Errorf("Invalid negative %d specified, must in [0, 6].", num)
 	}
 
-	result, isNull, err := evalUTCTimestampWithFsp(b.ctx, int(num))
+	result, isNull, err := evalUTCTimestampWithFsp(b.ctx, int8(num))
 	return result, isNull, err
 }
 
@@ -2372,7 +2456,7 @@ func (b *builtinUTCTimestampWithoutArgSig) Clone() builtinFunc {
 // evalTime evals UTC_TIMESTAMP().
 // See https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_utc-timestamp
 func (b *builtinUTCTimestampWithoutArgSig) evalTime(row chunk.Row) (types.Time, bool, error) {
-	result, isNull, err := evalUTCTimestampWithFsp(b.ctx, 0)
+	result, isNull, err := evalUTCTimestampWithFsp(b.ctx, int8(0))
 	return result, isNull, err
 }
 
@@ -2388,28 +2472,47 @@ func (c *nowFunctionClass) getFunction(ctx sessionctx.Context, args []Expression
 	if len(args) == 1 {
 		argTps = append(argTps, types.ETInt)
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, argTps...)
-
-	if len(args) == 1 {
-		bf.tp.Flen, bf.tp.Decimal = getFlenAndDecimal4UTCTimestampAndNow(bf.ctx, args[0])
-	} else {
-		bf.tp.Flen, bf.tp.Decimal = 19, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, argTps...)
+	if err != nil {
+		return nil, err
 	}
+
+	fsp, err := getFspByIntArg(bf.ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDatetime(fsp)
 
 	var sig builtinFunc
 	if len(args) == 1 {
 		sig = &builtinNowWithArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_NowWithArg)
 	} else {
 		sig = &builtinNowWithoutArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_NowWithoutArg)
 	}
 	return sig, nil
 }
 
-func evalNowWithFsp(ctx sessionctx.Context, fsp int) (types.Time, bool, error) {
+// GetStmtTimestamp directly calls getTimeZone with timezone
+func GetStmtTimestamp(ctx sessionctx.Context) (time.Time, error) {
+	tz := getTimeZone(ctx)
+	tVal, err := getStmtTimestamp(ctx)
+	if err != nil {
+		return tVal, err
+	}
+	return tVal.In(tz), nil
+}
+
+func evalNowWithFsp(ctx sessionctx.Context, fsp int8) (types.Time, bool, error) {
 	nowTs, err := getStmtTimestamp(ctx)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
+
+	failpoint.Inject("injectNow", func(val failpoint.Value) {
+		nowTs = time.Unix(int64(val.(int)), 0)
+	})
 
 	// In MySQL's implementation, now() will truncate the result instead of rounding it.
 	// Results below are from MySQL 5.7, which can prove it.
@@ -2421,12 +2524,12 @@ func evalNowWithFsp(ctx sessionctx.Context, fsp int) (types.Time, bool, error) {
 	//	+----------------------------+-------------------------+---------------------+
 	result, err := convertTimeToMysqlTime(nowTs, fsp, types.ModeTruncate)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	err = result.ConvertTimeZone(time.Local, ctx.GetSessionVars().Location())
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	return result, false, nil
@@ -2448,18 +2551,18 @@ func (b *builtinNowWithArgSig) evalTime(row chunk.Row) (types.Time, bool, error)
 	fsp, isNull, err := b.args[0].EvalInt(b.ctx, row)
 
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	if isNull {
 		fsp = 0
 	} else if fsp > int64(types.MaxFsp) {
-		return types.Time{}, true, errors.Errorf("Too-big precision %v specified for 'now'. Maximum is %v.", fsp, types.MaxFsp)
+		return types.ZeroTime, true, errors.Errorf("Too-big precision %v specified for 'now'. Maximum is %v.", fsp, types.MaxFsp)
 	} else if fsp < int64(types.MinFsp) {
-		return types.Time{}, true, errors.Errorf("Invalid negative %d specified, must in [0, 6].", fsp)
+		return types.ZeroTime, true, errors.Errorf("Invalid negative %d specified, must in [0, 6].", fsp)
 	}
 
-	result, isNull, err := evalNowWithFsp(b.ctx, int(fsp))
+	result, isNull, err := evalNowWithFsp(b.ctx, int8(fsp))
 	return result, isNull, err
 }
 
@@ -2476,7 +2579,7 @@ func (b *builtinNowWithoutArgSig) Clone() builtinFunc {
 // evalTime evals NOW()
 // see: https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_now
 func (b *builtinNowWithoutArgSig) evalTime(row chunk.Row) (types.Time, bool, error) {
-	result, isNull, err := evalNowWithFsp(b.ctx, 0)
+	result, isNull, err := evalNowWithFsp(b.ctx, int8(0))
 	return result, isNull, err
 }
 
@@ -2512,13 +2615,90 @@ func (c *extractFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	}
 	var bf baseBuiltinFunc
 	if isDatetimeUnit {
-		bf = newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETString, types.ETDatetime)
-		sig = &builtinExtractDatetimeSig{bf}
+		if args[1].GetType().EvalType() != types.ETString {
+			bf, err = newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETString, types.ETDatetime)
+			if err != nil {
+				return nil, err
+			}
+			sig = &builtinExtractDatetimeSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_ExtractDatetime)
+		} else {
+			bf, err = newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETString, types.ETString)
+			if err != nil {
+				return nil, err
+			}
+			bf.args[1].GetType().Decimal = int(types.MaxFsp)
+			sig = &builtinExtractDatetimeFromStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_ExtractDatetimeFromString)
+		}
 	} else {
-		bf = newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETString, types.ETDuration)
+		bf, err = newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETString, types.ETDuration)
+		if err != nil {
+			return nil, err
+		}
 		sig = &builtinExtractDurationSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_ExtractDuration)
 	}
 	return sig, nil
+}
+
+type builtinExtractDatetimeFromStringSig struct {
+	baseBuiltinFunc
+}
+
+func (b *builtinExtractDatetimeFromStringSig) Clone() builtinFunc {
+	newSig := &builtinExtractDatetimeFromStringSig{}
+	newSig.cloneFrom(&b.baseBuiltinFunc)
+	return newSig
+}
+
+// evalInt evals a builtinExtractDatetimeSig.
+// See https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_extract
+func (b *builtinExtractDatetimeFromStringSig) evalInt(row chunk.Row) (int64, bool, error) {
+	unit, isNull, err := b.args[0].EvalString(b.ctx, row)
+	if isNull || err != nil {
+		return 0, isNull, err
+	}
+	dtStr, isNull, err := b.args[1].EvalString(b.ctx, row)
+	if isNull || err != nil {
+		return 0, isNull, err
+	}
+	sc := b.ctx.GetSessionVars().StmtCtx
+	switch strings.ToUpper(unit) {
+	case "DAY_MICROSECOND", "DAY_SECOND", "DAY_MINUTE", "DAY_HOUR":
+		dur, err := types.ParseDuration(sc, dtStr, types.GetFsp(dtStr))
+		if err != nil {
+			return 0, true, err
+		}
+		res, err := types.ExtractDurationNum(&dur, unit)
+		if err != nil {
+			return 0, true, err
+		}
+		dt, err := types.ParseDatetime(sc, dtStr)
+		if err != nil {
+			return res, false, nil
+		}
+		if dt.Hour() == dur.Hour() && dt.Minute() == dur.Minute() && dt.Second() == dur.Second() && dt.Year() > 0 {
+			res, err = types.ExtractDatetimeNum(&dt, unit)
+		}
+		return res, err != nil, err
+	}
+	dt, err := types.ParseDatetime(sc, dtStr)
+	if err != nil {
+		if !terror.ErrorEqual(err, types.ErrWrongValue) {
+			return 0, true, err
+		}
+	}
+	if dt.IsZero() {
+		dt.SetFsp(int8(b.args[1].GetType().Decimal))
+		if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() {
+			isNull, err := handleInvalidZeroTime(b.ctx, dt)
+			return 0, isNull, err
+		}
+		return 0, false, nil
+	}
+	res, err := types.ExtractDatetimeNum(&dt, unit)
+	return res, err != nil, err
 }
 
 type builtinExtractDatetimeSig struct {
@@ -2571,23 +2751,23 @@ func (b *builtinExtractDurationSig) evalInt(row chunk.Row) (int64, bool, error) 
 	return res, err != nil, err
 }
 
-// baseDateArithmitical is the base class for all "builtinAddDateXXXSig" and "builtinSubDateXXXSig",
+// baseDateArithmetical is the base class for all "builtinAddDateXXXSig" and "builtinSubDateXXXSig",
 // which provides parameter getter and date arithmetical calculate functions.
-type baseDateArithmitical struct {
+type baseDateArithmetical struct {
 	// intervalRegexp is "*Regexp" used to extract string interval for "DAY" unit.
 	intervalRegexp *regexp.Regexp
 }
 
-func newDateArighmeticalUtil() baseDateArithmitical {
-	return baseDateArithmitical{
-		intervalRegexp: regexp.MustCompile(`[\d]+`),
+func newDateArithmeticalUtil() baseDateArithmetical {
+	return baseDateArithmetical{
+		intervalRegexp: regexp.MustCompile(`-?[\d]+`),
 	}
 }
 
-func (du *baseDateArithmitical) getDateFromString(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (types.Time, bool, error) {
+func (du *baseDateArithmetical) getDateFromString(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (types.Time, bool, error) {
 	dateStr, isNull, err := args[0].EvalString(ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	dateTp := mysql.TypeDate
@@ -2597,44 +2777,51 @@ func (du *baseDateArithmitical) getDateFromString(ctx sessionctx.Context, args [
 
 	sc := ctx.GetSessionVars().StmtCtx
 	date, err := types.ParseTime(sc, dateStr, dateTp, types.MaxFsp)
-	return date, err != nil, handleInvalidTimeError(ctx, err)
+	if err != nil {
+		err = handleInvalidTimeError(ctx, err)
+		if err != nil {
+			return types.ZeroTime, true, err
+		}
+		return date, true, handleInvalidTimeError(ctx, err)
+	} else if ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() && (date.Year() == 0 || date.Month() == 0 || date.Day() == 0) {
+		return types.ZeroTime, true, handleInvalidTimeError(ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, dateStr))
+	}
+	return date, false, handleInvalidTimeError(ctx, err)
 }
 
-func (du *baseDateArithmitical) getDateFromInt(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (types.Time, bool, error) {
+func (du *baseDateArithmetical) getDateFromInt(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (types.Time, bool, error) {
 	dateInt, isNull, err := args[0].EvalInt(ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	sc := ctx.GetSessionVars().StmtCtx
 	date, err := types.ParseTimeFromInt64(sc, dateInt)
 	if err != nil {
-		return types.Time{}, true, handleInvalidTimeError(ctx, err)
+		return types.ZeroTime, true, handleInvalidTimeError(ctx, err)
 	}
 
 	dateTp := mysql.TypeDate
-	if date.Type == mysql.TypeDatetime || date.Type == mysql.TypeTimestamp || types.IsClockUnit(unit) {
+	if date.Type() == mysql.TypeDatetime || date.Type() == mysql.TypeTimestamp || types.IsClockUnit(unit) {
 		dateTp = mysql.TypeDatetime
 	}
-	date.Type = dateTp
+	date.SetType(dateTp)
 	return date, false, nil
 }
 
-func (du *baseDateArithmitical) getDateFromDatetime(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (types.Time, bool, error) {
+func (du *baseDateArithmetical) getDateFromDatetime(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (types.Time, bool, error) {
 	date, isNull, err := args[0].EvalTime(ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
-	dateTp := mysql.TypeDate
-	if date.Type == mysql.TypeDatetime || date.Type == mysql.TypeTimestamp || types.IsClockUnit(unit) {
-		dateTp = mysql.TypeDatetime
+	if types.IsClockUnit(unit) {
+		date.SetType(mysql.TypeDatetime)
 	}
-	date.Type = dateTp
 	return date, false, nil
 }
 
-func (du *baseDateArithmitical) getIntervalFromString(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
+func (du *baseDateArithmetical) getIntervalFromString(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
 	interval, isNull, err := args[1].EvalString(ctx, row)
 	if isNull || err != nil {
 		return "", true, err
@@ -2652,7 +2839,7 @@ func (du *baseDateArithmitical) getIntervalFromString(ctx sessionctx.Context, ar
 	return interval, false, nil
 }
 
-func (du *baseDateArithmitical) getIntervalFromDecimal(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
+func (du *baseDateArithmetical) getIntervalFromDecimal(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
 	decimal, isNull, err := args[1].EvalDecimal(ctx, row)
 	if isNull || err != nil {
 		return "", true, err
@@ -2693,15 +2880,11 @@ func (du *baseDateArithmitical) getIntervalFromDecimal(ctx sessionctx.Context, a
 			interval = "-" + interval
 		}
 	case "SECOND":
-		// Decimal's EvalString is like %f format.
-		interval, isNull, err = args[1].EvalString(ctx, row)
-		if isNull || err != nil {
-			return "", true, err
-		}
+		// interval is already like the %f format.
 	default:
 		// YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, MICROSECOND
-		args[1] = WrapWithCastAsInt(ctx, args[1])
-		interval, isNull, err = args[1].EvalString(ctx, row)
+		castExpr := WrapWithCastAsString(ctx, WrapWithCastAsInt(ctx, args[1]))
+		interval, isNull, err = castExpr.EvalString(ctx, row)
 		if isNull || err != nil {
 			return "", true, err
 		}
@@ -2710,7 +2893,7 @@ func (du *baseDateArithmitical) getIntervalFromDecimal(ctx sessionctx.Context, a
 	return interval, false, nil
 }
 
-func (du *baseDateArithmitical) getIntervalFromInt(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
+func (du *baseDateArithmetical) getIntervalFromInt(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
 	interval, isNull, err := args[1].EvalInt(ctx, row)
 	if isNull || err != nil {
 		return "", true, err
@@ -2718,7 +2901,7 @@ func (du *baseDateArithmitical) getIntervalFromInt(ctx sessionctx.Context, args 
 	return strconv.FormatInt(interval, 10), false, nil
 }
 
-func (du *baseDateArithmitical) getIntervalFromReal(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
+func (du *baseDateArithmetical) getIntervalFromReal(ctx sessionctx.Context, args []Expression, row chunk.Row, unit string) (string, bool, error) {
 	interval, isNull, err := args[1].EvalReal(ctx, row)
 	if isNull || err != nil {
 		return "", true, err
@@ -2726,42 +2909,52 @@ func (du *baseDateArithmitical) getIntervalFromReal(ctx sessionctx.Context, args
 	return strconv.FormatFloat(interval, 'f', args[1].GetType().Decimal, 64), false, nil
 }
 
-func (du *baseDateArithmitical) add(ctx sessionctx.Context, date types.Time, interval string, unit string) (types.Time, bool, error) {
+func (du *baseDateArithmetical) add(ctx sessionctx.Context, date types.Time, interval string, unit string) (types.Time, bool, error) {
 	year, month, day, nano, err := types.ParseDurationValue(unit, interval)
 	if err := handleInvalidTimeError(ctx, err); err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
+	return du.addDate(ctx, date, year, month, day, nano)
+}
 
-	goTime, err := date.Time.GoTime(time.Local)
+func (du *baseDateArithmetical) addDate(ctx sessionctx.Context, date types.Time, year, month, day, nano int64) (types.Time, bool, error) {
+	goTime, err := date.GoTime(time.UTC)
 	if err := handleInvalidTimeError(ctx, err); err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	goTime = goTime.Add(time.Duration(nano))
 	goTime = types.AddDate(year, month, day, goTime)
 
 	if goTime.Nanosecond() == 0 {
-		date.Fsp = 0
+		date.SetFsp(0)
 	} else {
-		date.Fsp = 6
+		date.SetFsp(6)
 	}
 
-	if goTime.Year() < 0 || goTime.Year() > (1<<16-1) {
-		return types.Time{}, true, handleInvalidTimeError(ctx, types.ErrDatetimeFunctionOverflow.GenWithStackByArgs("datetime"))
+	// fix https://github.com/pingcap/tidb/issues/11329
+	if goTime.Year() == 0 {
+		hour, minute, second := goTime.Clock()
+		date.SetCoreTime(types.FromDate(0, 0, 0, hour, minute, second, goTime.Nanosecond()/1000))
+		return date, false, nil
 	}
 
-	date.Time = types.FromGoTime(goTime)
+	if goTime.Year() < 0 || goTime.Year() > 9999 {
+		return types.ZeroTime, true, handleInvalidTimeError(ctx, types.ErrDatetimeFunctionOverflow.GenWithStackByArgs("datetime"))
+	}
+
+	date.SetCoreTime(types.FromGoTime(goTime))
 	overflow, err := types.DateTimeIsOverflow(ctx.GetSessionVars().StmtCtx, date)
 	if err := handleInvalidTimeError(ctx, err); err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	if overflow {
-		return types.Time{}, true, handleInvalidTimeError(ctx, types.ErrDatetimeFunctionOverflow.GenWithStackByArgs("datetime"))
+		return types.ZeroTime, true, handleInvalidTimeError(ctx, types.ErrDatetimeFunctionOverflow.GenWithStackByArgs("datetime"))
 	}
 	return date, false, nil
 }
 
-func (du *baseDateArithmitical) addDuration(ctx sessionctx.Context, d types.Duration, interval string, unit string) (types.Duration, bool, error) {
+func (du *baseDateArithmetical) addDuration(ctx sessionctx.Context, d types.Duration, interval string, unit string) (types.Duration, bool, error) {
 	dur, err := types.ExtractDurationValue(unit, interval)
 	if err != nil {
 		return types.ZeroDuration, true, handleInvalidTimeError(ctx, err)
@@ -2773,7 +2966,7 @@ func (du *baseDateArithmitical) addDuration(ctx sessionctx.Context, d types.Dura
 	return retDur, false, nil
 }
 
-func (du *baseDateArithmitical) subDuration(ctx sessionctx.Context, d types.Duration, interval string, unit string) (types.Duration, bool, error) {
+func (du *baseDateArithmetical) subDuration(ctx sessionctx.Context, d types.Duration, interval string, unit string) (types.Duration, bool, error) {
 	dur, err := types.ExtractDurationValue(unit, interval)
 	if err != nil {
 		return types.ZeroDuration, true, handleInvalidTimeError(ctx, err)
@@ -2785,41 +2978,304 @@ func (du *baseDateArithmitical) subDuration(ctx sessionctx.Context, d types.Dura
 	return retDur, false, nil
 }
 
-func (du *baseDateArithmitical) sub(ctx sessionctx.Context, date types.Time, interval string, unit string) (types.Time, bool, error) {
+func (du *baseDateArithmetical) sub(ctx sessionctx.Context, date types.Time, interval string, unit string) (types.Time, bool, error) {
 	year, month, day, nano, err := types.ParseDurationValue(unit, interval)
 	if err := handleInvalidTimeError(ctx, err); err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
-	year, month, day, nano = -year, -month, -day, -nano
+	return du.addDate(ctx, date, -year, -month, -day, -nano)
+}
 
-	goTime, err := date.Time.GoTime(time.Local)
-	if err := handleInvalidTimeError(ctx, err); err != nil {
-		return types.Time{}, true, err
+func (du *baseDateArithmetical) vecGetDateFromInt(b *baseBuiltinFunc, input *chunk.Chunk, unit string, result *chunk.Column) error {
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get()
+	if err != nil {
+		return err
 	}
-
-	duration := time.Duration(nano)
-	goTime = goTime.Add(duration)
-	goTime = types.AddDate(year, month, day, goTime)
-
-	if goTime.Nanosecond() == 0 {
-		date.Fsp = 0
-	} else {
-		date.Fsp = 6
+	defer b.bufAllocator.put(buf)
+	if err := b.args[0].VecEvalInt(b.ctx, input, buf); err != nil {
+		return err
 	}
 
-	if goTime.Year() < 0 || goTime.Year() > (1<<16-1) {
-		return types.Time{}, true, handleInvalidTimeError(ctx, types.ErrDatetimeFunctionOverflow.GenWithStackByArgs("datetime"))
+	result.ResizeTime(n, false)
+	result.MergeNulls(buf)
+	dates := result.Times()
+	i64s := buf.Int64s()
+	sc := b.ctx.GetSessionVars().StmtCtx
+	isClockUnit := types.IsClockUnit(unit)
+	for i := 0; i < n; i++ {
+		if result.IsNull(i) {
+			continue
+		}
+
+		date, err := types.ParseTimeFromInt64(sc, i64s[i])
+		if err != nil {
+			err = handleInvalidTimeError(b.ctx, err)
+			if err != nil {
+				return err
+			}
+			result.SetNull(i, true)
+			continue
+		}
+
+		dateTp := mysql.TypeDate
+		if date.Type() == mysql.TypeDatetime || date.Type() == mysql.TypeTimestamp || isClockUnit {
+			dateTp = mysql.TypeDatetime
+		}
+		date.SetType(dateTp)
+		dates[i] = date
+	}
+	return nil
+}
+
+func (du *baseDateArithmetical) vecGetDateFromString(b *baseBuiltinFunc, input *chunk.Chunk, unit string, result *chunk.Column) error {
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get()
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[0].VecEvalString(b.ctx, input, buf); err != nil {
+		return err
 	}
 
-	date.Time = types.FromGoTime(goTime)
-	overflow, err := types.DateTimeIsOverflow(ctx.GetSessionVars().StmtCtx, date)
-	if err := handleInvalidTimeError(ctx, err); err != nil {
-		return types.Time{}, true, err
+	result.ResizeTime(n, false)
+	result.MergeNulls(buf)
+	dates := result.Times()
+	sc := b.ctx.GetSessionVars().StmtCtx
+	isClockUnit := types.IsClockUnit(unit)
+	for i := 0; i < n; i++ {
+		if result.IsNull(i) {
+			continue
+		}
+
+		dateStr := buf.GetString(i)
+		dateTp := mysql.TypeDate
+		if !types.IsDateFormat(dateStr) || isClockUnit {
+			dateTp = mysql.TypeDatetime
+		}
+
+		date, err := types.ParseTime(sc, dateStr, dateTp, types.MaxFsp)
+		if err != nil {
+			err = handleInvalidTimeError(b.ctx, err)
+			if err != nil {
+				return err
+			}
+			result.SetNull(i, true)
+		} else if b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode() && (date.Year() == 0 || date.Month() == 0 || date.Day() == 0) {
+			return handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, dateStr))
+		} else {
+			dates[i] = date
+		}
+
 	}
-	if overflow {
-		return types.Time{}, true, handleInvalidTimeError(ctx, types.ErrDatetimeFunctionOverflow.GenWithStackByArgs("datetime"))
+	return nil
+}
+
+func (du *baseDateArithmetical) vecGetDateFromDatetime(b *baseBuiltinFunc, input *chunk.Chunk, unit string, result *chunk.Column) error {
+	n := input.NumRows()
+	result.ResizeTime(n, false)
+	if err := b.args[0].VecEvalTime(b.ctx, input, result); err != nil {
+		return err
 	}
-	return date, false, nil
+
+	dates := result.Times()
+	isClockUnit := types.IsClockUnit(unit)
+	for i := 0; i < n; i++ {
+		if result.IsNull(i) {
+			continue
+		}
+
+		if isClockUnit {
+			dates[i].SetType(mysql.TypeDatetime)
+		}
+	}
+	return nil
+}
+
+func (du *baseDateArithmetical) vecGetIntervalFromString(b *baseBuiltinFunc, input *chunk.Chunk, unit string, result *chunk.Column) error {
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get()
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[1].VecEvalString(b.ctx, input, buf); err != nil {
+		return err
+	}
+
+	amendInterval := func(val string) string {
+		return val
+	}
+	if unitLower := strings.ToLower(unit); unitLower == "day" || unitLower == "hour" {
+		amendInterval = func(val string) string {
+			if intervalLower := strings.ToLower(val); intervalLower == "true" {
+				return "1"
+			} else if intervalLower == "false" {
+				return "0"
+			}
+			return du.intervalRegexp.FindString(val)
+		}
+	}
+
+	result.ReserveString(n)
+	for i := 0; i < n; i++ {
+		if buf.IsNull(i) {
+			result.AppendNull()
+			continue
+		}
+
+		result.AppendString(amendInterval(buf.GetString(i)))
+	}
+	return nil
+}
+
+func (du *baseDateArithmetical) vecGetIntervalFromDecimal(b *baseBuiltinFunc, input *chunk.Chunk, unit string, result *chunk.Column) error {
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get()
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[1].VecEvalDecimal(b.ctx, input, buf); err != nil {
+		return err
+	}
+
+	isCompoundUnit := false
+	amendInterval := func(val string, row *chunk.Row) (string, bool, error) {
+		return val, false, nil
+	}
+	switch unitUpper := strings.ToUpper(unit); unitUpper {
+	case "HOUR_MINUTE", "MINUTE_SECOND", "YEAR_MONTH", "DAY_HOUR", "DAY_MINUTE",
+		"DAY_SECOND", "DAY_MICROSECOND", "HOUR_MICROSECOND", "HOUR_SECOND", "MINUTE_MICROSECOND", "SECOND_MICROSECOND":
+		isCompoundUnit = true
+		switch strings.ToUpper(unit) {
+		case "HOUR_MINUTE", "MINUTE_SECOND":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return strings.Replace(val, ".", ":", -1), false, nil
+			}
+		case "YEAR_MONTH":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return strings.Replace(val, ".", "-", -1), false, nil
+			}
+		case "DAY_HOUR":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return strings.Replace(val, ".", " ", -1), false, nil
+			}
+		case "DAY_MINUTE":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return "0 " + strings.Replace(val, ".", ":", -1), false, nil
+			}
+		case "DAY_SECOND":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return "0 00:" + strings.Replace(val, ".", ":", -1), false, nil
+			}
+		case "DAY_MICROSECOND":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return "0 00:00:" + val, false, nil
+			}
+		case "HOUR_MICROSECOND":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return "00:00:" + val, false, nil
+			}
+		case "HOUR_SECOND":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return "00:" + strings.Replace(val, ".", ":", -1), false, nil
+			}
+		case "MINUTE_MICROSECOND":
+			amendInterval = func(val string, _ *chunk.Row) (string, bool, error) {
+				return "00:" + val, false, nil
+			}
+		case "SECOND_MICROSECOND":
+			/* keep interval as original decimal */
+		}
+	case "SECOND":
+		/* keep interval as original decimal */
+	default:
+		// YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, MICROSECOND
+		castExpr := WrapWithCastAsString(b.ctx, WrapWithCastAsInt(b.ctx, b.args[1]))
+		amendInterval = func(_ string, row *chunk.Row) (string, bool, error) {
+			interval, isNull, err := castExpr.EvalString(b.ctx, *row)
+			return interval, isNull || err != nil, err
+		}
+	}
+
+	result.ReserveString(n)
+	decs := buf.Decimals()
+	for i := 0; i < n; i++ {
+		if buf.IsNull(i) {
+			result.AppendNull()
+			continue
+		}
+
+		interval := decs[i].String()
+		row := input.GetRow(i)
+		isNeg := false
+		if isCompoundUnit && interval != "" && interval[0] == '-' {
+			isNeg = true
+			interval = interval[1:]
+		}
+		interval, isNull, err := amendInterval(interval, &row)
+		if err != nil {
+			return err
+		}
+		if isNull {
+			result.AppendNull()
+			continue
+		}
+		if isCompoundUnit && isNeg {
+			interval = "-" + interval
+		}
+		result.AppendString(interval)
+	}
+	return nil
+}
+
+func (du *baseDateArithmetical) vecGetIntervalFromInt(b *baseBuiltinFunc, input *chunk.Chunk, unit string, result *chunk.Column) error {
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get()
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[1].VecEvalInt(b.ctx, input, buf); err != nil {
+		return err
+	}
+
+	result.ReserveString(n)
+	i64s := buf.Int64s()
+	for i := 0; i < n; i++ {
+		if buf.IsNull(i) {
+			result.AppendNull()
+		} else {
+			result.AppendString(strconv.FormatInt(i64s[i], 10))
+		}
+	}
+	return nil
+}
+
+func (du *baseDateArithmetical) vecGetIntervalFromReal(b *baseBuiltinFunc, input *chunk.Chunk, unit string, result *chunk.Column) error {
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get()
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[1].VecEvalReal(b.ctx, input, buf); err != nil {
+		return err
+	}
+
+	result.ReserveString(n)
+	f64s := buf.Float64s()
+	prec := b.args[1].GetType().Decimal
+	for i := 0; i < n; i++ {
+		if buf.IsNull(i) {
+			result.AppendNull()
+		} else {
+			result.AppendString(strconv.FormatFloat(f64s[i], 'f', prec, 64))
+		}
+	}
+	return nil
 }
 
 type addDateFunctionClass struct {
@@ -2852,118 +3308,150 @@ func (c *addDateFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 		switch unit {
 		// If the unit has micro second, then the fsp must be the MaxFsp.
 		case "MICROSECOND", "SECOND_MICROSECOND", "MINUTE_MICROSECOND", "HOUR_MICROSECOND", "DAY_MICROSECOND":
-			internalFsp = types.MaxFsp
+			internalFsp = int(types.MaxFsp)
 		// If the unit is second, the fsp is related with the arg[1]'s.
 		case "SECOND":
-			internalFsp = types.MaxFsp
+			internalFsp = int(types.MaxFsp)
 			if intervalEvalTp != types.ETString {
-				internalFsp = mathutil.Min(args[1].GetType().Decimal, types.MaxFsp)
+				internalFsp = mathutil.Min(args[1].GetType().Decimal, int(types.MaxFsp))
 			}
 			// Otherwise, the fsp should be 0.
 		}
-		bf = newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, argTps...)
+		bf, err = newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, argTps...)
+		if err != nil {
+			return nil, err
+		}
 		arg0Dec, err := getExpressionFsp(ctx, args[0])
 		if err != nil {
 			return nil, err
 		}
-		bf.tp.Flen, bf.tp.Decimal = mysql.MaxDurationWidthWithFsp, mathutil.Max(arg0Dec, internalFsp)
+		bf.setDecimalAndFlenForTime(mathutil.Max(arg0Dec, internalFsp))
 	} else {
-		bf = newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, argTps...)
-		bf.tp.Flen, bf.tp.Decimal = mysql.MaxDatetimeFullWidth, types.UnspecifiedLength
+		bf, err = newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, argTps...)
+		if err != nil {
+			return nil, err
+		}
+		if dateEvalTp == types.ETDatetime && args[0].GetType().Tp == mysql.TypeTimestamp {
+			tp := types.NewFieldType(mysql.TypeDatetime)
+			tp.Decimal = args[0].GetType().Decimal
+			tp.Flen = mysql.MaxDatetimeWidthNoFsp
+			if tp.Decimal > 0 {
+				tp.Flen = tp.Flen + 1 + tp.Decimal
+			}
+			types.SetBinChsClnFlag(tp)
+			args[0] = BuildCastFunction(ctx, args[0], tp)
+		}
+		bf.setDecimalAndFlenForDatetime(int(types.MaxFsp))
 	}
 
 	switch {
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETString:
 		sig = &builtinAddDateStringStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateStringString)
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETInt:
 		sig = &builtinAddDateStringIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateStringInt)
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETReal:
 		sig = &builtinAddDateStringRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateStringReal)
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETDecimal:
 		sig = &builtinAddDateStringDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateStringDecimal)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETString:
 		sig = &builtinAddDateIntStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateIntString)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETInt:
 		sig = &builtinAddDateIntIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateIntInt)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETReal:
 		sig = &builtinAddDateIntRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateIntReal)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETDecimal:
 		sig = &builtinAddDateIntDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateIntDecimal)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETString:
 		sig = &builtinAddDateDatetimeStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDatetimeString)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETInt:
 		sig = &builtinAddDateDatetimeIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDatetimeInt)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETReal:
 		sig = &builtinAddDateDatetimeRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDatetimeReal)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETDecimal:
 		sig = &builtinAddDateDatetimeDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDatetimeDecimal)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETString:
 		sig = &builtinAddDateDurationStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDurationString)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETInt:
 		sig = &builtinAddDateDurationIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDurationInt)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETReal:
 		sig = &builtinAddDateDurationRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDurationReal)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETDecimal:
 		sig = &builtinAddDateDurationDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_AddDateDurationDecimal)
 	}
 	return sig, nil
 }
 
 type builtinAddDateStringStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateStringStringSig) Clone() builtinFunc {
-	newSig := &builtinAddDateStringStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateStringStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -2973,17 +3461,17 @@ func (b *builtinAddDateStringStringSig) Clone() builtinFunc {
 func (b *builtinAddDateStringStringSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -2992,11 +3480,11 @@ func (b *builtinAddDateStringStringSig) evalTime(row chunk.Row) (types.Time, boo
 
 type builtinAddDateStringIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateStringIntSig) Clone() builtinFunc {
-	newSig := &builtinAddDateStringIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateStringIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3006,17 +3494,17 @@ func (b *builtinAddDateStringIntSig) Clone() builtinFunc {
 func (b *builtinAddDateStringIntSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3025,11 +3513,11 @@ func (b *builtinAddDateStringIntSig) evalTime(row chunk.Row) (types.Time, bool, 
 
 type builtinAddDateStringRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateStringRealSig) Clone() builtinFunc {
-	newSig := &builtinAddDateStringRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateStringRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3039,17 +3527,17 @@ func (b *builtinAddDateStringRealSig) Clone() builtinFunc {
 func (b *builtinAddDateStringRealSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromReal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3058,11 +3546,11 @@ func (b *builtinAddDateStringRealSig) evalTime(row chunk.Row) (types.Time, bool,
 
 type builtinAddDateStringDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateStringDecimalSig) Clone() builtinFunc {
-	newSig := &builtinAddDateStringDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateStringDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3072,17 +3560,17 @@ func (b *builtinAddDateStringDecimalSig) Clone() builtinFunc {
 func (b *builtinAddDateStringDecimalSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromDecimal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3091,11 +3579,11 @@ func (b *builtinAddDateStringDecimalSig) evalTime(row chunk.Row) (types.Time, bo
 
 type builtinAddDateIntStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateIntStringSig) Clone() builtinFunc {
-	newSig := &builtinAddDateIntStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateIntStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3105,17 +3593,17 @@ func (b *builtinAddDateIntStringSig) Clone() builtinFunc {
 func (b *builtinAddDateIntStringSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3124,11 +3612,11 @@ func (b *builtinAddDateIntStringSig) evalTime(row chunk.Row) (types.Time, bool, 
 
 type builtinAddDateIntIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateIntIntSig) Clone() builtinFunc {
-	newSig := &builtinAddDateIntIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateIntIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3138,17 +3626,17 @@ func (b *builtinAddDateIntIntSig) Clone() builtinFunc {
 func (b *builtinAddDateIntIntSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3157,11 +3645,11 @@ func (b *builtinAddDateIntIntSig) evalTime(row chunk.Row) (types.Time, bool, err
 
 type builtinAddDateIntRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateIntRealSig) Clone() builtinFunc {
-	newSig := &builtinAddDateIntRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateIntRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3171,17 +3659,17 @@ func (b *builtinAddDateIntRealSig) Clone() builtinFunc {
 func (b *builtinAddDateIntRealSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromReal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3190,11 +3678,11 @@ func (b *builtinAddDateIntRealSig) evalTime(row chunk.Row) (types.Time, bool, er
 
 type builtinAddDateIntDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateIntDecimalSig) Clone() builtinFunc {
-	newSig := &builtinAddDateIntDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateIntDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3204,17 +3692,17 @@ func (b *builtinAddDateIntDecimalSig) Clone() builtinFunc {
 func (b *builtinAddDateIntDecimalSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromDecimal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3223,11 +3711,11 @@ func (b *builtinAddDateIntDecimalSig) evalTime(row chunk.Row) (types.Time, bool,
 
 type builtinAddDateDatetimeStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDatetimeStringSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDatetimeStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDatetimeStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3237,17 +3725,17 @@ func (b *builtinAddDateDatetimeStringSig) Clone() builtinFunc {
 func (b *builtinAddDateDatetimeStringSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3256,11 +3744,11 @@ func (b *builtinAddDateDatetimeStringSig) evalTime(row chunk.Row) (types.Time, b
 
 type builtinAddDateDatetimeIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDatetimeIntSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDatetimeIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDatetimeIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3270,17 +3758,17 @@ func (b *builtinAddDateDatetimeIntSig) Clone() builtinFunc {
 func (b *builtinAddDateDatetimeIntSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3289,11 +3777,11 @@ func (b *builtinAddDateDatetimeIntSig) evalTime(row chunk.Row) (types.Time, bool
 
 type builtinAddDateDatetimeRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDatetimeRealSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDatetimeRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDatetimeRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3303,17 +3791,17 @@ func (b *builtinAddDateDatetimeRealSig) Clone() builtinFunc {
 func (b *builtinAddDateDatetimeRealSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromReal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3322,11 +3810,11 @@ func (b *builtinAddDateDatetimeRealSig) evalTime(row chunk.Row) (types.Time, boo
 
 type builtinAddDateDatetimeDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDatetimeDecimalSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDatetimeDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDatetimeDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3336,17 +3824,17 @@ func (b *builtinAddDateDatetimeDecimalSig) Clone() builtinFunc {
 func (b *builtinAddDateDatetimeDecimalSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromDecimal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.add(b.ctx, date, interval, unit)
@@ -3355,11 +3843,11 @@ func (b *builtinAddDateDatetimeDecimalSig) evalTime(row chunk.Row) (types.Time, 
 
 type builtinAddDateDurationStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDurationStringSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDurationStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDurationStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3386,11 +3874,11 @@ func (b *builtinAddDateDurationStringSig) evalDuration(row chunk.Row) (types.Dur
 
 type builtinAddDateDurationIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDurationIntSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDurationIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDurationIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3416,11 +3904,11 @@ func (b *builtinAddDateDurationIntSig) evalDuration(row chunk.Row) (types.Durati
 
 type builtinAddDateDurationDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDurationDecimalSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDurationDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDurationDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3446,11 +3934,11 @@ func (b *builtinAddDateDurationDecimalSig) evalDuration(row chunk.Row) (types.Du
 
 type builtinAddDateDurationRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinAddDateDurationRealSig) Clone() builtinFunc {
-	newSig := &builtinAddDateDurationRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinAddDateDurationRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3504,118 +3992,150 @@ func (c *subDateFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 		switch unit {
 		// If the unit has micro second, then the fsp must be the MaxFsp.
 		case "MICROSECOND", "SECOND_MICROSECOND", "MINUTE_MICROSECOND", "HOUR_MICROSECOND", "DAY_MICROSECOND":
-			internalFsp = types.MaxFsp
+			internalFsp = int(types.MaxFsp)
 		// If the unit is second, the fsp is related with the arg[1]'s.
 		case "SECOND":
-			internalFsp = types.MaxFsp
+			internalFsp = int(types.MaxFsp)
 			if intervalEvalTp != types.ETString {
-				internalFsp = mathutil.Min(args[1].GetType().Decimal, types.MaxFsp)
+				internalFsp = mathutil.Min(args[1].GetType().Decimal, int(types.MaxFsp))
 			}
 			// Otherwise, the fsp should be 0.
 		}
-		bf = newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, argTps...)
 		arg0Dec, err := getExpressionFsp(ctx, args[0])
 		if err != nil {
 			return nil, err
 		}
-		bf.tp.Flen, bf.tp.Decimal = mysql.MaxDurationWidthWithFsp, mathutil.Max(arg0Dec, internalFsp)
+		bf, err = newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, argTps...)
+		if err != nil {
+			return nil, err
+		}
+		bf.setDecimalAndFlenForTime(mathutil.Max(arg0Dec, internalFsp))
 	} else {
-		bf = newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, argTps...)
-		bf.tp.Flen, bf.tp.Decimal = mysql.MaxDatetimeFullWidth, types.UnspecifiedLength
+		bf, err = newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, argTps...)
+		if err != nil {
+			return nil, err
+		}
+		if dateEvalTp == types.ETDatetime && args[0].GetType().Tp == mysql.TypeTimestamp {
+			tp := types.NewFieldType(mysql.TypeDatetime)
+			tp.Decimal = args[0].GetType().Decimal
+			tp.Flen = mysql.MaxDatetimeWidthNoFsp
+			if tp.Decimal > 0 {
+				tp.Flen = tp.Flen + 1 + tp.Decimal
+			}
+			types.SetBinChsClnFlag(tp)
+			args[0] = BuildCastFunction(ctx, args[0], tp)
+		}
+		bf.setDecimalAndFlenForDatetime(int(types.MaxFsp))
 	}
 
 	switch {
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETString:
 		sig = &builtinSubDateStringStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateStringString)
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETInt:
 		sig = &builtinSubDateStringIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateStringInt)
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETReal:
 		sig = &builtinSubDateStringRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateStringReal)
 	case dateEvalTp == types.ETString && intervalEvalTp == types.ETDecimal:
 		sig = &builtinSubDateStringDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateStringDecimal)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETString:
 		sig = &builtinSubDateIntStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateIntString)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETInt:
 		sig = &builtinSubDateIntIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateIntInt)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETReal:
 		sig = &builtinSubDateIntRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateIntReal)
 	case dateEvalTp == types.ETInt && intervalEvalTp == types.ETDecimal:
 		sig = &builtinSubDateIntDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateIntDecimal)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETString:
 		sig = &builtinSubDateDatetimeStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDatetimeString)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETInt:
 		sig = &builtinSubDateDatetimeIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDatetimeInt)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETReal:
 		sig = &builtinSubDateDatetimeRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDatetimeReal)
 	case dateEvalTp == types.ETDatetime && intervalEvalTp == types.ETDecimal:
 		sig = &builtinSubDateDatetimeDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDatetimeDecimal)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETString:
 		sig = &builtinSubDateDurationStringSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDurationString)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETInt:
 		sig = &builtinSubDateDurationIntSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDurationInt)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETReal:
 		sig = &builtinSubDateDurationRealSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDurationReal)
 	case dateEvalTp == types.ETDuration && intervalEvalTp == types.ETDecimal:
 		sig = &builtinSubDateDurationDecimalSig{
 			baseBuiltinFunc:      bf,
-			baseDateArithmitical: newDateArighmeticalUtil(),
+			baseDateArithmetical: newDateArithmeticalUtil(),
 		}
+		sig.setPbCode(tipb.ScalarFuncSig_SubDateDurationDecimal)
 	}
 	return sig, nil
 }
 
 type builtinSubDateStringStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateStringStringSig) Clone() builtinFunc {
-	newSig := &builtinSubDateStringStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateStringStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3625,17 +4145,17 @@ func (b *builtinSubDateStringStringSig) Clone() builtinFunc {
 func (b *builtinSubDateStringStringSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3644,11 +4164,11 @@ func (b *builtinSubDateStringStringSig) evalTime(row chunk.Row) (types.Time, boo
 
 type builtinSubDateStringIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateStringIntSig) Clone() builtinFunc {
-	newSig := &builtinSubDateStringIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateStringIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3658,17 +4178,17 @@ func (b *builtinSubDateStringIntSig) Clone() builtinFunc {
 func (b *builtinSubDateStringIntSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3677,11 +4197,11 @@ func (b *builtinSubDateStringIntSig) evalTime(row chunk.Row) (types.Time, bool, 
 
 type builtinSubDateStringRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateStringRealSig) Clone() builtinFunc {
-	newSig := &builtinSubDateStringRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateStringRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3691,17 +4211,17 @@ func (b *builtinSubDateStringRealSig) Clone() builtinFunc {
 func (b *builtinSubDateStringRealSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromReal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3710,11 +4230,11 @@ func (b *builtinSubDateStringRealSig) evalTime(row chunk.Row) (types.Time, bool,
 
 type builtinSubDateStringDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateStringDecimalSig) Clone() builtinFunc {
-	newSig := &builtinSubDateStringDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateStringDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3722,17 +4242,17 @@ func (b *builtinSubDateStringDecimalSig) Clone() builtinFunc {
 func (b *builtinSubDateStringDecimalSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromDecimal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3741,11 +4261,11 @@ func (b *builtinSubDateStringDecimalSig) evalTime(row chunk.Row) (types.Time, bo
 
 type builtinSubDateIntStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateIntStringSig) Clone() builtinFunc {
-	newSig := &builtinSubDateIntStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateIntStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3755,17 +4275,17 @@ func (b *builtinSubDateIntStringSig) Clone() builtinFunc {
 func (b *builtinSubDateIntStringSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3774,11 +4294,11 @@ func (b *builtinSubDateIntStringSig) evalTime(row chunk.Row) (types.Time, bool, 
 
 type builtinSubDateIntIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateIntIntSig) Clone() builtinFunc {
-	newSig := &builtinSubDateIntIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateIntIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3788,17 +4308,17 @@ func (b *builtinSubDateIntIntSig) Clone() builtinFunc {
 func (b *builtinSubDateIntIntSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3807,11 +4327,11 @@ func (b *builtinSubDateIntIntSig) evalTime(row chunk.Row) (types.Time, bool, err
 
 type builtinSubDateIntRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateIntRealSig) Clone() builtinFunc {
-	newSig := &builtinSubDateIntRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateIntRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3821,17 +4341,17 @@ func (b *builtinSubDateIntRealSig) Clone() builtinFunc {
 func (b *builtinSubDateIntRealSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromReal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3840,16 +4360,16 @@ func (b *builtinSubDateIntRealSig) evalTime(row chunk.Row) (types.Time, bool, er
 
 type builtinSubDateDatetimeStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 type builtinSubDateIntDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateIntDecimalSig) Clone() builtinFunc {
-	newSig := &builtinSubDateIntDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateIntDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3859,17 +4379,17 @@ func (b *builtinSubDateIntDecimalSig) Clone() builtinFunc {
 func (b *builtinSubDateIntDecimalSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromDecimal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3877,7 +4397,7 @@ func (b *builtinSubDateIntDecimalSig) evalTime(row chunk.Row) (types.Time, bool,
 }
 
 func (b *builtinSubDateDatetimeStringSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDatetimeStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDatetimeStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3887,17 +4407,17 @@ func (b *builtinSubDateDatetimeStringSig) Clone() builtinFunc {
 func (b *builtinSubDateDatetimeStringSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromString(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3906,11 +4426,11 @@ func (b *builtinSubDateDatetimeStringSig) evalTime(row chunk.Row) (types.Time, b
 
 type builtinSubDateDatetimeIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateDatetimeIntSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDatetimeIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDatetimeIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3920,17 +4440,17 @@ func (b *builtinSubDateDatetimeIntSig) Clone() builtinFunc {
 func (b *builtinSubDateDatetimeIntSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromInt(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3939,11 +4459,11 @@ func (b *builtinSubDateDatetimeIntSig) evalTime(row chunk.Row) (types.Time, bool
 
 type builtinSubDateDatetimeRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateDatetimeRealSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDatetimeRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDatetimeRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3953,17 +4473,17 @@ func (b *builtinSubDateDatetimeRealSig) Clone() builtinFunc {
 func (b *builtinSubDateDatetimeRealSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromReal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -3972,11 +4492,11 @@ func (b *builtinSubDateDatetimeRealSig) evalTime(row chunk.Row) (types.Time, boo
 
 type builtinSubDateDatetimeDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateDatetimeDecimalSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDatetimeDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDatetimeDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -3986,17 +4506,17 @@ func (b *builtinSubDateDatetimeDecimalSig) Clone() builtinFunc {
 func (b *builtinSubDateDatetimeDecimalSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	unit, isNull, err := b.args[2].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	date, isNull, err := b.getDateFromDatetime(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	interval, isNull, err := b.getIntervalFromDecimal(b.ctx, b.args, row, unit)
 	if isNull || err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 
 	result, isNull, err := b.sub(b.ctx, date, interval, unit)
@@ -4005,11 +4525,11 @@ func (b *builtinSubDateDatetimeDecimalSig) evalTime(row chunk.Row) (types.Time, 
 
 type builtinSubDateDurationStringSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateDurationStringSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDurationStringSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDurationStringSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -4036,11 +4556,11 @@ func (b *builtinSubDateDurationStringSig) evalDuration(row chunk.Row) (types.Dur
 
 type builtinSubDateDurationIntSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateDurationIntSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDurationIntSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDurationIntSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -4067,11 +4587,11 @@ func (b *builtinSubDateDurationIntSig) evalDuration(row chunk.Row) (types.Durati
 
 type builtinSubDateDurationDecimalSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateDurationDecimalSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDurationDecimalSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDurationDecimalSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -4098,11 +4618,11 @@ func (b *builtinSubDateDurationDecimalSig) evalDuration(row chunk.Row) (types.Du
 
 type builtinSubDateDurationRealSig struct {
 	baseBuiltinFunc
-	baseDateArithmitical
+	baseDateArithmetical
 }
 
 func (b *builtinSubDateDurationRealSig) Clone() builtinFunc {
-	newSig := &builtinSubDateDurationRealSig{baseDateArithmitical: b.baseDateArithmitical}
+	newSig := &builtinSubDateDurationRealSig{baseDateArithmetical: b.baseDateArithmetical}
 	newSig.cloneFrom(&b.baseBuiltinFunc)
 	return newSig
 }
@@ -4134,8 +4654,12 @@ func (c *timestampDiffFunctionClass) getFunction(ctx sessionctx.Context, args []
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETString, types.ETDatetime, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETString, types.ETDatetime, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	sig := &builtinTimestampDiffSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_TimestampDiff)
 	return sig, nil
 }
 
@@ -4166,10 +4690,10 @@ func (b *builtinTimestampDiffSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 	if invalidLHS, invalidRHS := lhs.InvalidZero(), rhs.InvalidZero(); invalidLHS || invalidRHS {
 		if invalidLHS {
-			err = handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(lhs.String()))
+			err = handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, lhs.String()))
 		}
 		if invalidRHS {
-			err = handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(rhs.String()))
+			err = handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, rhs.String()))
 		}
 		return 0, true, err
 	}
@@ -4229,17 +4753,23 @@ func (c *unixTimestampFunctionClass) getFunction(ctx sessionctx.Context, args []
 		panic("Unexpected retTp")
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, retTp, argTps...)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, retTp, argTps...)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = retFLen
 	bf.tp.Decimal = retDecimal
 
 	var sig builtinFunc
 	if len(args) == 0 {
 		sig = &builtinUnixTimestampCurrentSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_UnixTimestampCurrent)
 	} else if retTp == types.ETInt {
 		sig = &builtinUnixTimestampIntSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_UnixTimestampInt)
 	} else if retTp == types.ETDecimal {
 		sig = &builtinUnixTimestampDecSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_UnixTimestampDec)
 	}
 	return sig, nil
 }
@@ -4293,7 +4823,9 @@ func (b *builtinUnixTimestampCurrentSig) evalInt(row chunk.Row) (int64, bool, er
 		return 0, true, err
 	}
 	intVal, err := dec.ToInt()
-	terror.Log(err)
+	if !terror.ErrorEqual(err, types.ErrTruncated) {
+		terror.Log(err)
+	}
 	return intVal, false, nil
 }
 
@@ -4310,15 +4842,21 @@ func (b *builtinUnixTimestampIntSig) Clone() builtinFunc {
 // evalInt evals a UNIX_TIMESTAMP(time).
 // See https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_unix-timestamp
 func (b *builtinUnixTimestampIntSig) evalInt(row chunk.Row) (int64, bool, error) {
-	val, isNull, err := b.args[0].EvalTime(b.ctx, row)
-	if err != nil && terror.ErrorEqual(types.ErrInvalidTimeFormat.GenWithStackByArgs(val), err) {
+	return b.evalIntWithCtx(b.ctx, row)
+}
+
+func (b *builtinUnixTimestampIntSig) evalIntWithCtx(ctx sessionctx.Context, row chunk.Row) (int64, bool, error) {
+	val, isNull, err := b.args[0].EvalTime(ctx, row)
+	if err != nil && terror.ErrorEqual(types.ErrWrongValue.GenWithStackByArgs(types.TimeStr, val), err) {
 		// Return 0 for invalid date time.
 		return 0, false, nil
 	}
 	if isNull {
 		return 0, true, nil
 	}
-	t, err := val.Time.GoTime(getTimeZone(b.ctx))
+
+	tz := ctx.GetSessionVars().Location()
+	t, err := val.GoTime(tz)
 	if err != nil {
 		return 0, false, nil
 	}
@@ -4327,7 +4865,9 @@ func (b *builtinUnixTimestampIntSig) evalInt(row chunk.Row) (int64, bool, error)
 		return 0, true, err
 	}
 	intVal, err := dec.ToInt()
-	terror.Log(err)
+	if !terror.ErrorEqual(err, types.ErrTruncated) {
+		terror.Log(err)
+	}
 	return intVal, false, nil
 }
 
@@ -4349,7 +4889,7 @@ func (b *builtinUnixTimestampDecSig) evalDecimal(row chunk.Row) (*types.MyDecima
 		// Return 0 for invalid date time.
 		return new(types.MyDecimal), isNull, nil
 	}
-	t, err := val.Time.GoTime(getTimeZone(b.ctx))
+	t, err := val.GoTime(getTimeZone(b.ctx))
 	if err != nil {
 		return new(types.MyDecimal), false, nil
 	}
@@ -4361,25 +4901,6 @@ type timestampFunctionClass struct {
 	baseFunctionClass
 }
 
-func (c *timestampFunctionClass) getDefaultFsp(tp *types.FieldType) int {
-	if tp.Tp == mysql.TypeDatetime || tp.Tp == mysql.TypeDate || tp.Tp == mysql.TypeDuration ||
-		tp.Tp == mysql.TypeTimestamp {
-		return tp.Decimal
-	}
-	switch cls := tp.EvalType(); cls {
-	case types.ETInt:
-		return types.MinFsp
-	case types.ETReal, types.ETDatetime, types.ETTimestamp, types.ETDuration, types.ETJson, types.ETString:
-		return types.MaxFsp
-	case types.ETDecimal:
-		if tp.Decimal < types.MaxFsp {
-			return tp.Decimal
-		}
-		return types.MaxFsp
-	}
-	return types.MaxFsp
-}
-
 func (c *timestampFunctionClass) getFunction(ctx sessionctx.Context, args []Expression) (builtinFunc, error) {
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
@@ -4388,25 +4909,36 @@ func (c *timestampFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if argLen == 2 {
 		evalTps = append(evalTps, types.ETString)
 	}
-	fsp := c.getDefaultFsp(args[0].GetType())
+	fsp, err := getExpressionFsp(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
 	if argLen == 2 {
-		fsp = mathutil.Max(fsp, c.getDefaultFsp(args[1].GetType()))
+		fsp2, err := getExpressionFsp(ctx, args[1])
+		if err != nil {
+			return nil, err
+		}
+		if fsp2 > fsp {
+			fsp = fsp2
+		}
 	}
 	isFloat := false
 	switch args[0].GetType().Tp {
-	case mysql.TypeFloat, mysql.TypeDouble, mysql.TypeDecimal:
+	case mysql.TypeFloat, mysql.TypeDouble, mysql.TypeNewDecimal, mysql.TypeLonglong:
 		isFloat = true
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, evalTps...)
-	bf.tp.Decimal, bf.tp.Flen = fsp, 19
-	if fsp != 0 {
-		bf.tp.Flen += 1 + fsp
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, evalTps...)
+	if err != nil {
+		return nil, err
 	}
+	bf.setDecimalAndFlenForDatetime(fsp)
 	var sig builtinFunc
 	if argLen == 2 {
 		sig = &builtinTimestamp2ArgsSig{bf, isFloat}
+		sig.setPbCode(tipb.ScalarFuncSig_Timestamp2Args)
 	} else {
 		sig = &builtinTimestamp1ArgSig{bf, isFloat}
+		sig.setPbCode(tipb.ScalarFuncSig_Timestamp1Arg)
 	}
 	return sig, nil
 }
@@ -4428,7 +4960,7 @@ func (b *builtinTimestamp1ArgSig) Clone() builtinFunc {
 func (b *builtinTimestamp1ArgSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	s, isNull, err := b.args[0].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 	var tm types.Time
 	sc := b.ctx.GetSessionVars().StmtCtx
@@ -4438,7 +4970,7 @@ func (b *builtinTimestamp1ArgSig) evalTime(row chunk.Row) (types.Time, bool, err
 		tm, err = types.ParseTime(sc, s, mysql.TypeDatetime, types.GetFsp(s))
 	}
 	if err != nil {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, err)
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
 	}
 	return tm, false, nil
 }
@@ -4460,7 +4992,7 @@ func (b *builtinTimestamp2ArgsSig) Clone() builtinFunc {
 func (b *builtinTimestamp2ArgsSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	arg0, isNull, err := b.args[0].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 	var tm types.Time
 	sc := b.ctx.GetSessionVars().StmtCtx
@@ -4470,22 +5002,27 @@ func (b *builtinTimestamp2ArgsSig) evalTime(row chunk.Row) (types.Time, bool, er
 		tm, err = types.ParseTime(sc, arg0, mysql.TypeDatetime, types.GetFsp(arg0))
 	}
 	if err != nil {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, err)
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
+	}
+	if tm.Year() == 0 {
+		// MySQL won't evaluate add for date with zero year.
+		// See https://github.com/mysql/mysql-server/blob/5.7/sql/item_timefunc.cc#L2805
+		return types.ZeroTime, true, nil
 	}
 	arg1, isNull, err := b.args[1].EvalString(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, isNull, err
+		return types.ZeroTime, isNull, err
 	}
 	if !isDuration(arg1) {
-		return types.Time{}, true, nil
+		return types.ZeroTime, true, nil
 	}
 	duration, err := types.ParseDuration(sc, arg1, types.GetFsp(arg1))
 	if err != nil {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, err)
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
 	}
 	tmp, err := tm.Add(sc, duration)
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	return tmp, false, nil
 }
@@ -4511,17 +5048,17 @@ func (c *timestampLiteralFunctionClass) getFunction(ctx sessionctx.Context, args
 		return nil, err
 	}
 	if !timestampPattern.MatchString(str) {
-		return nil, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(str)
+		return nil, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, str)
 	}
-	tm, err := types.ParseTime(ctx.GetSessionVars().StmtCtx, str, mysql.TypeTimestamp, types.GetFsp(str))
+	tm, err := types.ParseTime(ctx.GetSessionVars().StmtCtx, str, mysql.TypeDatetime, types.GetFsp(str))
 	if err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, []Expression{}, types.ETDatetime)
-	bf.tp.Flen, bf.tp.Decimal = mysql.MaxDatetimeWidthNoFsp, tm.Fsp
-	if tm.Fsp > 0 {
-		bf.tp.Flen += tm.Fsp + 1
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, []Expression{}, types.ETDatetime)
+	if err != nil {
+		return nil, err
 	}
+	bf.setDecimalAndFlenForDatetime(int(tm.Fsp()))
 	sig := &builtinTimestampLiteralSig{bf, tm}
 	return sig, nil
 }
@@ -4546,7 +5083,7 @@ func (b *builtinTimestampLiteralSig) evalTime(row chunk.Row) (types.Time, bool, 
 // getFsp4TimeAddSub is used to in function 'ADDTIME' and 'SUBTIME' to evaluate `fsp` for the
 // second parameter. It's used only if the second parameter is of string type. It's different
 // from getFsp in that the result of getFsp4TimeAddSub is either 6 or 0.
-func getFsp4TimeAddSub(s string) int {
+func getFsp4TimeAddSub(s string) int8 {
 	if len(s)-strings.Index(s, ".")-1 == len(s) {
 		return types.MinFsp
 	}
@@ -4560,7 +5097,7 @@ func getFsp4TimeAddSub(s string) int {
 
 // getBf4TimeAddSub parses input types, generates baseBuiltinFunc and set related attributes for
 // builtin function 'ADDTIME' and 'SUBTIME'
-func getBf4TimeAddSub(ctx sessionctx.Context, args []Expression) (tp1, tp2 *types.FieldType, bf baseBuiltinFunc, err error) {
+func getBf4TimeAddSub(ctx sessionctx.Context, funcName string, args []Expression) (tp1, tp2 *types.FieldType, bf baseBuiltinFunc, err error) {
 	tp1, tp2 = args[0].GetType(), args[1].GetType()
 	var argTp1, argTp2, retTp types.EvalType
 	switch tp1.Tp {
@@ -4588,16 +5125,23 @@ func getBf4TimeAddSub(ctx sessionctx.Context, args []Expression) (tp1, tp2 *type
 		return
 	}
 
-	bf = newBaseBuiltinFuncWithTp(ctx, args, retTp, argTp1, argTp2)
-	bf.tp.Decimal = mathutil.Min(mathutil.Max(arg0Dec, arg1Dec), types.MaxFsp)
-	if retTp == types.ETString {
+	bf, err = newBaseBuiltinFuncWithTp(ctx, funcName, args, retTp, argTp1, argTp2)
+	if err != nil {
+		return
+	}
+	switch retTp {
+	case types.ETDatetime:
+		bf.setDecimalAndFlenForDatetime(mathutil.Min(mathutil.Max(arg0Dec, arg1Dec), int(types.MaxFsp)))
+	case types.ETDuration:
+		bf.setDecimalAndFlenForTime(mathutil.Min(mathutil.Max(arg0Dec, arg1Dec), int(types.MaxFsp)))
+	case types.ETString:
 		bf.tp.Tp, bf.tp.Flen, bf.tp.Decimal = mysql.TypeString, mysql.MaxDatetimeWidthWithFsp, types.UnspecifiedLength
 	}
 	return
 }
 
 func getTimeZone(ctx sessionctx.Context) *time.Location {
-	ret := ctx.GetSessionVars().TimeZone
+	ret := ctx.GetSessionVars().Location()
 	if ret == nil {
 		ret = time.Local
 	}
@@ -4611,21 +5155,23 @@ func isDuration(str string) bool {
 }
 
 // strDatetimeAddDuration adds duration to datetime string, returns a string value.
-func strDatetimeAddDuration(sc *stmtctx.StatementContext, d string, arg1 types.Duration) (string, error) {
+func strDatetimeAddDuration(sc *stmtctx.StatementContext, d string, arg1 types.Duration) (result string, isNull bool, err error) {
 	arg0, err := types.ParseTime(sc, d, mysql.TypeDatetime, types.MaxFsp)
 	if err != nil {
-		return "", err
+		// Return a warning regardless of the sql_mode, this is compatible with MySQL.
+		sc.AppendWarning(err)
+		return "", true, nil
 	}
 	ret, err := arg0.Add(sc, arg1)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	fsp := types.MaxFsp
-	if ret.Time.Microsecond() == 0 {
+	if ret.Microsecond() == 0 {
 		fsp = types.MinFsp
 	}
-	ret.Fsp = fsp
-	return ret.String(), nil
+	ret.SetFsp(fsp)
+	return ret.String(), false, nil
 }
 
 // strDurationAddDuration adds duration to duration string, returns a string value.
@@ -4646,14 +5192,16 @@ func strDurationAddDuration(sc *stmtctx.StatementContext, d string, arg1 types.D
 }
 
 // strDatetimeSubDuration subtracts duration from datetime string, returns a string value.
-func strDatetimeSubDuration(sc *stmtctx.StatementContext, d string, arg1 types.Duration) (string, error) {
+func strDatetimeSubDuration(sc *stmtctx.StatementContext, d string, arg1 types.Duration) (result string, isNull bool, err error) {
 	arg0, err := types.ParseTime(sc, d, mysql.TypeDatetime, types.MaxFsp)
 	if err != nil {
-		return "", err
+		// Return a warning regardless of the sql_mode, this is compatible with MySQL.
+		sc.AppendWarning(err)
+		return "", true, nil
 	}
 	arg1time, err := arg1.ConvertToTime(sc, uint8(types.GetFsp(arg1.String())))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	tmpDuration := arg0.Sub(sc, &arg1time)
 	fsp := types.MaxFsp
@@ -4662,10 +5210,10 @@ func strDatetimeSubDuration(sc *stmtctx.StatementContext, d string, arg1 types.D
 	}
 	resultDuration, err := tmpDuration.ConvertToTime(sc, mysql.TypeDatetime)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	resultDuration.Fsp = fsp
-	return resultDuration.String(), nil
+	resultDuration.SetFsp(fsp)
+	return resultDuration.String(), false, nil
 }
 
 // strDurationSubDuration subtracts duration from duration string, returns a string value.
@@ -4693,7 +5241,7 @@ func (c *addTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	if err = c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	tp1, tp2, bf, err := getBf4TimeAddSub(ctx, args)
+	tp1, tp2, bf, err := getBf4TimeAddSub(ctx, c.funcName, args)
 	if err != nil {
 		return nil, err
 	}
@@ -4702,37 +5250,50 @@ func (c *addTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinAddDatetimeAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddDatetimeAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinAddTimeDateTimeNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddTimeDateTimeNull)
 		default:
 			sig = &builtinAddDatetimeAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddDatetimeAndString)
 		}
 	case mysql.TypeDate:
+		bf.tp.Charset, bf.tp.Collate = ctx.GetSessionVars().GetCharsetInfo()
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinAddDateAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddDateAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinAddTimeStringNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddTimeStringNull)
 		default:
 			sig = &builtinAddDateAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddDateAndString)
 		}
 	case mysql.TypeDuration:
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinAddDurationAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddDurationAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinAddTimeDurationNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddTimeDurationNull)
 		default:
 			sig = &builtinAddDurationAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddDurationAndString)
 		}
 	default:
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinAddStringAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddStringAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinAddTimeStringNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddTimeStringNull)
 		default:
 			sig = &builtinAddStringAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_AddStringAndString)
 		}
 	}
 	return sig, nil
@@ -4953,8 +5514,8 @@ func (b *builtinAddStringAndDurationSig) evalString(row chunk.Row) (result strin
 		}
 		return result, false, nil
 	}
-	result, err = strDatetimeAddDuration(sc, arg0, arg1)
-	return result, err != nil, err
+	result, isNull, err = strDatetimeAddDuration(sc, arg0, arg1)
+	return result, isNull, err
 }
 
 type builtinAddStringAndStringSig struct {
@@ -5006,8 +5567,8 @@ func (b *builtinAddStringAndStringSig) evalString(row chunk.Row) (result string,
 		}
 		return result, false, nil
 	}
-	result, err = strDatetimeAddDuration(sc, arg0, arg1)
-	return result, err != nil, err
+	result, isNull, err = strDatetimeAddDuration(sc, arg0, arg1)
+	return result, isNull, err
 }
 
 type builtinAddDateAndDurationSig struct {
@@ -5077,7 +5638,7 @@ type convertTzFunctionClass struct {
 }
 
 func (c *convertTzFunctionClass) getDecimal(ctx sessionctx.Context, arg Expression) int {
-	decimal := types.MaxFsp
+	decimal := int(types.MaxFsp)
 	if dt, isConstant := arg.(*Constant); isConstant {
 		switch arg.GetType().EvalType() {
 		case types.ETInt:
@@ -5091,11 +5652,11 @@ func (c *convertTzFunctionClass) getDecimal(ctx sessionctx.Context, arg Expressi
 			}
 		}
 	}
-	if decimal > types.MaxFsp {
-		return types.MaxFsp
+	if decimal > int(types.MaxFsp) {
+		return int(types.MaxFsp)
 	}
-	if decimal < types.MinFsp {
-		return types.MinFsp
+	if decimal < int(types.MinFsp) {
+		return int(types.MinFsp)
 	}
 	return decimal
 }
@@ -5105,18 +5666,22 @@ func (c *convertTzFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 		return nil, err
 	}
 	// tzRegex holds the regex to check whether a string is a time zone.
-	tzRegex, err := regexp.Compile(`(^(\+|-)(0?[0-9]|1[0-2]):[0-5]?\d$)|(^\+13:00$)`)
+	tzRegex, err := regexp.Compile(`(^[-+](0?[0-9]|1[0-3]):[0-5]?\d$)|(^\+14:00?$)`)
 	if err != nil {
 		return nil, err
 	}
 
 	decimal := c.getDecimal(ctx, args[0])
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, types.ETDatetime, types.ETString, types.ETString)
-	bf.tp.Decimal = decimal
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETDatetime, types.ETString, types.ETString)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDatetime(decimal)
 	sig := &builtinConvertTzSig{
 		baseBuiltinFunc: bf,
 		timezoneRegex:   tzRegex,
 	}
+	sig.setPbCode(tipb.ScalarFuncSig_ConvertTz)
 	return sig, nil
 }
 
@@ -5137,57 +5702,63 @@ func (b *builtinConvertTzSig) Clone() builtinFunc {
 func (b *builtinConvertTzSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	dt, isNull, err := b.args[0].EvalTime(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, nil
+		return types.ZeroTime, true, nil
 	}
 
 	fromTzStr, isNull, err := b.args[1].EvalString(b.ctx, row)
-	if isNull || err != nil || fromTzStr == "" {
-		return types.Time{}, true, nil
+	if isNull || err != nil {
+		return types.ZeroTime, true, nil
 	}
 
 	toTzStr, isNull, err := b.args[2].EvalString(b.ctx, row)
-	if isNull || err != nil || toTzStr == "" {
-		return types.Time{}, true, nil
+	if isNull || err != nil {
+		return types.ZeroTime, true, nil
 	}
 
+	return b.convertTz(dt, fromTzStr, toTzStr)
+}
+
+func (b *builtinConvertTzSig) convertTz(dt types.Time, fromTzStr, toTzStr string) (types.Time, bool, error) {
+	if fromTzStr == "" || toTzStr == "" {
+		return types.ZeroTime, true, nil
+	}
 	fromTzMatched := b.timezoneRegex.MatchString(fromTzStr)
 	toTzMatched := b.timezoneRegex.MatchString(toTzStr)
 
-	if !fromTzMatched && !toTzMatched {
-		fromTz, err := time.LoadLocation(fromTzStr)
-		if err != nil {
-			return types.Time{}, true, nil
-		}
+	var fromTz, toTz *time.Location
+	var err error
 
-		toTz, err := time.LoadLocation(toTzStr)
-		if err != nil {
-			return types.Time{}, true, nil
+	if fromTzMatched {
+		fromTz = time.FixedZone(fromTzStr, timeZone2int(fromTzStr))
+	} else {
+		if strings.EqualFold(fromTzStr, "SYSTEM") {
+			fromTzStr = "Local"
 		}
-
-		t, err := dt.Time.GoTime(fromTz)
+		fromTz, err = time.LoadLocation(fromTzStr)
 		if err != nil {
-			return types.Time{}, true, nil
+			return types.ZeroTime, true, nil
 		}
-
-		return types.Time{
-			Time: types.FromGoTime(t.In(toTz)),
-			Type: mysql.TypeDatetime,
-			Fsp:  b.tp.Decimal,
-		}, false, nil
 	}
-	if fromTzMatched && toTzMatched {
-		t, err := dt.Time.GoTime(time.Local)
-		if err != nil {
-			return types.Time{}, true, nil
-		}
 
-		return types.Time{
-			Time: types.FromGoTime(t.Add(timeZone2Duration(toTzStr) - timeZone2Duration(fromTzStr))),
-			Type: mysql.TypeDatetime,
-			Fsp:  b.tp.Decimal,
-		}, false, nil
+	t, err := dt.GoTime(fromTz)
+	if err != nil {
+		return types.ZeroTime, true, nil
 	}
-	return types.Time{}, true, nil
+	t = t.In(time.UTC)
+
+	if toTzMatched {
+		toTz = time.FixedZone(toTzStr, timeZone2int(toTzStr))
+	} else {
+		if strings.EqualFold(toTzStr, "SYSTEM") {
+			toTzStr = "Local"
+		}
+		toTz, err = time.LoadLocation(toTzStr)
+		if err != nil {
+			return types.ZeroTime, true, nil
+		}
+	}
+
+	return types.NewTime(types.FromGoTime(t.In(toTz)), mysql.TypeDatetime, int8(b.tp.Decimal)), false, nil
 }
 
 type makeDateFunctionClass struct {
@@ -5198,10 +5769,13 @@ func (c *makeDateFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, types.ETInt, types.ETInt)
-	tp := bf.tp
-	tp.Tp, tp.Flen, tp.Decimal = mysql.TypeDate, mysql.MaxDateWidth, 0
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETInt, types.ETInt)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDate()
 	sig := &builtinMakeDateSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_MakeDate)
 	return sig, nil
 }
 
@@ -5236,17 +5810,13 @@ func (b *builtinMakeDateSig) evalTime(row chunk.Row) (d types.Time, isNull bool,
 	} else if year < 100 {
 		year += 1900
 	}
-	startTime := types.Time{
-		Time: types.FromDate(int(year), 1, 1, 0, 0, 0, 0),
-		Type: mysql.TypeDate,
-		Fsp:  0,
-	}
+	startTime := types.NewTime(types.FromDate(int(year), 1, 1, 0, 0, 0, 0), mysql.TypeDate, 0)
 	retTimestamp := types.TimestampDiff("DAY", types.ZeroDate, startTime)
 	if retTimestamp == 0 {
-		return d, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(startTime.String()))
+		return d, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, startTime.String()))
 	}
 	ret := types.TimeFromDays(retTimestamp + dayOfYear - 1)
-	if ret.IsZero() || ret.Time.Year() > 9999 {
+	if ret.IsZero() || ret.Year() > 9999 {
 		return d, true, nil
 	}
 	return ret, false, nil
@@ -5260,7 +5830,7 @@ func (c *makeTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	tp, flen, decimal := args[2].GetType().EvalType(), 10, 0
+	tp, decimal := args[2].GetType().EvalType(), 0
 	switch tp {
 	case types.ETInt:
 	case types.ETReal, types.ETDecimal:
@@ -5268,28 +5838,17 @@ func (c *makeTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expre
 		if decimal > 6 || decimal == types.UnspecifiedLength {
 			decimal = 6
 		}
-		if decimal > 0 {
-			flen += 1 + decimal
-		}
 	default:
-		flen, decimal = 17, 6
+		decimal = 6
 	}
-	arg0Type, arg1Type := args[0].GetType().EvalType(), args[1].GetType().EvalType()
-	// For ETString type, arg must be evaluated rounding down to int64
-	// For other types, arg is evaluated rounding to int64
-	if arg0Type == types.ETString {
-		arg0Type = types.ETReal
-	} else {
-		arg0Type = types.ETInt
+	// MySQL will cast the first and second arguments to INT, and the third argument to DECIMAL.
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, types.ETInt, types.ETInt, types.ETReal)
+	if err != nil {
+		return nil, err
 	}
-	if arg1Type == types.ETString {
-		arg1Type = types.ETReal
-	} else {
-		arg1Type = types.ETInt
-	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, arg0Type, arg1Type, types.ETReal)
-	bf.tp.Flen, bf.tp.Decimal = flen, decimal
+	bf.setDecimalAndFlenForTime(decimal)
 	sig := &builtinMakeTimeSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_MakeTime)
 	return sig, nil
 }
 
@@ -5303,13 +5862,30 @@ func (b *builtinMakeTimeSig) Clone() builtinFunc {
 	return newSig
 }
 
-func (b *builtinMakeTimeSig) getIntParam(arg Expression, row chunk.Row) (int64, bool, error) {
-	if arg.GetType().EvalType() == types.ETReal {
-		fRes, isNull, err := arg.EvalReal(b.ctx, row)
-		return int64(fRes), isNull, handleInvalidTimeError(b.ctx, err)
+func (b *builtinMakeTimeSig) makeTime(hour int64, minute int64, second float64, hourUnsignedFlag bool) (types.Duration, error) {
+	var overflow bool
+	// MySQL TIME datatype: https://dev.mysql.com/doc/refman/5.7/en/time.html
+	// ranges from '-838:59:59.000000' to '838:59:59.000000'
+	if hour < 0 && hourUnsignedFlag {
+		hour = 838
+		overflow = true
 	}
-	iRes, isNull, err := arg.EvalInt(b.ctx, row)
-	return iRes, isNull, handleInvalidTimeError(b.ctx, err)
+	if hour < -838 {
+		hour = -838
+		overflow = true
+	} else if hour > 838 {
+		hour = 838
+		overflow = true
+	}
+	if (hour == -838 || hour == 838) && minute == 59 && second > 59 {
+		overflow = true
+	}
+	if overflow {
+		minute = 59
+		second = 59
+	}
+	fsp := b.tp.Decimal
+	return types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, fmt.Sprintf("%02d:%02d:%v", hour, minute, second), int8(fsp))
 }
 
 // evalDuration evals a builtinMakeTimeIntSig.
@@ -5317,11 +5893,11 @@ func (b *builtinMakeTimeSig) getIntParam(arg Expression, row chunk.Row) (int64, 
 func (b *builtinMakeTimeSig) evalDuration(row chunk.Row) (types.Duration, bool, error) {
 	dur := types.ZeroDuration
 	dur.Fsp = types.MaxFsp
-	hour, isNull, err := b.getIntParam(b.args[0], row)
+	hour, isNull, err := b.args[0].EvalInt(b.ctx, row)
 	if isNull || err != nil {
 		return dur, isNull, err
 	}
-	minute, isNull, err := b.getIntParam(b.args[1], row)
+	minute, isNull, err := b.args[1].EvalInt(b.ctx, row)
 	if isNull || err != nil {
 		return dur, isNull, err
 	}
@@ -5335,31 +5911,7 @@ func (b *builtinMakeTimeSig) evalDuration(row chunk.Row) (types.Duration, bool, 
 	if second < 0 || second >= 60 {
 		return dur, true, nil
 	}
-	var overflow bool
-	// MySQL TIME datatype: https://dev.mysql.com/doc/refman/5.7/en/time.html
-	// ranges from '-838:59:59.000000' to '838:59:59.000000'
-	if hour < 0 && mysql.HasUnsignedFlag(b.args[0].GetType().Flag) {
-		hour = 838
-		overflow = true
-	}
-	if hour < -838 {
-		hour = -838
-		overflow = true
-	} else if hour > 838 {
-		hour = 838
-		overflow = true
-	}
-	if hour == -838 || hour == 838 {
-		if second > 59 {
-			second = 59
-		}
-	}
-	if overflow {
-		minute = 59
-		second = 59
-	}
-	fsp := b.tp.Decimal
-	dur, err = types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, fmt.Sprintf("%02d:%02d:%v", hour, minute, second), fsp)
+	dur, err = b.makeTime(hour, minute, second, mysql.HasUnsignedFlag(b.args[0].GetType().Flag))
 	if err != nil {
 		return dur, true, err
 	}
@@ -5375,7 +5927,10 @@ func (c *periodAddFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 		return nil, err
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETInt, types.ETInt)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETInt, types.ETInt)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 6
 	sig := &builtinPeriodAddSig{bf}
 	return sig, nil
@@ -5459,7 +6014,10 @@ func (c *periodDiffFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETInt, types.ETInt)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETInt, types.ETInt)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 6
 	sig := &builtinPeriodDiffSig{bf}
 	return sig, nil
@@ -5508,10 +6066,14 @@ func (c *quarterFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 		return nil, err
 	}
 
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 1
 
 	sig := &builtinQuarterSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_Quarter)
 	return sig, nil
 }
 
@@ -5534,10 +6096,11 @@ func (b *builtinQuarterSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 
 	if date.IsZero() {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(date.String()))
+		isNull, err := handleInvalidZeroTime(b.ctx, date)
+		return 0, isNull, err
 	}
 
-	return int64((date.Time.Month() + 2) / 3), false, nil
+	return int64((date.Month() + 2) / 3), false, nil
 }
 
 type secToTimeFunctionClass struct {
@@ -5548,7 +6111,7 @@ func (c *secToTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	var retFlen, retFsp int
+	var retFsp int
 	argType := args[0].GetType()
 	argEvalTp := argType.EvalType()
 	if argEvalTp == types.ETString {
@@ -5556,18 +6119,18 @@ func (c *secToTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	} else {
 		retFsp = argType.Decimal
 	}
-	if retFsp > types.MaxFsp || retFsp == types.UnspecifiedLength {
-		retFsp = types.MaxFsp
-	} else if retFsp < types.MinFsp {
-		retFsp = types.MinFsp
+	if retFsp > int(types.MaxFsp) || retFsp == int(types.UnspecifiedFsp) {
+		retFsp = int(types.MaxFsp)
+	} else if retFsp < int(types.MinFsp) {
+		retFsp = int(types.MinFsp)
 	}
-	retFlen = 10
-	if retFsp > 0 {
-		retFlen += 1 + retFsp
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, types.ETReal)
+	if err != nil {
+		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, types.ETReal)
-	bf.tp.Flen, bf.tp.Decimal = retFlen, retFsp
+	bf.setDecimalAndFlenForTime(retFsp)
 	sig := &builtinSecToTimeSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_SecToTime)
 	return sig, nil
 }
 
@@ -5589,9 +6152,9 @@ func (b *builtinSecToTimeSig) evalDuration(row chunk.Row) (types.Duration, bool,
 		return types.Duration{}, isNull, err
 	}
 	var (
-		hour          int64
-		minute        int64
-		second        int64
+		hour          uint64
+		minute        uint64
+		second        uint64
 		demical       float64
 		secondDemical float64
 		negative      string
@@ -5601,7 +6164,7 @@ func (b *builtinSecToTimeSig) evalDuration(row chunk.Row) (types.Duration, bool,
 		negative = "-"
 		secondsFloat = math.Abs(secondsFloat)
 	}
-	seconds := int64(secondsFloat)
+	seconds := uint64(secondsFloat)
 	demical = secondsFloat - float64(seconds)
 
 	hour = seconds / 3600
@@ -5609,6 +6172,11 @@ func (b *builtinSecToTimeSig) evalDuration(row chunk.Row) (types.Duration, bool,
 		hour = 838
 		minute = 59
 		second = 59
+		demical = 0
+		err = b.ctx.GetSessionVars().StmtCtx.HandleTruncate(errTruncatedWrongValue.GenWithStackByArgs("time", strconv.FormatFloat(secondsFloat, 'f', -1, 64)))
+		if err != nil {
+			return types.Duration{}, err != nil, err
+		}
 	} else {
 		minute = seconds % 3600 / 60
 		second = seconds % 60
@@ -5616,7 +6184,7 @@ func (b *builtinSecToTimeSig) evalDuration(row chunk.Row) (types.Duration, bool,
 	secondDemical = float64(second) + demical
 
 	var dur types.Duration
-	dur, err = types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, fmt.Sprintf("%s%02d:%02d:%v", negative, hour, minute, secondDemical), b.tp.Decimal)
+	dur, err = types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, fmt.Sprintf("%s%02d:%02d:%s", negative, hour, minute, strconv.FormatFloat(secondDemical, 'f', -1, 64)), int8(b.tp.Decimal))
 	if err != nil {
 		return types.Duration{}, err != nil, err
 	}
@@ -5631,7 +6199,7 @@ func (c *subTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	if err = c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	tp1, tp2, bf, err := getBf4TimeAddSub(ctx, args)
+	tp1, tp2, bf, err := getBf4TimeAddSub(ctx, c.funcName, args)
 	if err != nil {
 		return nil, err
 	}
@@ -5640,37 +6208,50 @@ func (c *subTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinSubDatetimeAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubDatetimeAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinSubTimeDateTimeNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubTimeDateTimeNull)
 		default:
 			sig = &builtinSubDatetimeAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubDatetimeAndString)
 		}
 	case mysql.TypeDate:
+		bf.tp.Charset, bf.tp.Collate = ctx.GetSessionVars().GetCharsetInfo()
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinSubDateAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubDateAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinSubTimeStringNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubTimeStringNull)
 		default:
 			sig = &builtinSubDateAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubDateAndString)
 		}
 	case mysql.TypeDuration:
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinSubDurationAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubDurationAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinSubTimeDurationNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubTimeDurationNull)
 		default:
 			sig = &builtinSubDurationAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubDurationAndString)
 		}
 	default:
 		switch tp2.Tp {
 		case mysql.TypeDuration:
 			sig = &builtinSubStringAndDurationSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubStringAndDuration)
 		case mysql.TypeDatetime, mysql.TypeTimestamp:
 			sig = &builtinSubTimeStringNullSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubTimeStringNull)
 		default:
 			sig = &builtinSubStringAndStringSig{bf}
+			sig.setPbCode(tipb.ScalarFuncSig_SubStringAndString)
 		}
 	}
 	return sig, nil
@@ -5703,7 +6284,7 @@ func (b *builtinSubDatetimeAndDurationSig) evalTime(row chunk.Row) (types.Time, 
 		return arg1time, true, err
 	}
 	tmpDuration := arg0.Sub(sc, &arg1time)
-	result, err := tmpDuration.ConvertToTime(sc, arg0.Type)
+	result, err := tmpDuration.ConvertToTime(sc, arg0.Type())
 	return result, err != nil, err
 }
 
@@ -5805,8 +6386,8 @@ func (b *builtinSubStringAndDurationSig) evalString(row chunk.Row) (result strin
 		}
 		return result, false, nil
 	}
-	result, err = strDatetimeSubDuration(sc, arg0, arg1)
-	return result, err != nil, err
+	result, isNull, err = strDatetimeSubDuration(sc, arg0, arg1)
+	return result, isNull, err
 }
 
 type builtinSubStringAndStringSig struct {
@@ -5858,8 +6439,8 @@ func (b *builtinSubStringAndStringSig) evalString(row chunk.Row) (result string,
 		}
 		return result, false, nil
 	}
-	result, err = strDatetimeSubDuration(sc, arg0, arg1)
-	return result, err != nil, err
+	result, isNull, err = strDatetimeSubDuration(sc, arg0, arg1)
+	return result, isNull, err
 }
 
 type builtinSubTimeStringNullSig struct {
@@ -6032,10 +6613,14 @@ func (c *timeFormatFunctionClass) getFunction(ctx sessionctx.Context, args []Exp
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETDuration, types.ETString)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETDuration, types.ETString)
+	if err != nil {
+		return nil, err
+	}
 	// worst case: formatMask=%r%r%r...%r, each %r takes 11 characters
 	bf.tp.Flen = (args[1].GetType().Flen + 1) / 2 * 11
 	sig := &builtinTimeFormatSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_TimeFormat)
 	return sig, nil
 }
 
@@ -6055,7 +6640,7 @@ func (b *builtinTimeFormatSig) evalString(row chunk.Row) (string, bool, error) {
 	dur, isNull, err := b.args[0].EvalDuration(b.ctx, row)
 	// if err != nil, then dur is ZeroDuration, outputs 00:00:00 in this case which follows the behavior of mysql.
 	if err != nil {
-		logutil.Logger(context.Background()).Warn("time_format.args[0].EvalDuration failed", zap.Error(err))
+		logutil.BgLogger().Warn("time_format.args[0].EvalDuration failed", zap.Error(err))
 	}
 	if isNull {
 		return "", isNull, err
@@ -6070,12 +6655,7 @@ func (b *builtinTimeFormatSig) evalString(row chunk.Row) (string, bool, error) {
 
 // formatTime see https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_time-format
 func (b *builtinTimeFormatSig) formatTime(ctx sessionctx.Context, t types.Duration, formatMask string) (res string, err error) {
-	t2 := types.Time{
-		Time: types.FromDate(0, 0, 0, t.Hour(), t.Minute(), t.Second(), t.MicroSecond()),
-		Type: mysql.TypeDate, Fsp: 0}
-
-	str, err := t2.DateFormat(formatMask)
-	return str, err
+	return t.DurationFormat(formatMask)
 }
 
 type timeToSecFunctionClass struct {
@@ -6086,9 +6666,13 @@ func (c *timeToSecFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDuration)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDuration)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp.Flen = 10
 	sig := &builtinTimeToSecSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_TimeToSec)
 	return sig, nil
 }
 
@@ -6126,9 +6710,13 @@ func (c *timestampAddFunctionClass) getFunction(ctx sessionctx.Context, args []E
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETString, types.ETString, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETString, types.ETString, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	bf.tp = &types.FieldType{Tp: mysql.TypeString, Flen: mysql.MaxDatetimeWidthNoFsp, Decimal: types.UnspecifiedLength}
 	sig := &builtinTimestampAddSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_TimestampAdd)
 	return sig, nil
 
 }
@@ -6158,9 +6746,10 @@ func (b *builtinTimestampAddSig) evalString(row chunk.Row) (string, bool, error)
 	if isNull || err != nil {
 		return "", isNull, err
 	}
-	tm1, err := arg.Time.GoTime(time.Local)
+	tm1, err := arg.GoTime(time.Local)
 	if err != nil {
-		return "", isNull, err
+		b.ctx.GetSessionVars().StmtCtx.AppendWarning(err)
+		return "", true, nil
 	}
 	var tb time.Time
 	fsp := types.DefaultFsp
@@ -6185,9 +6774,9 @@ func (b *builtinTimestampAddSig) evalString(row chunk.Row) (string, bool, error)
 	case "YEAR":
 		tb = tm1.AddDate(int(v), 0, 0)
 	default:
-		return "", true, types.ErrInvalidTimeFormat.GenWithStackByArgs(unit)
+		return "", true, types.ErrWrongValue.GenWithStackByArgs(types.TimeStr, unit)
 	}
-	r := types.Time{Time: types.FromGoTime(tb), Type: b.resolveType(arg.Type, unit), Fsp: fsp}
+	r := types.NewTime(types.FromGoTime(tb), b.resolveType(arg.Type(), unit), fsp)
 	if err = r.Check(b.ctx.GetSessionVars().StmtCtx); err != nil {
 		return "", true, handleInvalidTimeError(b.ctx, err)
 	}
@@ -6219,8 +6808,12 @@ func (c *toDaysFunctionClass) getFunction(ctx sessionctx.Context, args []Express
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	sig := &builtinToDaysSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_ToDays)
 	return sig, nil
 }
 
@@ -6244,7 +6837,7 @@ func (b *builtinToDaysSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 	ret := types.TimestampDiff("DAY", types.ZeroDate, arg)
 	if ret == 0 {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, arg.String()))
 	}
 	return ret, false, nil
 }
@@ -6257,8 +6850,12 @@ func (c *toSecondsFunctionClass) getFunction(ctx sessionctx.Context, args []Expr
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETInt, types.ETDatetime)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETInt, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
 	sig := &builtinToSecondsSig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_ToSeconds)
 	return sig, nil
 }
 
@@ -6281,36 +6878,13 @@ func (b *builtinToSecondsSig) evalInt(row chunk.Row) (int64, bool, error) {
 	}
 	ret := types.TimestampDiff("SECOND", types.ZeroDate, arg)
 	if ret == 0 {
-		return 0, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+		return 0, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, arg.String()))
 	}
 	return ret, false, nil
 }
 
 type utcTimeFunctionClass struct {
 	baseFunctionClass
-}
-
-func (c *utcTimeFunctionClass) getFlenAndDecimal4UTCTime(ctx sessionctx.Context, args []Expression) (flen, decimal int) {
-	if len(args) == 0 {
-		flen, decimal = 8, 0
-		return
-	}
-	if constant, ok := args[0].(*Constant); ok {
-		fsp, isNull, err := constant.EvalInt(ctx, chunk.Row{})
-		if isNull || err != nil || fsp > int64(types.MaxFsp) {
-			decimal = types.MaxFsp
-		} else if fsp < int64(types.MinFsp) {
-			decimal = types.MinFsp
-		} else {
-			decimal = int(fsp)
-		}
-	}
-	if decimal > 0 {
-		flen = 8 + 1 + decimal
-	} else {
-		flen = 8
-	}
-	return flen, decimal
 }
 
 func (c *utcTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expression) (builtinFunc, error) {
@@ -6321,14 +6895,26 @@ func (c *utcTimeFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	if len(args) == 1 {
 		argTps = append(argTps, types.ETInt)
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDuration, argTps...)
-	bf.tp.Flen, bf.tp.Decimal = c.getFlenAndDecimal4UTCTime(bf.ctx, args)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDuration, argTps...)
+	if err != nil {
+		return nil, err
+	}
+	fsp, err := getFspByIntArg(bf.ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForTime(fsp)
+	// 1. no sign.
+	// 2. hour is in the 2-digit range.
+	bf.tp.Flen -= 2
 
 	var sig builtinFunc
 	if len(args) == 1 {
 		sig = &builtinUTCTimeWithArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_UTCTimeWithArg)
 	} else {
 		sig = &builtinUTCTimeWithoutArgSig{bf}
+		sig.setPbCode(tipb.ScalarFuncSig_UTCTimeWithoutArg)
 	}
 	return sig, nil
 }
@@ -6381,7 +6967,7 @@ func (b *builtinUTCTimeWithArgSig) evalDuration(row chunk.Row) (types.Duration, 
 	if err != nil {
 		return types.Duration{}, true, err
 	}
-	v, err := types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, nowTs.UTC().Format(types.TimeFSPFormat), int(fsp))
+	v, err := types.ParseDuration(b.ctx.GetSessionVars().StmtCtx, nowTs.UTC().Format(types.TimeFSPFormat), int8(fsp))
 	return v, false, err
 }
 
@@ -6393,9 +6979,13 @@ func (c *lastDayFunctionClass) getFunction(ctx sessionctx.Context, args []Expres
 	if err := c.verifyArgs(args); err != nil {
 		return nil, err
 	}
-	bf := newBaseBuiltinFuncWithTp(ctx, args, types.ETDatetime, types.ETDatetime)
-	bf.tp.Tp, bf.tp.Flen, bf.tp.Decimal = mysql.TypeDate, mysql.MaxDateWidth, types.DefaultFsp
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDate()
 	sig := &builtinLastDaySig{bf}
+	sig.setPbCode(tipb.ScalarFuncSig_LastDay)
 	return sig, nil
 }
 
@@ -6414,34 +7004,31 @@ func (b *builtinLastDaySig) Clone() builtinFunc {
 func (b *builtinLastDaySig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	arg, isNull, err := b.args[0].EvalTime(b.ctx, row)
 	if isNull || err != nil {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, err)
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
 	}
-	tm := arg.Time
-	var day int
+	tm := arg
 	year, month := tm.Year(), tm.Month()
-	if month == 0 {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, types.ErrIncorrectDatetimeValue.GenWithStackByArgs(arg.String()))
+	if tm.Month() == 0 || (tm.Day() == 0 && b.ctx.GetSessionVars().SQLMode.HasNoZeroDateMode()) {
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, arg.String()))
 	}
-	day = types.GetLastDay(year, month)
-	ret := types.Time{
-		Time: types.FromDate(year, month, day, 0, 0, 0, 0),
-		Type: mysql.TypeDate,
-		Fsp:  types.DefaultFsp,
-	}
+	lastDay := types.GetLastDay(year, month)
+	ret := types.NewTime(types.FromDate(year, month, lastDay, 0, 0, 0, 0), mysql.TypeDate, types.DefaultFsp)
 	return ret, false, nil
 }
 
 // getExpressionFsp calculates the fsp from given expression.
+// This function must by called before calling newBaseBuiltinFuncWithTp.
 func getExpressionFsp(ctx sessionctx.Context, expression Expression) (int, error) {
 	constExp, isConstant := expression.(*Constant)
-	if isConstant && types.IsString(expression.GetType().Tp) && !isTemporalColumn(expression) {
+	if isConstant {
 		str, isNil, err := constExp.EvalString(ctx, chunk.Row{})
 		if isNil || err != nil {
 			return 0, err
 		}
-		return types.GetFsp(str), nil
+		return int(types.GetFsp(str)), nil
 	}
-	return mathutil.Min(expression.GetType().Decimal, types.MaxFsp), nil
+	warpExpr := WrapWithCastAsTime(ctx, expression, types.NewFieldType(mysql.TypeDatetime))
+	return mathutil.Min(warpExpr.GetType().Decimal, int(types.MaxFsp)), nil
 }
 
 // tidbParseTsoFunctionClass extracts physical time from a tso
@@ -6454,9 +7041,12 @@ func (c *tidbParseTsoFunctionClass) getFunction(ctx sessionctx.Context, args []E
 		return nil, err
 	}
 	argTp := args[0].GetType().EvalType()
-	bf := newBaseBuiltinFuncWithTp(ctx, args, argTp, types.ETInt)
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, argTp, types.ETInt)
+	if err != nil {
+		return nil, err
+	}
 
-	bf.tp.Tp, bf.tp.Flen, bf.tp.Decimal = mysql.TypeDate, mysql.MaxDateWidth, types.DefaultFsp
+	bf.tp.Tp, bf.tp.Flen, bf.tp.Decimal = mysql.TypeDate, mysql.MaxDateWidth, int(types.DefaultFsp)
 	sig := &builtinTidbParseTsoSig{bf}
 	return sig, nil
 }
@@ -6475,18 +7065,159 @@ func (b *builtinTidbParseTsoSig) Clone() builtinFunc {
 func (b *builtinTidbParseTsoSig) evalTime(row chunk.Row) (types.Time, bool, error) {
 	arg, isNull, err := b.args[0].EvalInt(b.ctx, row)
 	if isNull || err != nil || arg <= 0 {
-		return types.Time{}, true, handleInvalidTimeError(b.ctx, err)
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
 	}
 
 	t := oracle.GetTimeFromTS(uint64(arg))
-	result := types.Time{
-		Time: types.FromGoTime(t),
-		Type: mysql.TypeDatetime,
-		Fsp:  types.MaxFsp,
-	}
+	result := types.NewTime(types.FromGoTime(t), mysql.TypeDatetime, types.MaxFsp)
 	err = result.ConvertTimeZone(time.Local, b.ctx.GetSessionVars().Location())
 	if err != nil {
-		return types.Time{}, true, err
+		return types.ZeroTime, true, err
 	}
 	return result, false, nil
+}
+
+func handleInvalidZeroTime(ctx sessionctx.Context, t types.Time) (bool, error) {
+	// MySQL compatibility, #11203
+	// 0 | 0.0 should be converted to null without warnings
+	n, err := t.ToNumber().ToInt()
+	isOriginalIntOrDecimalZero := err == nil && n == 0
+	// Args like "0000-00-00", "0000-00-00 00:00:00" set Fsp to 6
+	isOriginalStringZero := t.Fsp() > 0
+	if isOriginalIntOrDecimalZero && !isOriginalStringZero {
+		return false, nil
+	}
+	return true, handleInvalidTimeError(ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, t.String()))
+}
+
+// tidbBoundedStalenessFunctionClass reads a time window [a, b] and compares it with the latest SafeTS
+// to determine which TS to use in a read only transaction.
+type tidbBoundedStalenessFunctionClass struct {
+	baseFunctionClass
+}
+
+func (c *tidbBoundedStalenessFunctionClass) getFunction(ctx sessionctx.Context, args []Expression) (builtinFunc, error) {
+	if err := c.verifyArgs(args); err != nil {
+		return nil, err
+	}
+	bf, err := newBaseBuiltinFuncWithTp(ctx, c.funcName, args, types.ETDatetime, types.ETDatetime, types.ETDatetime)
+	if err != nil {
+		return nil, err
+	}
+	bf.setDecimalAndFlenForDatetime(3)
+	sig := &builtinTiDBBoundedStalenessSig{bf}
+	return sig, nil
+}
+
+type builtinTiDBBoundedStalenessSig struct {
+	baseBuiltinFunc
+}
+
+func (b *builtinTiDBBoundedStalenessSig) Clone() builtinFunc {
+	newSig := &builtinTidbParseTsoSig{}
+	newSig.cloneFrom(&b.baseBuiltinFunc)
+	return newSig
+}
+
+func (b *builtinTiDBBoundedStalenessSig) evalTime(row chunk.Row) (types.Time, bool, error) {
+	leftTime, isNull, err := b.args[0].EvalTime(b.ctx, row)
+	if isNull || err != nil {
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
+	}
+	rightTime, isNull, err := b.args[1].EvalTime(b.ctx, row)
+	if isNull || err != nil {
+		return types.ZeroTime, true, handleInvalidTimeError(b.ctx, err)
+	}
+	if invalidLeftTime, invalidRightTime := leftTime.InvalidZero(), rightTime.InvalidZero(); invalidLeftTime || invalidRightTime {
+		if invalidLeftTime {
+			err = handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, leftTime.String()))
+		}
+		if invalidRightTime {
+			err = handleInvalidTimeError(b.ctx, types.ErrWrongValue.GenWithStackByArgs(types.DateTimeStr, rightTime.String()))
+		}
+		return types.ZeroTime, true, err
+	}
+	timeZone := getTimeZone(b.ctx)
+	minTime, err := leftTime.GoTime(timeZone)
+	if err != nil {
+		return types.ZeroTime, true, err
+	}
+	maxTime, err := rightTime.GoTime(timeZone)
+	if err != nil {
+		return types.ZeroTime, true, err
+	}
+	if minTime.After(maxTime) {
+		return types.ZeroTime, true, nil
+	}
+	// Because the minimum unit of a TSO is millisecond, so we only need fsp to be 3.
+	return types.NewTime(types.FromGoTime(calAppropriateTime(minTime, maxTime, getMinSafeTime(b.ctx, timeZone))), mysql.TypeDatetime, 3), false, nil
+}
+
+// GetMinSafeTime get minSafeTime
+func GetMinSafeTime(sessionCtx sessionctx.Context) time.Time {
+	return getMinSafeTime(sessionCtx, getTimeZone(sessionCtx))
+}
+
+func getMinSafeTime(sessionCtx sessionctx.Context, timeZone *time.Location) time.Time {
+	var minSafeTS uint64
+	txnScope := config.GetTxnScopeFromConfig()
+	if store := sessionCtx.GetStore(); store != nil {
+		minSafeTS = store.GetMinSafeTS(txnScope)
+	}
+	// Inject mocked SafeTS for test.
+	failpoint.Inject("injectSafeTS", func(val failpoint.Value) {
+		injectTS := val.(int)
+		minSafeTS = uint64(injectTS)
+	})
+	// Try to get from the stmt cache to make sure this function is deterministic.
+	stmtCtx := sessionCtx.GetSessionVars().StmtCtx
+	minSafeTS = stmtCtx.GetOrStoreStmtCache(stmtctx.StmtSafeTSCacheKey, minSafeTS).(uint64)
+	return oracle.GetTimeFromTS(minSafeTS).In(timeZone)
+}
+
+// CalAppropriateTime directly calls calAppropriateTime
+func CalAppropriateTime(minTime, maxTime, minSafeTime time.Time) time.Time {
+	return calAppropriateTime(minTime, maxTime, minSafeTime)
+}
+
+// For a SafeTS t and a time range [t1, t2]:
+//   1. If t < t1, we will use t1 as the result,
+//      and with it, a read request may fail because it's an unreached SafeTS.
+//   2. If t1 <= t <= t2, we will use t as the result, and with it,
+//      a read request won't fail.
+//   2. If t2 < t, we will use t2 as the result,
+//      and with it, a read request won't fail because it's bigger than the latest SafeTS.
+func calAppropriateTime(minTime, maxTime, minSafeTime time.Time) time.Time {
+	if minSafeTime.Before(minTime) {
+		return minTime
+	} else if minSafeTime.After(maxTime) {
+		return maxTime
+	}
+	return minSafeTime
+}
+
+// getFspByIntArg is used by some time functions to get the result fsp. If len(expr) == 0, then the fsp is not explicit set, use 0 as default.
+func getFspByIntArg(ctx sessionctx.Context, exps []Expression) (int, error) {
+	if len(exps) == 0 {
+		return 0, nil
+	}
+	if len(exps) != 1 {
+		return 0, errors.Errorf("Should not happen, the num of argument should be 1, but got %d", len(exps))
+	}
+	_, ok := exps[0].(*Constant)
+	if ok {
+		fsp, isNuLL, err := exps[0].EvalInt(ctx, chunk.Row{})
+		if err != nil || isNuLL {
+			// If isNULL, it may be a bug of parser. Return 0 to be compatible with old version.
+			return 0, err
+		}
+		if fsp > int64(types.MaxFsp) {
+			return 0, errors.Errorf("Too-big precision %v specified for 'curtime'. Maximum is %v.", fsp, types.MaxFsp)
+		} else if fsp < int64(types.MinFsp) {
+			return 0, errors.Errorf("Invalid negative %d specified, must in [0, 6].", fsp)
+		}
+		return int(fsp), nil
+	}
+	// Should no happen. But our tests may generate non-constant input.
+	return 0, nil
 }

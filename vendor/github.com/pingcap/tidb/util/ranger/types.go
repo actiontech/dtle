@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -25,6 +26,28 @@ import (
 	"github.com/pingcap/tidb/util/codec"
 )
 
+// MutableRanges represents a range may change after it is created.
+// It's mainly designed for plan-cache, since some ranges in a cached plan have to be rebuild when reusing.
+type MutableRanges interface {
+	// Range returns the underlying range values.
+	Range() []*Range
+	// Rebuild rebuilds the underlying ranges again.
+	Rebuild() error
+}
+
+// Ranges implements the MutableRanges interface for range array.
+type Ranges []*Range
+
+// Range returns the range array.
+func (rs Ranges) Range() []*Range {
+	return rs
+}
+
+// Rebuild rebuilds this range.
+func (rs Ranges) Rebuild() error {
+	return nil
+}
+
 // Range represents a range generated in physical plan building phase.
 type Range struct {
 	LowVal  []types.Datum
@@ -32,6 +55,11 @@ type Range struct {
 
 	LowExclude  bool // Low value is exclusive.
 	HighExclude bool // High value is exclusive.
+}
+
+// Width returns the width of this range.
+func (ran *Range) Width() int {
+	return len(ran.LowVal)
 }
 
 // Clone clones a Range.
@@ -75,6 +103,69 @@ func (ran *Range) IsPoint(sc *stmtctx.StatementContext) bool {
 		}
 	}
 	return !ran.LowExclude && !ran.HighExclude
+}
+
+// IsPointNullable returns if the range is a point.
+func (ran *Range) IsPointNullable(sc *stmtctx.StatementContext) bool {
+	if len(ran.LowVal) != len(ran.HighVal) {
+		return false
+	}
+	for i := range ran.LowVal {
+		a := ran.LowVal[i]
+		b := ran.HighVal[i]
+		if a.Kind() == types.KindMinNotNull || b.Kind() == types.KindMaxValue {
+			return false
+		}
+		cmp, err := a.CompareDatum(sc, &b)
+		if err != nil {
+			return false
+		}
+		if cmp != 0 {
+			return false
+		}
+
+		if a.IsNull() {
+			if !b.IsNull() {
+				return false
+			}
+		}
+	}
+	return !ran.LowExclude && !ran.HighExclude
+}
+
+// IsFullRange check if the range is full scan range
+func (ran *Range) IsFullRange(unsignedIntHandle bool) bool {
+	if unsignedIntHandle {
+		if len(ran.LowVal) != 1 || len(ran.HighVal) != 1 {
+			return false
+		}
+		lowValRawString := formatDatum(ran.LowVal[0], true)
+		highValRawString := formatDatum(ran.HighVal[0], false)
+		return lowValRawString == "0" && highValRawString == "+inf"
+	}
+	if len(ran.LowVal) != len(ran.HighVal) {
+		return false
+	}
+	for i := range ran.LowVal {
+		lowValRawString := formatDatum(ran.LowVal[i], true)
+		highValRawString := formatDatum(ran.HighVal[i], false)
+		if ("-inf" != lowValRawString && "NULL" != lowValRawString) ||
+			("+inf" != highValRawString && "NULL" != highValRawString) ||
+			("NULL" == lowValRawString && "NULL" == highValRawString) {
+			return false
+		}
+	}
+	return true
+}
+
+// HasFullRange checks if any range in the slice is a full range.
+func HasFullRange(ranges []*Range, unsignedIntHandle bool) bool {
+	for _, ran := range ranges {
+		if ran.IsFullRange(unsignedIntHandle) {
+			return true
+		}
+	}
+	return false
 }
 
 // String implements the Stringer interface.
@@ -156,7 +247,9 @@ func formatDatum(d types.Datum, isLeftSide bool) string {
 		if d.GetUint64() == math.MaxUint64 && !isLeftSide {
 			return "+inf"
 		}
-	case types.KindString, types.KindBytes, types.KindMysqlEnum, types.KindMysqlSet,
+	case types.KindBytes:
+		return fmt.Sprintf("0x%X", d.GetValue())
+	case types.KindString, types.KindMysqlEnum, types.KindMysqlSet,
 		types.KindMysqlJSON, types.KindBinaryLiteral, types.KindMysqlBit:
 		return fmt.Sprintf("\"%v\"", d.GetValue())
 	}

@@ -22,14 +22,16 @@ import (
 	"sync"
 	"time"
 
+	gmysql "github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/pingcap/errors"
-	gmysql "github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
-	"github.com/siddontang/go/sync2"
+	"go.uber.org/atomic"
+	"go.uber.org/zap"
 
 	"github.com/pingcap/dm/pkg/binlog/common"
 	"github.com/pingcap/dm/pkg/gtid"
 	"github.com/pingcap/dm/pkg/log"
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 // FileReader is a binlog event reader which reads binlog events from a file.
@@ -38,12 +40,15 @@ type FileReader struct {
 	wg sync.WaitGroup
 
 	stage      common.Stage
-	readOffset sync2.AtomicUint32
-	sendOffset sync2.AtomicUint32
+	readOffset atomic.Uint32
+	sendOffset atomic.Uint32
 
 	parser *replication.BinlogParser
 	ch     chan *replication.BinlogEvent
 	ech    chan error
+	endCh  chan struct{}
+
+	logger log.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -68,7 +73,7 @@ type FileReaderStatus struct {
 func (s *FileReaderStatus) String() string {
 	data, err := json.Marshal(s)
 	if err != nil {
-		log.Errorf("[FileReaderStatus] marshal status to json error %v", err)
+		log.L().Error("fail to marshal status to json", zap.Reflect("file reader status", s), log.ShortError(err))
 	}
 	return string(data)
 }
@@ -77,7 +82,7 @@ func (s *FileReaderStatus) String() string {
 func NewFileReader(cfg *FileReaderConfig) Reader {
 	parser := replication.NewBinlogParser()
 	parser.SetVerifyChecksum(true)
-	parser.SetUseDecimal(true)
+	parser.SetUseDecimal(false)
 	parser.SetRawMode(cfg.EnableRawMode)
 	if cfg.Timezone != nil {
 		parser.SetTimestampStringLocation(cfg.Timezone)
@@ -86,29 +91,38 @@ func NewFileReader(cfg *FileReaderConfig) Reader {
 		parser: parser,
 		ch:     make(chan *replication.BinlogEvent, cfg.ChBufferSize),
 		ech:    make(chan error, cfg.EchBufferSize),
+		endCh:  make(chan struct{}),
+		logger: log.With(zap.String("component", "binlog file reader")),
 	}
 }
 
 // StartSyncByPos implements Reader.StartSyncByPos.
+// TODO: support heartbeat event.
 func (r *FileReader) StartSyncByPos(pos gmysql.Position) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if r.stage != common.StageNew {
-		return errors.Errorf("stage %s, expect %s, already started", r.stage, common.StageNew)
+		return terror.ErrReaderAlreadyStarted.Generate(r.stage, common.StageNew)
 	}
 
+	// keep running until canceled in `Close`.
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
 		err := r.parser.ParseFile(pos.Name, int64(pos.Pos), r.onEvent)
 		if err != nil {
-			log.Errorf("[file reader] parse binlog file with error %s", errors.ErrorStack(err))
+			if errors.Cause(err) != context.Canceled {
+				r.logger.Error("fail to parse binlog file", zap.Error(err))
+			}
 			select {
 			case r.ech <- err:
 			case <-r.ctx.Done():
 			}
+		} else {
+			r.logger.Info("parse end of binlog file", zap.Uint32("pos", r.readOffset.Load()))
+			close(r.endCh)
 		}
 	}()
 
@@ -119,7 +133,7 @@ func (r *FileReader) StartSyncByPos(pos gmysql.Position) error {
 // StartSyncByGTID implements Reader.StartSyncByGTID.
 func (r *FileReader) StartSyncByGTID(gSet gtid.Set) error {
 	// NOTE: may be supported later.
-	return errors.NotSupportedf("read from file by GTID")
+	return terror.ErrBinlogReadFileByGTID.Generate()
 }
 
 // Close implements Reader.Close.
@@ -128,7 +142,7 @@ func (r *FileReader) Close() error {
 	defer r.mu.Unlock()
 
 	if r.stage != common.StagePrepared {
-		return errors.Errorf("stage %s, expect %s, can not close", r.stage, common.StagePrepared)
+		return terror.ErrReaderStateCannotClose.Generate(r.stage, common.StagePrepared)
 	}
 
 	r.cancel()
@@ -144,15 +158,17 @@ func (r *FileReader) GetEvent(ctx context.Context) (*replication.BinlogEvent, er
 	defer r.mu.RUnlock()
 
 	if r.stage != common.StagePrepared {
-		return nil, errors.Errorf("stage %s, expect %s, please start sync first", r.stage, common.StagePrepared)
+		return nil, terror.ErrReaderShouldStartSync.Generate(r.stage, common.StagePrepared)
 	}
 
 	select {
 	case ev := <-r.ch:
-		r.sendOffset.Set(ev.Header.LogPos)
+		r.sendOffset.Store(ev.Header.LogPos)
 		return ev, nil
 	case err := <-r.ech:
 		return nil, err
+	case <-r.endCh:
+		return nil, terror.ErrReaderReachEndOfFile.Generate()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -166,15 +182,15 @@ func (r *FileReader) Status() interface{} {
 
 	return &FileReaderStatus{
 		Stage:      stage.String(),
-		ReadOffset: r.readOffset.Get(),
-		SendOffset: r.sendOffset.Get(),
+		ReadOffset: r.readOffset.Load(),
+		SendOffset: r.sendOffset.Load(),
 	}
 }
 
 func (r *FileReader) onEvent(ev *replication.BinlogEvent) error {
 	select {
 	case r.ch <- ev:
-		r.readOffset.Set(ev.Header.LogPos)
+		r.readOffset.Store(ev.Header.LogPos)
 		return nil
 	case <-r.ctx.Done():
 		return r.ctx.Err()

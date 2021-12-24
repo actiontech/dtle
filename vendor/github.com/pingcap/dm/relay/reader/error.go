@@ -21,9 +21,7 @@ import (
 
 // isRetryableError checks whether the error is retryable.
 func isRetryableError(err error) bool {
-	err = errors.Cause(err)
-	switch err {
-	case context.DeadlineExceeded:
+	if err = errors.Cause(err); err == context.DeadlineExceeded {
 		return true
 	}
 	return false

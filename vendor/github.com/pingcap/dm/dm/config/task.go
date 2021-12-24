@@ -14,65 +14,96 @@
 package config
 
 import (
+	"encoding/json"
 	"flag"
-	"io/ioutil"
-	"time"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
 
-	"github.com/pingcap/dm/pkg/log"
-	"github.com/pingcap/errors"
+	"github.com/coreos/go-semver/semver"
+	"github.com/dustin/go-humanize"
 	bf "github.com/pingcap/tidb-tools/pkg/binlog-filter"
 	"github.com/pingcap/tidb-tools/pkg/column-mapping"
 	"github.com/pingcap/tidb-tools/pkg/filter"
-	"github.com/pingcap/tidb-tools/pkg/table-router"
-	yaml "gopkg.in/yaml.v2"
+	router "github.com/pingcap/tidb-tools/pkg/table-router"
+	"github.com/pingcap/tidb/parser"
+	"go.uber.org/zap"
+	"gopkg.in/yaml.v2"
+
+	"github.com/pingcap/dm/pkg/log"
+	"github.com/pingcap/dm/pkg/terror"
+	"github.com/pingcap/dm/pkg/utils"
 )
 
-// Online DDL Scheme
+// Online DDL Scheme.
 const (
 	GHOST = "gh-ost"
 	PT    = "pt"
 )
 
-// default config item values
+// shard DDL mode.
+const (
+	ShardPessimistic  = "pessimistic"
+	ShardOptimistic   = "optimistic"
+	tidbTxnMode       = "tidb_txn_mode"
+	tidbTxnOptimistic = "optimistic"
+)
+
+// default config item values.
 var (
-	// TaskConfig
+	// TaskConfig.
 	defaultMetaSchema      = "dm_meta"
 	defaultEnableHeartbeat = false
 	defaultIsSharding      = false
 	defaultUpdateInterval  = 1
 	defaultReportInterval  = 10
-	// MydumperConfig
-	defaultMydumperPath        = "./bin/mydumper"
-	defaultThreads             = 4
-	defaultChunkFilesize int64 = 64
-	defaultSkipTzUTC           = true
-	// LoaderConfig
+	// MydumperConfig.
+	defaultMydumperPath  = "./bin/mydumper"
+	defaultThreads       = 4
+	defaultChunkFilesize = "64"
+	defaultSkipTzUTC     = true
+	// LoaderConfig.
 	defaultPoolSize = 16
 	defaultDir      = "./dumped_data"
-	// SyncerConfig
-	defaultWorkerCount = 16
-	defaultBatch       = 100
-	defaultMaxRetry    = 100
+	// SyncerConfig.
+	defaultWorkerCount             = 16
+	defaultBatch                   = 100
+	defaultQueueSize               = 1024 // do not give too large default value to avoid OOM
+	defaultCheckpointFlushInterval = 30   // in seconds
+	// force use UTC time_zone.
+	defaultTimeZone = "+00:00"
+
+	// TargetDBConfig.
+	defaultSessionCfg = []struct {
+		key        string
+		val        string
+		minVersion *semver.Version
+	}{
+		{tidbTxnMode, tidbTxnOptimistic, semver.New("3.0.0")},
+	}
 )
 
 // Meta represents binlog's meta pos
 // NOTE: refine to put these config structs into pkgs
-// NOTE: now, syncer does not support GTID mode and which is supported by relay
+// NOTE: now, syncer does not support GTID mode and which is supported by relay.
 type Meta struct {
-	BinLogName string `yaml:"binlog-name"`
-	BinLogPos  uint32 `yaml:"binlog-pos"`
+	BinLogName string `toml:"binlog-name" yaml:"binlog-name"`
+	BinLogPos  uint32 `toml:"binlog-pos" yaml:"binlog-pos"`
+	BinLogGTID string `toml:"binlog-gtid" yaml:"binlog-gtid"`
 }
 
 // Verify does verification on configs
+// NOTE: we can't decide to verify `binlog-name` or `binlog-gtid` until bound to a source (with `enable-gtid` set).
 func (m *Meta) Verify() error {
-	if m != nil && len(m.BinLogName) == 0 {
-		return errors.New("binlog-name must specify")
+	if m != nil && len(m.BinLogName) == 0 && len(m.BinLogGTID) == 0 {
+		return terror.ErrConfigMetaInvalid.Generate()
 	}
 
 	return nil
 }
 
-// MySQLInstance represents a sync config of a MySQL instance
+// MySQLInstance represents a sync config of a MySQL instance.
 type MySQLInstance struct {
 	// it represents a MySQL/MariaDB instance or a replica group
 	SourceID           string   `yaml:"source-id"`
@@ -80,55 +111,76 @@ type MySQLInstance struct {
 	FilterRules        []string `yaml:"filter-rules"`
 	ColumnMappingRules []string `yaml:"column-mapping-rules"`
 	RouteRules         []string `yaml:"route-rules"`
-	BWListName         string   `yaml:"black-white-list"`
+	ExpressionFilters  []string `yaml:"expression-filters"`
+
+	// black-white-list is deprecated, use block-allow-list instead
+	BWListName string `yaml:"black-white-list"`
+	BAListName string `yaml:"block-allow-list"`
 
 	MydumperConfigName string          `yaml:"mydumper-config-name"`
 	Mydumper           *MydumperConfig `yaml:"mydumper"`
-	LoaderConfigName   string          `yaml:"loader-config-name"`
-	Loader             *LoaderConfig   `yaml:"loader"`
-	SyncerConfigName   string          `yaml:"syncer-config-name"`
-	Syncer             *SyncerConfig   `yaml:"syncer"`
+	// MydumperThread is alias for Threads in MydumperConfig, and its priority is higher than Threads
+	MydumperThread int `yaml:"mydumper-thread"`
+
+	LoaderConfigName string        `yaml:"loader-config-name"`
+	Loader           *LoaderConfig `yaml:"loader"`
+	// LoaderThread is alias for PoolSize in LoaderConfig, and its priority is higher than PoolSize
+	LoaderThread int `yaml:"loader-thread"`
+
+	SyncerConfigName string        `yaml:"syncer-config-name"`
+	Syncer           *SyncerConfig `yaml:"syncer"`
+	// SyncerThread is alias for WorkerCount in SyncerConfig, and its priority is higher than WorkerCount
+	SyncerThread int `yaml:"syncer-thread"`
 }
 
-// Verify does verification on configs
-func (m *MySQLInstance) Verify() error {
+// VerifyAndAdjust does verification on configs, and adjust some configs.
+func (m *MySQLInstance) VerifyAndAdjust() error {
 	if m == nil {
-		return errors.New("mysql instance config must specify")
+		return terror.ErrConfigMySQLInstNotFound.Generate()
 	}
 
 	if m.SourceID == "" {
-		return errors.NotValidf("empty source-id")
+		return terror.ErrConfigEmptySourceID.Generate()
 	}
 
 	if err := m.Meta.Verify(); err != nil {
-		return errors.Annotatef(err, "source %s", m.SourceID)
+		return terror.Annotatef(err, "source %s", m.SourceID)
 	}
 
 	if len(m.MydumperConfigName) > 0 && m.Mydumper != nil {
-		return errors.New("mydumper-config-name and mydumper should only specify one")
+		return terror.ErrConfigMydumperCfgConflict.Generate()
 	}
 	if len(m.LoaderConfigName) > 0 && m.Loader != nil {
-		return errors.New("loader-config-name and loader should only specify one")
+		return terror.ErrConfigLoaderCfgConflict.Generate()
 	}
 	if len(m.SyncerConfigName) > 0 && m.Syncer != nil {
-		return errors.New("syncer-config-name and syncer should only specify one")
+		return terror.ErrConfigSyncerCfgConflict.Generate()
+	}
+
+	if len(m.BAListName) == 0 && len(m.BWListName) != 0 {
+		m.BAListName = m.BWListName
 	}
 
 	return nil
 }
 
-// MydumperConfig represents mydumper process unit's specific config
+// MydumperConfig represents mydumper process unit's specific config.
 type MydumperConfig struct {
 	MydumperPath  string `yaml:"mydumper-path" toml:"mydumper-path" json:"mydumper-path"`    // mydumper binary path
 	Threads       int    `yaml:"threads" toml:"threads" json:"threads"`                      // -t, --threads
-	ChunkFilesize int64  `yaml:"chunk-filesize" toml:"chunk-filesize" json:"chunk-filesize"` // -F, --chunk-filesize
-	SkipTzUTC     bool   `yaml:"skip-tz-utc" toml:"skip-tz-utc" json:"skip-tz-utc"`          // --skip-tz-utc
-	ExtraArgs     string `yaml:"extra-args" toml:"extra-args" json:"extra-args"`             // other extra args
+	ChunkFilesize string `yaml:"chunk-filesize" toml:"chunk-filesize" json:"chunk-filesize"` // -F, --chunk-filesize
+	StatementSize uint64 `yaml:"statement-size" toml:"statement-size" json:"statement-size"` // -S, --statement-size
+	Rows          uint64 `yaml:"rows" toml:"rows" json:"rows"`                               // -r, --rows
+	Where         string `yaml:"where" toml:"where" json:"where"`                            // --where
+
+	SkipTzUTC bool   `yaml:"skip-tz-utc" toml:"skip-tz-utc" json:"skip-tz-utc"` // --skip-tz-utc
+	ExtraArgs string `yaml:"extra-args" toml:"extra-args" json:"extra-args"`    // other extra args
 	// NOTE: use LoaderConfig.Dir as --outputdir
 	// TODO zxc: combine -B -T --regex with filter rules?
 }
 
-func defaultMydumperConfig() MydumperConfig {
+// DefaultMydumperConfig return default mydumper config for task.
+func DefaultMydumperConfig() MydumperConfig {
 	return MydumperConfig{
 		MydumperPath:  defaultMydumperPath,
 		Threads:       defaultThreads,
@@ -137,128 +189,159 @@ func defaultMydumperConfig() MydumperConfig {
 	}
 }
 
-// alias to avoid infinite recursion for UnmarshalYAML
+// alias to avoid infinite recursion for UnmarshalYAML.
 type rawMydumperConfig MydumperConfig
 
-// UnmarshalYAML implements Unmarshaler.UnmarshalYAML
+// UnmarshalYAML implements Unmarshaler.UnmarshalYAML.
 func (m *MydumperConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	raw := rawMydumperConfig(defaultMydumperConfig())
+	raw := rawMydumperConfig(DefaultMydumperConfig())
 	if err := unmarshal(&raw); err != nil {
-		return errors.Trace(err)
+		return terror.ErrConfigYamlTransform.Delegate(err, "unmarshal mydumper config")
 	}
 	*m = MydumperConfig(raw) // raw used only internal, so no deep copy
 	return nil
 }
 
-// LoaderConfig represents loader process unit's specific config
+// LoaderConfig represents loader process unit's specific config.
 type LoaderConfig struct {
 	PoolSize int    `yaml:"pool-size" toml:"pool-size" json:"pool-size"`
 	Dir      string `yaml:"dir" toml:"dir" json:"dir"`
+	SQLMode  string `yaml:"-" toml:"-" json:"-"` // wrote by dump unit
 }
 
-func defaultLoaderConfig() LoaderConfig {
+// DefaultLoaderConfig return default loader config for task.
+func DefaultLoaderConfig() LoaderConfig {
 	return LoaderConfig{
 		PoolSize: defaultPoolSize,
 		Dir:      defaultDir,
 	}
 }
 
-// alias to avoid infinite recursion for UnmarshalYAML
+// alias to avoid infinite recursion for UnmarshalYAML.
 type rawLoaderConfig LoaderConfig
 
-// UnmarshalYAML implements Unmarshaler.UnmarshalYAML
+// UnmarshalYAML implements Unmarshaler.UnmarshalYAML.
 func (m *LoaderConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	raw := rawLoaderConfig(defaultLoaderConfig())
+	raw := rawLoaderConfig(DefaultLoaderConfig())
 	if err := unmarshal(&raw); err != nil {
-		return errors.Trace(err)
+		return terror.ErrConfigYamlTransform.Delegate(err, "unmarshal loader config")
 	}
 	*m = LoaderConfig(raw) // raw used only internal, so no deep copy
 	return nil
 }
 
-// SyncerConfig represents syncer process unit's specific config
+// SyncerConfig represents syncer process unit's specific config.
 type SyncerConfig struct {
 	MetaFile    string `yaml:"meta-file" toml:"meta-file" json:"meta-file"` // meta filename, used only when load SubConfig directly
 	WorkerCount int    `yaml:"worker-count" toml:"worker-count" json:"worker-count"`
 	Batch       int    `yaml:"batch" toml:"batch" json:"batch"`
-	MaxRetry    int    `yaml:"max-retry" toml:"max-retry" json:"max-retry"`
+	QueueSize   int    `yaml:"queue-size" toml:"queue-size" json:"queue-size"`
+	// checkpoint flush interval in seconds.
+	CheckpointFlushInterval int `yaml:"checkpoint-flush-interval" toml:"checkpoint-flush-interval" json:"checkpoint-flush-interval"`
+
+	// deprecated
+	MaxRetry int `yaml:"max-retry" toml:"max-retry" json:"max-retry"`
 
 	// refine following configs to top level configs?
-	AutoFixGTID      bool `yaml:"auto-fix-gtid" toml:"auto-fix-gtid" json:"auto-fix-gtid"`
-	EnableGTID       bool `yaml:"enable-gtid" toml:"enable-gtid" json:"enable-gtid"`
+	AutoFixGTID bool `yaml:"auto-fix-gtid" toml:"auto-fix-gtid" json:"auto-fix-gtid"`
+	EnableGTID  bool `yaml:"enable-gtid" toml:"enable-gtid" json:"enable-gtid"`
+	// deprecated
 	DisableCausality bool `yaml:"disable-detect" toml:"disable-detect" json:"disable-detect"`
 	SafeMode         bool `yaml:"safe-mode" toml:"safe-mode" json:"safe-mode"`
+	// deprecated, use `ansi-quotes` in top level config instead
 	EnableANSIQuotes bool `yaml:"enable-ansi-quotes" toml:"enable-ansi-quotes" json:"enable-ansi-quotes"`
 }
 
-func defaultSyncerConfig() SyncerConfig {
+// DefaultSyncerConfig return default syncer config for task.
+func DefaultSyncerConfig() SyncerConfig {
 	return SyncerConfig{
-		WorkerCount: defaultWorkerCount,
-		Batch:       defaultBatch,
-		MaxRetry:    defaultMaxRetry,
+		WorkerCount:             defaultWorkerCount,
+		Batch:                   defaultBatch,
+		QueueSize:               defaultQueueSize,
+		CheckpointFlushInterval: defaultCheckpointFlushInterval,
 	}
 }
 
-// alias to avoid infinite recursion for UnmarshalYAML
+// alias to avoid infinite recursion for UnmarshalYAML.
 type rawSyncerConfig SyncerConfig
 
-// UnmarshalYAML implements Unmarshaler.UnmarshalYAML
+// UnmarshalYAML implements Unmarshaler.UnmarshalYAML.
 func (m *SyncerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	raw := rawSyncerConfig(defaultSyncerConfig())
+	raw := rawSyncerConfig(DefaultSyncerConfig())
 	if err := unmarshal(&raw); err != nil {
-		return errors.Trace(err)
+		return terror.ErrConfigYamlTransform.Delegate(err, "unmarshal syncer config")
 	}
 	*m = SyncerConfig(raw) // raw used only internal, so no deep copy
 	return nil
 }
 
-// TaskConfig is the configuration for Task
+// TaskConfig is the configuration for Task.
 type TaskConfig struct {
-	*flag.FlagSet `yaml:"-"`
+	*flag.FlagSet `yaml:"-" toml:"-" json:"-"`
 
-	Name       string `yaml:"name"`
-	TaskMode   string `yaml:"task-mode"`
-	IsSharding bool   `yaml:"is-sharding"`
-	//  treat it as hidden configuration
-	IgnoreCheckingItems []string `yaml:"ignore-checking-items"`
+	Name       string `yaml:"name" toml:"name" json:"name"`
+	TaskMode   string `yaml:"task-mode" toml:"task-mode" json:"task-mode"`
+	IsSharding bool   `yaml:"is-sharding" toml:"is-sharding" json:"is-sharding"`
+	ShardMode  string `yaml:"shard-mode" toml:"shard-mode" json:"shard-mode"` // when `shard-mode` set, we always enable sharding support.
+	// treat it as hidden configuration
+	IgnoreCheckingItems []string `yaml:"ignore-checking-items" toml:"ignore-checking-items" json:"ignore-checking-items"`
 	// we store detail status in meta
 	// don't save configuration into it
-	MetaSchema string `yaml:"meta-schema"`
-	// remove meta from downstreaming database
-	// now we delete checkpoint and online ddl information
-	RemoveMeta              bool   `yaml:"remove-meta"`
-	DisableHeartbeat        bool   `yaml:"disable-heartbeat"` //  deprecated, use !enable-heartbeat instead
-	EnableHeartbeat         bool   `yaml:"enable-heartbeat"`
-	HeartbeatUpdateInterval int    `yaml:"heartbeat-update-interval"`
-	HeartbeatReportInterval int    `yaml:"heartbeat-report-interval"`
-	Timezone                string `yaml:"timezone"`
+	MetaSchema string `yaml:"meta-schema" toml:"meta-schema" json:"meta-schema"`
+	// deprecated
+	EnableHeartbeat bool `yaml:"enable-heartbeat" toml:"enable-heartbeat" json:"enable-heartbeat"`
+	// deprecated
+	HeartbeatUpdateInterval int `yaml:"heartbeat-update-interval" toml:"heartbeat-update-interval" json:"heartbeat-update-interval"`
+	// deprecated
+	HeartbeatReportInterval int `yaml:"heartbeat-report-interval" toml:"heartbeat-report-interval" json:"heartbeat-report-interval"`
+	// deprecated
+	Timezone string `yaml:"timezone" toml:"timezone" json:"timezone"`
 
 	// handle schema/table name mode, and only for schema/table name
 	// if case insensitive, we would convert schema/table name to lower case
-	CaseSensitive bool `yaml:"case-sensitive"`
+	CaseSensitive bool `yaml:"case-sensitive" toml:"case-sensitive" json:"case-sensitive"`
 
-	TargetDB *DBConfig `yaml:"target-database"`
+	TargetDB *DBConfig `yaml:"target-database" toml:"target-database" json:"target-database"`
 
-	MySQLInstances []*MySQLInstance `yaml:"mysql-instances"`
+	MySQLInstances []*MySQLInstance `yaml:"mysql-instances" toml:"mysql-instances" json:"mysql-instances"`
 
-	OnlineDDLScheme string `yaml:"online-ddl-scheme"`
+	OnlineDDL bool `yaml:"online-ddl" toml:"online-ddl" json:"online-ddl"`
+	// pt/gh-ost name rule,support regex
+	ShadowTableRules []string `yaml:"shadow-table-rules" toml:"shadow-table-rules" json:"shadow-table-rules"`
+	TrashTableRules  []string `yaml:"trash-table-rules" toml:"trash-table-rules" json:"trash-table-rules"`
 
-	Routes         map[string]*router.TableRule   `yaml:"routes"`
-	Filters        map[string]*bf.BinlogEventRule `yaml:"filters"`
-	ColumnMappings map[string]*column.Rule        `yaml:"column-mappings"`
-	BWList         map[string]*filter.Rules       `yaml:"black-white-list"`
+	// deprecated
+	OnlineDDLScheme string `yaml:"online-ddl-scheme" toml:"online-ddl-scheme" json:"online-ddl-scheme"`
 
-	Mydumpers map[string]*MydumperConfig `yaml:"mydumpers"`
-	Loaders   map[string]*LoaderConfig   `yaml:"loaders"`
-	Syncers   map[string]*SyncerConfig   `yaml:"syncers"`
+	Routes         map[string]*router.TableRule   `yaml:"routes" toml:"routes" json:"routes"`
+	Filters        map[string]*bf.BinlogEventRule `yaml:"filters" toml:"filters" json:"filters"`
+	ColumnMappings map[string]*column.Rule        `yaml:"column-mappings" toml:"column-mappings" json:"column-mappings"`
+	ExprFilter     map[string]*ExpressionFilter   `yaml:"expression-filter" toml:"expression-filter" json:"expression-filter"`
+
+	// black-white-list is deprecated, use block-allow-list instead
+	BWList map[string]*filter.Rules `yaml:"black-white-list" toml:"black-white-list" json:"black-white-list"`
+	BAList map[string]*filter.Rules `yaml:"block-allow-list" toml:"block-allow-list" json:"block-allow-list"`
+
+	Mydumpers map[string]*MydumperConfig `yaml:"mydumpers" toml:"mydumpers" json:"mydumpers"`
+	Loaders   map[string]*LoaderConfig   `yaml:"loaders" toml:"loaders" json:"loaders"`
+	Syncers   map[string]*SyncerConfig   `yaml:"syncers" toml:"syncers" json:"syncers"`
+
+	CleanDumpFile bool `yaml:"clean-dump-file" toml:"clean-dump-file" json:"clean-dump-file"`
+	// deprecated
+	EnableANSIQuotes bool `yaml:"ansi-quotes" toml:"ansi-quotes" json:"ansi-quotes"`
+
+	// deprecated, replaced by `start-task --remove-meta`
+	RemoveMeta bool `yaml:"remove-meta"`
+
+	// extra config when target db is TiDB
+	TiDB *TiDBExtraConfig `yaml:"tidb" toml:"tidb" json:"tidb"`
 }
 
-// NewTaskConfig creates a TaskConfig
+// NewTaskConfig creates a TaskConfig.
 func NewTaskConfig() *TaskConfig {
 	cfg := &TaskConfig{
 		// explicitly set default value
 		MetaSchema:              defaultMetaSchema,
-		DisableHeartbeat:        !defaultEnableHeartbeat,
 		EnableHeartbeat:         defaultEnableHeartbeat,
 		HeartbeatUpdateInterval: defaultUpdateInterval,
 		HeartbeatReportInterval: defaultReportInterval,
@@ -267,230 +350,603 @@ func NewTaskConfig() *TaskConfig {
 		Routes:                  make(map[string]*router.TableRule),
 		Filters:                 make(map[string]*bf.BinlogEventRule),
 		ColumnMappings:          make(map[string]*column.Rule),
+		ExprFilter:              make(map[string]*ExpressionFilter),
 		BWList:                  make(map[string]*filter.Rules),
+		BAList:                  make(map[string]*filter.Rules),
 		Mydumpers:               make(map[string]*MydumperConfig),
 		Loaders:                 make(map[string]*LoaderConfig),
 		Syncers:                 make(map[string]*SyncerConfig),
+		CleanDumpFile:           true,
 	}
 	cfg.FlagSet = flag.NewFlagSet("task", flag.ContinueOnError)
 	return cfg
 }
 
-// String returns the config's yaml string
+// String returns the config's yaml string.
 func (c *TaskConfig) String() string {
 	cfg, err := yaml.Marshal(c)
 	if err != nil {
-		log.Errorf("[config] marshal task config to yaml error %v", err)
+		log.L().Error("marshal task config to yaml", zap.String("task", c.Name), log.ShortError(err))
 	}
 	return string(cfg)
 }
 
-// DecodeFile loads and decodes config from file
+// JSON returns the config's json string.
+func (c *TaskConfig) JSON() string {
+	//nolint:staticcheck
+	cfg, err := json.Marshal(c)
+	if err != nil {
+		log.L().Error("marshal task config to json", zap.String("task", c.Name), log.ShortError(err))
+	}
+	return string(cfg)
+}
+
+// DecodeFile loads and decodes config from file.
 func (c *TaskConfig) DecodeFile(fpath string) error {
-	bs, err := ioutil.ReadFile(fpath)
+	bs, err := os.ReadFile(fpath)
 	if err != nil {
-		return errors.Annotatef(err, "read config file %v", fpath)
+		return terror.ErrConfigReadCfgFromFile.Delegate(err, fpath)
 	}
 
-	err = yaml.Unmarshal(bs, c)
+	err = yaml.UnmarshalStrict(bs, c)
 	if err != nil {
-		return errors.Trace(err)
+		return terror.ErrConfigYamlTransform.Delegate(err)
 	}
 
-	return errors.Trace(c.adjust())
+	return c.adjust()
 }
 
-// Decode loads config from file data
+// Decode loads config from file data.
 func (c *TaskConfig) Decode(data string) error {
-	err := yaml.Unmarshal([]byte(data), c)
+	err := yaml.UnmarshalStrict([]byte(data), c)
 	if err != nil {
-		return errors.Trace(err)
+		return terror.ErrConfigYamlTransform.Delegate(err, "decode task config failed")
 	}
 
-	return errors.Trace(c.adjust())
+	return c.adjust()
 }
 
-// adjust adjusts configs
+// RawDecode loads config from file data.
+func (c *TaskConfig) RawDecode(data string) error {
+	return terror.ErrConfigYamlTransform.Delegate(yaml.UnmarshalStrict([]byte(data), c), "decode task config failed")
+}
+
+// find unused items in config.
+var configRefPrefixes = []string{"RouteRules", "FilterRules", "ColumnMappingRules", "Mydumper", "Loader", "Syncer", "ExprFilter"}
+
+const (
+	routeRulesIdx = iota
+	filterRulesIdx
+	columnMappingIdx
+	mydumperIdx
+	loaderIdx
+	syncerIdx
+	exprFilterIdx
+)
+
+// adjust adjusts and verifies config.
 func (c *TaskConfig) adjust() error {
 	if len(c.Name) == 0 {
-		return errors.New("must specify a unique task name")
+		return terror.ErrConfigNeedUniqueTaskName.Generate()
 	}
 	if c.TaskMode != ModeFull && c.TaskMode != ModeIncrement && c.TaskMode != ModeAll {
-		return errors.New("please specify right task-mode, support `full`, `incremental`, `all`")
+		return terror.ErrConfigInvalidTaskMode.Generate()
+	}
+
+	if c.ShardMode != "" && c.ShardMode != ShardPessimistic && c.ShardMode != ShardOptimistic {
+		return terror.ErrConfigShardModeNotSupport.Generate(c.ShardMode)
+	} else if c.ShardMode == "" && c.IsSharding {
+		c.ShardMode = ShardPessimistic // use the pessimistic mode as default for back compatible.
 	}
 
 	for _, item := range c.IgnoreCheckingItems {
 		if err := ValidateCheckingItem(item); err != nil {
-			return errors.Trace(err)
+			return err
 		}
 	}
 
 	if c.OnlineDDLScheme != "" && c.OnlineDDLScheme != PT && c.OnlineDDLScheme != GHOST {
-		return errors.NotSupportedf("online scheme %s", c.OnlineDDLScheme)
+		return terror.ErrConfigOnlineSchemeNotSupport.Generate(c.OnlineDDLScheme)
+	} else if c.OnlineDDLScheme == PT || c.OnlineDDLScheme == GHOST {
+		c.OnlineDDL = true
+		log.L().Warn("'online-ddl-scheme' will be deprecated soon. Recommend that use online-ddl instead of online-ddl-scheme.")
 	}
 
 	if c.TargetDB == nil {
-		return errors.New("must specify target-database")
+		return terror.ErrConfigNeedTargetDB.Generate()
 	}
 
 	if len(c.MySQLInstances) == 0 {
-		return errors.New("must specify at least one mysql-instances")
+		return terror.ErrConfigMySQLInstsAtLeastOne.Generate()
 	}
 
-	iids := make(map[string]int) // source-id -> instance-index
+	for name, exprFilter := range c.ExprFilter {
+		if exprFilter.Schema == "" {
+			return terror.ErrConfigExprFilterEmptyName.Generate(name, "schema")
+		}
+		if exprFilter.Table == "" {
+			return terror.ErrConfigExprFilterEmptyName.Generate(name, "table")
+		}
+		setFields := make([]string, 0, 1)
+		if exprFilter.InsertValueExpr != "" {
+			if err := checkValidExpr(exprFilter.InsertValueExpr); err != nil {
+				return terror.ErrConfigExprFilterWrongGrammar.Generate(name, exprFilter.InsertValueExpr, err)
+			}
+			setFields = append(setFields, "insert: ["+exprFilter.InsertValueExpr+"]")
+		}
+		if exprFilter.UpdateOldValueExpr != "" || exprFilter.UpdateNewValueExpr != "" {
+			if exprFilter.UpdateOldValueExpr != "" {
+				if err := checkValidExpr(exprFilter.UpdateOldValueExpr); err != nil {
+					return terror.ErrConfigExprFilterWrongGrammar.Generate(name, exprFilter.UpdateOldValueExpr, err)
+				}
+			}
+			if exprFilter.UpdateNewValueExpr != "" {
+				if err := checkValidExpr(exprFilter.UpdateNewValueExpr); err != nil {
+					return terror.ErrConfigExprFilterWrongGrammar.Generate(name, exprFilter.UpdateNewValueExpr, err)
+				}
+			}
+			setFields = append(setFields, "update (old value): ["+exprFilter.UpdateOldValueExpr+"] update (new value): ["+exprFilter.UpdateNewValueExpr+"]")
+		}
+		if exprFilter.DeleteValueExpr != "" {
+			if err := checkValidExpr(exprFilter.DeleteValueExpr); err != nil {
+				return terror.ErrConfigExprFilterWrongGrammar.Generate(name, exprFilter.DeleteValueExpr, err)
+			}
+			setFields = append(setFields, "delete: ["+exprFilter.DeleteValueExpr+"]")
+		}
+		if len(setFields) > 1 {
+			return terror.ErrConfigExprFilterManyExpr.Generate(name, setFields)
+		}
+	}
+
+	instanceIDs := make(map[string]int) // source-id -> instance-index
+	globalConfigReferCount := map[string]int{}
+	duplicateErrorStrings := make([]string, 0)
 	for i, inst := range c.MySQLInstances {
-		if err := inst.Verify(); err != nil {
-			return errors.Annotatef(err, "mysql-instance: %d", i)
+		if err := inst.VerifyAndAdjust(); err != nil {
+			return terror.Annotatef(err, "mysql-instance: %s", humanize.Ordinal(i))
 		}
-		if iid, ok := iids[inst.SourceID]; ok {
-			return errors.Errorf("mysql-instance (%d) and (%d) have same source-id (%s)", iid, i, inst.SourceID)
+		if iid, ok := instanceIDs[inst.SourceID]; ok {
+			return terror.ErrConfigMySQLInstSameSourceID.Generate(iid, i, inst.SourceID)
 		}
-		iids[inst.SourceID] = i
+		instanceIDs[inst.SourceID] = i
 
 		switch c.TaskMode {
 		case ModeFull, ModeAll:
 			if inst.Meta != nil {
-				log.Warnf("[config] mysql-instance(%d) set meta, but it will not be used for task-mode %s.\n for Full mode, incremental sync will never occur; for All mode, the meta dumped by MyDumper will be used", i, c.TaskMode)
+				log.L().Warn("metadata will not be used. for Full mode, incremental sync will never occur; for All mode, the meta dumped by MyDumper will be used", zap.Int("mysql instance", i), zap.String("task mode", c.TaskMode))
 			}
 		case ModeIncrement:
 			if inst.Meta == nil {
-				return errors.Errorf("mysql-instance(%d) must set meta for task-mode %s", i, c.TaskMode)
+				return terror.ErrConfigMetadataNotSet.Generate(i, c.TaskMode)
 			}
 			err := inst.Meta.Verify()
 			if err != nil {
-				return errors.Annotatef(err, "mysql-instance: %d", i)
+				return terror.Annotatef(err, "mysql-instance: %d", i)
 			}
 		}
 
 		for _, name := range inst.RouteRules {
 			if _, ok := c.Routes[name]; !ok {
-				return errors.Errorf("mysql-instance(%d)'s route-rules %s not exist in routes", i, name)
+				return terror.ErrConfigRouteRuleNotFound.Generate(i, name)
 			}
+			globalConfigReferCount[configRefPrefixes[routeRulesIdx]+name]++
 		}
 		for _, name := range inst.FilterRules {
 			if _, ok := c.Filters[name]; !ok {
-				return errors.Errorf("mysql-instance(%d)'s filter-rules %s not exist in filters", i, name)
+				return terror.ErrConfigFilterRuleNotFound.Generate(i, name)
 			}
+			globalConfigReferCount[configRefPrefixes[filterRulesIdx]+name]++
 		}
 		for _, name := range inst.ColumnMappingRules {
 			if _, ok := c.ColumnMappings[name]; !ok {
-				return errors.Errorf("mysql-instance(%d)'s column-mapping-rules %s not exist in column-mapping", i, name)
+				return terror.ErrConfigColumnMappingNotFound.Generate(i, name)
 			}
+			globalConfigReferCount[configRefPrefixes[columnMappingIdx]+name]++
 		}
-		if _, ok := c.BWList[inst.BWListName]; len(inst.BWListName) > 0 && !ok {
-			return errors.Errorf("mysql-instance(%d)'s list %s not exist in black white list", i, inst.BWListName)
+
+		// only when BAList is empty use BWList
+		if len(c.BAList) == 0 && len(c.BWList) != 0 {
+			c.BAList = c.BWList
+		}
+		if _, ok := c.BAList[inst.BAListName]; len(inst.BAListName) > 0 && !ok {
+			return terror.ErrConfigBAListNotFound.Generate(i, inst.BAListName)
 		}
 
 		if len(inst.MydumperConfigName) > 0 {
 			rule, ok := c.Mydumpers[inst.MydumperConfigName]
 			if !ok {
-				return errors.Errorf("mysql-instance(%d)'s mydumper config %s not exist in mydumpers", i, inst.MydumperConfigName)
+				return terror.ErrConfigMydumperCfgNotFound.Generate(i, inst.MydumperConfigName)
 			}
-			inst.Mydumper = rule // ref mydumper config
+			globalConfigReferCount[configRefPrefixes[mydumperIdx]+inst.MydumperConfigName]++
+			inst.Mydumper = new(MydumperConfig)
+			*inst.Mydumper = *rule // ref mydumper config
 		}
 		if inst.Mydumper == nil {
-			defaultCfg := defaultMydumperConfig()
+			if len(c.Mydumpers) != 0 {
+				log.L().Warn("mysql instance don't refer mydumper's configuration with mydumper-config-name, the default configuration will be used", zap.String("mysql instance", inst.SourceID))
+			}
+			defaultCfg := DefaultMydumperConfig()
 			inst.Mydumper = &defaultCfg
+		} else if inst.Mydumper.ChunkFilesize == "" {
+			// avoid too big dump file that can't sent concurrently
+			inst.Mydumper.ChunkFilesize = defaultChunkFilesize
+		}
+		if inst.MydumperThread != 0 {
+			inst.Mydumper.Threads = inst.MydumperThread
 		}
 
 		if (c.TaskMode == ModeFull || c.TaskMode == ModeAll) && len(inst.Mydumper.MydumperPath) == 0 {
 			// only verify if set, whether is valid can only be verify when we run it
-			return errors.Errorf("mysql-instance(%d)'s mydumper-path must specify a valid path to mydumper binary when task-mode is all or full", i)
+			return terror.ErrConfigMydumperPathNotValid.Generate(i)
 		}
 
 		if len(inst.LoaderConfigName) > 0 {
 			rule, ok := c.Loaders[inst.LoaderConfigName]
 			if !ok {
-				return errors.Errorf("mysql-instance(%d)'s loader config %s not exist in loaders", i, inst.LoaderConfigName)
+				return terror.ErrConfigLoaderCfgNotFound.Generate(i, inst.LoaderConfigName)
 			}
-			inst.Loader = rule // ref loader config
+			globalConfigReferCount[configRefPrefixes[loaderIdx]+inst.LoaderConfigName]++
+			inst.Loader = new(LoaderConfig)
+			*inst.Loader = *rule // ref loader config
 		}
 		if inst.Loader == nil {
-			defaultCfg := defaultLoaderConfig()
+			if len(c.Loaders) != 0 {
+				log.L().Warn("mysql instance don't refer loader's configuration with loader-config-name, the default configuration will be used", zap.String("mysql instance", inst.SourceID))
+			}
+			defaultCfg := DefaultLoaderConfig()
 			inst.Loader = &defaultCfg
+		}
+		if inst.LoaderThread != 0 {
+			inst.Loader.PoolSize = inst.LoaderThread
 		}
 
 		if len(inst.SyncerConfigName) > 0 {
 			rule, ok := c.Syncers[inst.SyncerConfigName]
 			if !ok {
-				return errors.Errorf("mysql-instance(%d)'s syncer config %s not exist in syncer", i, inst.SyncerConfigName)
+				return terror.ErrConfigSyncerCfgNotFound.Generate(i, inst.SyncerConfigName)
 			}
-			inst.Syncer = rule // ref syncer config
+			globalConfigReferCount[configRefPrefixes[syncerIdx]+inst.SyncerConfigName]++
+			inst.Syncer = new(SyncerConfig)
+			*inst.Syncer = *rule // ref syncer config
 		}
 		if inst.Syncer == nil {
-			defaultCfg := defaultSyncerConfig()
+			if len(c.Syncers) != 0 {
+				log.L().Warn("mysql instance don't refer syncer's configuration with syncer-config-name, the default configuration will be used", zap.String("mysql instance", inst.SourceID))
+			}
+			defaultCfg := DefaultSyncerConfig()
 			inst.Syncer = &defaultCfg
 		}
+		if inst.SyncerThread != 0 {
+			inst.Syncer.WorkerCount = inst.SyncerThread
+		}
+
+		// for backward compatible, set global config `ansi-quotes: true` if any syncer is true
+		if inst.Syncer.EnableANSIQuotes {
+			log.L().Warn("DM could discover proper ANSI_QUOTES, `enable-ansi-quotes` is no longer take effect")
+		}
+		if inst.Syncer.DisableCausality {
+			log.L().Warn("`disable-causality` is no longer take effect")
+		}
+
+		for _, name := range inst.ExpressionFilters {
+			if _, ok := c.ExprFilter[name]; !ok {
+				return terror.ErrConfigExprFilterNotFound.Generate(i, name)
+			}
+			globalConfigReferCount[configRefPrefixes[exprFilterIdx]+name]++
+		}
+
+		if dupeRules := checkDuplicateString(inst.RouteRules); len(dupeRules) > 0 {
+			duplicateErrorStrings = append(duplicateErrorStrings, fmt.Sprintf("mysql-instance(%d)'s route-rules: %s", i, strings.Join(dupeRules, ", ")))
+		}
+		if dupeRules := checkDuplicateString(inst.FilterRules); len(dupeRules) > 0 {
+			duplicateErrorStrings = append(duplicateErrorStrings, fmt.Sprintf("mysql-instance(%d)'s filter-rules: %s", i, strings.Join(dupeRules, ", ")))
+		}
+		if dupeRules := checkDuplicateString(inst.ColumnMappingRules); len(dupeRules) > 0 {
+			duplicateErrorStrings = append(duplicateErrorStrings, fmt.Sprintf("mysql-instance(%d)'s column-mapping-rules: %s", i, strings.Join(dupeRules, ", ")))
+		}
+		if dupeRules := checkDuplicateString(inst.ExpressionFilters); len(dupeRules) > 0 {
+			duplicateErrorStrings = append(duplicateErrorStrings, fmt.Sprintf("mysql-instance(%d)'s expression-filters: %s", i, strings.Join(dupeRules, ", ")))
+		}
+	}
+	if len(duplicateErrorStrings) > 0 {
+		return terror.ErrConfigDuplicateCfgItem.Generate(strings.Join(duplicateErrorStrings, "\n"))
 	}
 
-	if c.Timezone != "" {
-		_, err := time.LoadLocation(c.Timezone)
-		if err != nil {
-			return errors.Annotatef(err, "invalid timezone string: %s", c.Timezone)
+	var unusedConfigs []string
+	for route := range c.Routes {
+		if globalConfigReferCount[configRefPrefixes[routeRulesIdx]+route] == 0 {
+			unusedConfigs = append(unusedConfigs, route)
+		}
+	}
+	for filter := range c.Filters {
+		if globalConfigReferCount[configRefPrefixes[filterRulesIdx]+filter] == 0 {
+			unusedConfigs = append(unusedConfigs, filter)
+		}
+	}
+	for columnMapping := range c.ColumnMappings {
+		if globalConfigReferCount[configRefPrefixes[columnMappingIdx]+columnMapping] == 0 {
+			unusedConfigs = append(unusedConfigs, columnMapping)
+		}
+	}
+	for mydumper := range c.Mydumpers {
+		if globalConfigReferCount[configRefPrefixes[mydumperIdx]+mydumper] == 0 {
+			unusedConfigs = append(unusedConfigs, mydumper)
+		}
+	}
+	for loader := range c.Loaders {
+		if globalConfigReferCount[configRefPrefixes[loaderIdx]+loader] == 0 {
+			unusedConfigs = append(unusedConfigs, loader)
+		}
+	}
+	for syncer := range c.Syncers {
+		if globalConfigReferCount[configRefPrefixes[syncerIdx]+syncer] == 0 {
+			unusedConfigs = append(unusedConfigs, syncer)
+		}
+	}
+	for exprFilter := range c.ExprFilter {
+		if globalConfigReferCount[configRefPrefixes[exprFilterIdx]+exprFilter] == 0 {
+			unusedConfigs = append(unusedConfigs, exprFilter)
 		}
 	}
 
+	if len(unusedConfigs) != 0 {
+		sort.Strings(unusedConfigs)
+		return terror.ErrConfigGlobalConfigsUnused.Generate(unusedConfigs)
+	}
+	if c.Timezone != "" {
+		log.L().Warn("`timezone` is deprecated and useless anymore, please remove it.")
+		c.Timezone = ""
+	}
+	if c.RemoveMeta {
+		log.L().Warn("`remove-meta` in task config is deprecated, please use `start-task ... --remove-meta` instead")
+	}
+
+	if c.EnableHeartbeat || c.HeartbeatUpdateInterval != defaultUpdateInterval ||
+		c.HeartbeatReportInterval != defaultReportInterval {
+		c.EnableHeartbeat = false
+		log.L().Warn("heartbeat is deprecated, needn't set it anymore.")
+	}
 	return nil
 }
 
-// SubTaskConfigs generates sub task configs
-func (c *TaskConfig) SubTaskConfigs(sources map[string]DBConfig) ([]*SubTaskConfig, error) {
-	cfgs := make([]*SubTaskConfig, len(c.MySQLInstances))
-	for i, inst := range c.MySQLInstances {
-		dbCfg, exist := sources[inst.SourceID]
-		if !exist {
-			return nil, errors.NotFoundf("source %s in deployment configuration", inst.SourceID)
-		}
-
-		cfg := NewSubTaskConfig()
-		cfg.IsSharding = c.IsSharding
-		cfg.OnlineDDLScheme = c.OnlineDDLScheme
-		cfg.IgnoreCheckingItems = c.IgnoreCheckingItems
-		cfg.Name = c.Name
-		cfg.Mode = c.TaskMode
-		cfg.CaseSensitive = c.CaseSensitive
-		cfg.BinlogType = "local" // let's force syncer to replay local binlog.
-		cfg.MetaSchema = c.MetaSchema
-		cfg.RemoveMeta = c.RemoveMeta
-		cfg.DisableHeartbeat = c.DisableHeartbeat
-		cfg.EnableHeartbeat = c.EnableHeartbeat || !c.DisableHeartbeat
-		cfg.HeartbeatUpdateInterval = c.HeartbeatUpdateInterval
-		cfg.HeartbeatReportInterval = c.HeartbeatReportInterval
-		cfg.Timezone = c.Timezone
-		cfg.Meta = inst.Meta
-
-		cfg.From = dbCfg
-		cfg.To = *c.TargetDB
-
-		cfg.SourceID = inst.SourceID
-
-		cfg.RouteRules = make([]*router.TableRule, len(inst.RouteRules))
-		for j, name := range inst.RouteRules {
-			cfg.RouteRules[j] = c.Routes[name]
-		}
-
-		cfg.FilterRules = make([]*bf.BinlogEventRule, len(inst.FilterRules))
-		for j, name := range inst.FilterRules {
-			cfg.FilterRules[j] = c.Filters[name]
-		}
-
-		cfg.ColumnMappingRules = make([]*column.Rule, len(inst.ColumnMappingRules))
-		for j, name := range inst.ColumnMappingRules {
-			cfg.ColumnMappingRules[j] = c.ColumnMappings[name]
-		}
-
-		cfg.BWList = c.BWList[inst.BWListName]
-
-		cfg.MydumperConfig = *inst.Mydumper
-		cfg.LoaderConfig = *inst.Loader
-		cfg.SyncerConfig = *inst.Syncer
-
-		err := cfg.Adjust()
-		if err != nil {
-			return nil, errors.Annotatef(err, "source %s", inst.SourceID)
-		}
-
-		cfgs[i] = cfg
+// getGenerateName generates name by rule or gets name from nameMap
+// if it's a new name, increase nameIdx
+// otherwise return current nameIdx.
+func getGenerateName(rule interface{}, nameIdx int, namePrefix string, nameMap map[string]string) (string, int) {
+	// use json as key since no DeepEqual for rules now.
+	ruleByte, err := json.Marshal(rule)
+	if err != nil {
+		log.L().Error(fmt.Sprintf("marshal %s rule to json", namePrefix), log.ShortError(err))
+		return fmt.Sprintf("%s-%02d", namePrefix, nameIdx), nameIdx + 1
+	} else if val, ok := nameMap[string(ruleByte)]; ok {
+		return val, nameIdx
+	} else {
+		ruleName := fmt.Sprintf("%s-%02d", namePrefix, nameIdx+1)
+		nameMap[string(ruleByte)] = ruleName
+		return ruleName, nameIdx + 1
 	}
-	return cfgs, nil
+}
+
+// checkDuplicateString checks whether the given string array has duplicate string item
+// if there is duplicate, it will return **all** the duplicate strings.
+func checkDuplicateString(ruleNames []string) []string {
+	mp := make(map[string]bool, len(ruleNames))
+	dupeArray := make([]string, 0)
+	for _, name := range ruleNames {
+		if added, ok := mp[name]; ok {
+			if !added {
+				dupeArray = append(dupeArray, name)
+				mp[name] = true
+			}
+		} else {
+			mp[name] = false
+		}
+	}
+	return dupeArray
+}
+
+// AdjustTargetDBSessionCfg adjust session cfg of TiDB.
+func AdjustTargetDBSessionCfg(dbConfig *DBConfig, version *semver.Version) {
+	lowerMap := make(map[string]string, len(dbConfig.Session))
+	for k, v := range dbConfig.Session {
+		lowerMap[strings.ToLower(k)] = v
+	}
+	// all cfg in defaultSessionCfg should be lower case
+	for _, cfg := range defaultSessionCfg {
+		if _, ok := lowerMap[cfg.key]; !ok && !version.LessThan(*cfg.minVersion) {
+			lowerMap[cfg.key] = cfg.val
+		}
+	}
+	// force set time zone to UTC
+	if tz, ok := lowerMap["time_zone"]; ok {
+		log.L().Warn("session variable 'time_zone' is overwritten with UTC timezone.",
+			zap.String("time_zone", tz))
+	}
+	lowerMap["time_zone"] = defaultTimeZone
+	dbConfig.Session = lowerMap
+}
+
+// AdjustTargetDBTimeZone force adjust session `time_zone` to UTC.
+func AdjustTargetDBTimeZone(config *DBConfig) {
+	for k := range config.Session {
+		if strings.ToLower(k) == "time_zone" {
+			log.L().Warn("session variable 'time_zone' is overwritten by default UTC timezone.",
+				zap.String("time_zone", config.Session[k]))
+			config.Session[k] = defaultTimeZone
+			return
+		}
+	}
+	if config.Session == nil {
+		config.Session = make(map[string]string, 1)
+	}
+	config.Session["time_zone"] = defaultTimeZone
+}
+
+var defaultParser = parser.New()
+
+func checkValidExpr(expr string) error {
+	expr = "select " + expr
+	_, _, err := defaultParser.Parse(expr, "", "")
+	return err
+}
+
+// YamlForDowngrade returns YAML format represents of config for downgrade.
+func (c *TaskConfig) YamlForDowngrade() (string, error) {
+	t := NewTaskConfigForDowngrade(c)
+
+	// encrypt password
+	cipher, err := utils.Encrypt(utils.DecryptOrPlaintext(t.TargetDB.Password))
+	if err != nil {
+		return "", err
+	}
+	t.TargetDB.Password = cipher
+
+	// omit default values, so we can ignore them for later marshal
+	t.omitDefaultVals()
+
+	return t.Yaml()
+}
+
+// MySQLInstanceForDowngrade represents a sync config of a MySQL instance for downgrade.
+type MySQLInstanceForDowngrade struct {
+	SourceID           string          `yaml:"source-id"`
+	Meta               *Meta           `yaml:"meta"`
+	FilterRules        []string        `yaml:"filter-rules"`
+	ColumnMappingRules []string        `yaml:"column-mapping-rules"`
+	RouteRules         []string        `yaml:"route-rules"`
+	BWListName         string          `yaml:"black-white-list"`
+	BAListName         string          `yaml:"block-allow-list"`
+	MydumperConfigName string          `yaml:"mydumper-config-name"`
+	Mydumper           *MydumperConfig `yaml:"mydumper"`
+	MydumperThread     int             `yaml:"mydumper-thread"`
+	LoaderConfigName   string          `yaml:"loader-config-name"`
+	Loader             *LoaderConfig   `yaml:"loader"`
+	LoaderThread       int             `yaml:"loader-thread"`
+	SyncerConfigName   string          `yaml:"syncer-config-name"`
+	Syncer             *SyncerConfig   `yaml:"syncer"`
+	SyncerThread       int             `yaml:"syncer-thread"`
+	// new config item
+	ExpressionFilters []string `yaml:"expression-filters,omitempty"`
+}
+
+// NewMySQLInstancesForDowngrade creates []* MySQLInstanceForDowngrade.
+func NewMySQLInstancesForDowngrade(mysqlInstances []*MySQLInstance) []*MySQLInstanceForDowngrade {
+	mysqlInstancesForDowngrade := make([]*MySQLInstanceForDowngrade, 0, len(mysqlInstances))
+	for _, m := range mysqlInstances {
+		newMySQLInstance := &MySQLInstanceForDowngrade{
+			SourceID:           m.SourceID,
+			Meta:               m.Meta,
+			FilterRules:        m.FilterRules,
+			ColumnMappingRules: m.ColumnMappingRules,
+			RouteRules:         m.RouteRules,
+			BWListName:         m.BWListName,
+			BAListName:         m.BAListName,
+			MydumperConfigName: m.MydumperConfigName,
+			Mydumper:           m.Mydumper,
+			MydumperThread:     m.MydumperThread,
+			LoaderConfigName:   m.LoaderConfigName,
+			Loader:             m.Loader,
+			LoaderThread:       m.LoaderThread,
+			SyncerConfigName:   m.SyncerConfigName,
+			Syncer:             m.Syncer,
+			SyncerThread:       m.SyncerThread,
+			ExpressionFilters:  m.ExpressionFilters,
+		}
+		mysqlInstancesForDowngrade = append(mysqlInstancesForDowngrade, newMySQLInstance)
+	}
+	return mysqlInstancesForDowngrade
+}
+
+// TaskConfigForDowngrade is the base configuration for task in v2.0.
+// This config is used for downgrade(config export) from a higher dmctl version.
+// When we add any new config item into SourceConfig, we should update it also.
+type TaskConfigForDowngrade struct {
+	Name                    string                         `yaml:"name"`
+	TaskMode                string                         `yaml:"task-mode"`
+	IsSharding              bool                           `yaml:"is-sharding"`
+	ShardMode               string                         `yaml:"shard-mode"`
+	IgnoreCheckingItems     []string                       `yaml:"ignore-checking-items"`
+	MetaSchema              string                         `yaml:"meta-schema"`
+	EnableHeartbeat         bool                           `yaml:"enable-heartbeat"`
+	HeartbeatUpdateInterval int                            `yaml:"heartbeat-update-interval"`
+	HeartbeatReportInterval int                            `yaml:"heartbeat-report-interval"`
+	Timezone                string                         `yaml:"timezone"`
+	CaseSensitive           bool                           `yaml:"case-sensitive"`
+	TargetDB                *DBConfig                      `yaml:"target-database"`
+	OnlineDDLScheme         string                         `yaml:"online-ddl-scheme"`
+	Routes                  map[string]*router.TableRule   `yaml:"routes"`
+	Filters                 map[string]*bf.BinlogEventRule `yaml:"filters"`
+	ColumnMappings          map[string]*column.Rule        `yaml:"column-mappings"`
+	BWList                  map[string]*filter.Rules       `yaml:"black-white-list"`
+	BAList                  map[string]*filter.Rules       `yaml:"block-allow-list"`
+	Mydumpers               map[string]*MydumperConfig     `yaml:"mydumpers"`
+	Loaders                 map[string]*LoaderConfig       `yaml:"loaders"`
+	Syncers                 map[string]*SyncerConfig       `yaml:"syncers"`
+	CleanDumpFile           bool                           `yaml:"clean-dump-file"`
+	EnableANSIQuotes        bool                           `yaml:"ansi-quotes"`
+	RemoveMeta              bool                           `yaml:"remove-meta"`
+	// new config item
+	MySQLInstances   []*MySQLInstanceForDowngrade `yaml:"mysql-instances"`
+	ExprFilter       map[string]*ExpressionFilter `yaml:"expression-filter,omitempty"`
+	OnlineDDL        bool                         `yaml:"online-ddl,omitempty"`
+	ShadowTableRules []string                     `yaml:"shadow-table-rules,omitempty"`
+	TrashTableRules  []string                     `yaml:"trash-table-rules,omitempty"`
+}
+
+// NewTaskConfigForDowngrade create new TaskConfigForDowngrade.
+func NewTaskConfigForDowngrade(taskConfig *TaskConfig) *TaskConfigForDowngrade {
+	return &TaskConfigForDowngrade{
+		Name:                    taskConfig.Name,
+		TaskMode:                taskConfig.TaskMode,
+		IsSharding:              taskConfig.IsSharding,
+		ShardMode:               taskConfig.ShardMode,
+		IgnoreCheckingItems:     taskConfig.IgnoreCheckingItems,
+		MetaSchema:              taskConfig.MetaSchema,
+		EnableHeartbeat:         taskConfig.EnableHeartbeat,
+		HeartbeatUpdateInterval: taskConfig.HeartbeatUpdateInterval,
+		HeartbeatReportInterval: taskConfig.HeartbeatReportInterval,
+		Timezone:                taskConfig.Timezone,
+		CaseSensitive:           taskConfig.CaseSensitive,
+		TargetDB:                taskConfig.TargetDB,
+		OnlineDDLScheme:         taskConfig.OnlineDDLScheme,
+		Routes:                  taskConfig.Routes,
+		Filters:                 taskConfig.Filters,
+		ColumnMappings:          taskConfig.ColumnMappings,
+		BWList:                  taskConfig.BWList,
+		BAList:                  taskConfig.BAList,
+		Mydumpers:               taskConfig.Mydumpers,
+		Loaders:                 taskConfig.Loaders,
+		Syncers:                 taskConfig.Syncers,
+		CleanDumpFile:           taskConfig.CleanDumpFile,
+		EnableANSIQuotes:        taskConfig.EnableANSIQuotes,
+		RemoveMeta:              taskConfig.RemoveMeta,
+		MySQLInstances:          NewMySQLInstancesForDowngrade(taskConfig.MySQLInstances),
+		ExprFilter:              taskConfig.ExprFilter,
+		OnlineDDL:               taskConfig.OnlineDDL,
+		ShadowTableRules:        taskConfig.ShadowTableRules,
+		TrashTableRules:         taskConfig.TrashTableRules,
+	}
+}
+
+// omitDefaultVals change default value to empty value for new config item.
+// If any default value for new config item is not empty(0 or false or nil),
+// we should change it to empty.
+func (c *TaskConfigForDowngrade) omitDefaultVals() {
+	if len(c.TargetDB.Session) > 0 {
+		if timeZone, ok := c.TargetDB.Session["time_zone"]; ok && timeZone == defaultTimeZone {
+			delete(c.TargetDB.Session, "time_zone")
+		}
+	}
+	if len(c.ShadowTableRules) == 1 && c.ShadowTableRules[0] == DefaultShadowTableRules {
+		c.ShadowTableRules = nil
+	}
+	if len(c.TrashTableRules) == 1 && c.TrashTableRules[0] == DefaultTrashTableRules {
+		c.TrashTableRules = nil
+	}
+}
+
+// Yaml returns YAML format representation of config.
+func (c *TaskConfigForDowngrade) Yaml() (string, error) {
+	b, err := yaml.Marshal(c)
+	return string(b), err
 }

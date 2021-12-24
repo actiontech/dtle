@@ -18,10 +18,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pingcap/errors"
-	"github.com/siddontang/go-mysql/replication"
+	"github.com/go-mysql-org/go-mysql/replication"
 
 	"github.com/pingcap/dm/pkg/gtid"
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 // GenCreateDatabaseEvents generates binlog events for `CREATE DATABASE`.
@@ -58,11 +58,11 @@ func GenDDLEvents(flavor string, serverID uint32, latestPos uint32, latestGTID g
 	// GTIDEvent, increase GTID first
 	latestGTID, err := GTIDIncrease(flavor, latestGTID)
 	if err != nil {
-		return nil, errors.Annotatef(err, "increase GTID %s", latestGTID)
+		return nil, terror.Annotatef(err, "increase GTID %s", latestGTID)
 	}
 	gtidEv, err := GenCommonGTIDEvent(flavor, serverID, latestPos, latestGTID)
 	if err != nil {
-		return nil, errors.Annotate(err, "generate GTIDEvent")
+		return nil, terror.Annotate(err, "generate GTIDEvent")
 	}
 	latestPos = gtidEv.Header.LogPos
 
@@ -74,18 +74,18 @@ func GenDDLEvents(flavor string, serverID uint32, latestPos uint32, latestGTID g
 	}
 	queryEv, err := GenQueryEvent(header, latestPos, defaultSlaveProxyID, defaultExecutionTime, defaultErrorCode, defaultStatusVars, []byte(schema), []byte(query))
 	if err != nil {
-		return nil, errors.Annotatef(err, "generate QueryEvent for schema %s, query %s", schema, query)
+		return nil, terror.Annotatef(err, "generate QueryEvent for schema %s, query %s", schema, query)
 	}
 	latestPos = queryEv.Header.LogPos
 
 	var buf bytes.Buffer
 	_, err = buf.Write(gtidEv.RawData)
 	if err != nil {
-		return nil, errors.Annotatef(err, "write GTIDEvent data % X", gtidEv.RawData)
+		return nil, terror.ErrBinlogWriteDataToBuffer.AnnotateDelegate(err, "write GTIDEvent data % X", gtidEv.RawData)
 	}
 	_, err = buf.Write(queryEv.RawData)
 	if err != nil {
-		return nil, errors.Annotatef(err, "write QueryEvent data % X", queryEv.RawData)
+		return nil, terror.ErrBinlogWriteDataToBuffer.AnnotateDelegate(err, "write QueryEvent data % X", queryEv.RawData)
 	}
 
 	return &DDLDMLResult{

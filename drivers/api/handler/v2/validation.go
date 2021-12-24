@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -165,7 +166,7 @@ func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.De
 				DtleTaskConfig: destTaskConfig,
 			},
 			g.Logger.Named("http api: validateTaskConfig"),
-			nil, "", nil, nil, nil)
+			nil, "", nil, nil, nil, context.Background())
 		if nil != err {
 			return nil, fmt.Errorf("create dest task inspector failed: %v", err)
 		}

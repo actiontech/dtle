@@ -3,6 +3,8 @@ package mysql
 import (
 	"context"
 	gosql "database/sql"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
@@ -12,10 +14,51 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
-	gomysql "github.com/siddontang/go-mysql/mysql"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"sync"
 	"sync/atomic"
 	"time"
+)
+
+const (
+	// see mysql-server/libbinlogevents/include/statement_events.h
+	Q_FLAGS2_CODE byte = iota
+	Q_SQL_MODE_CODE
+	Q_CATALOG
+	Q_AUTO_INCREMENT
+	Q_CHARSET_CODE
+	Q_TIME_ZONE_CODE
+	Q_CATALOG_NZ_CODE
+	Q_LC_TIME_NAMES_CODE
+	Q_CHARSET_DATABASE_CODE
+	Q_TABLE_MAP_FOR_UPDATE_CODE
+	Q_MASTER_DATA_WRITTEN_CODE
+	Q_INVOKERS
+	Q_UPDATED_DB_NAMES
+	Q_MICROSECONDS
+	Q_COMMIT_TS
+	Q_COMMIT_TS2
+	Q_EXPLICIT_DEFAULTS_FOR_TIMESTAMP
+	Q_DDL_LOGGED_WITH_XID
+	Q_DEFAULT_COLLATION_FOR_UTF8MB4
+	Q_SQL_REQUIRE_PRIMARY_KEY
+	Q_DEFAULT_TABLE_ENCRYPTION
+)
+
+const (
+	RowsEventFlagEndOfStatement     uint16 = 1
+	RowsEventFlagNoForeignKeyChecks uint16 = 2
+	RowsEventFlagNoUniqueKeyChecks  uint16 = 4
+	RowsEventFlagRowHasAColumns     uint16 = 8
+
+
+	OPTION_AUTO_IS_NULL          uint32 = 0x00004000
+	OPTION_NOT_AUTOCOMMIT        uint32 = 0x00080000
+	OPTION_NO_FOREIGN_KEY_CHECKS uint32 = 0x04000000
+	OPTION_RELAXED_UNIQUE_CHECKS uint32 = 0x08000000
+
+	querySetFKChecksOff = "set @@session.foreign_key_checks = 0"
+	querySetFKChecksOn  = "set @@session.foreign_key_checks = 1"
 )
 
 type ApplierIncr struct {
@@ -28,8 +71,8 @@ type ApplierIncr struct {
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *common.BinlogEntryContext
 
-	mtsManager  *MtsManager
-	wsManager   *WritesetManager
+	mtsManager *MtsManager
+	wsManager  *WritesetManager
 
 	db              *gosql.DB
 	dbs             []*sql.Conn
@@ -45,8 +88,8 @@ type ApplierIncr struct {
 	timestampCtx     *TimestampContext
 	TotalDeltaCopied int64
 
-	gtidSet        *gomysql.MysqlGTIDSet
-	gtidSetLock    *sync.RWMutex
+	gtidSet           *gomysql.MysqlGTIDSet
+	gtidSetLock       *sync.RWMutex
 	gtidItemMap       base.GtidItemMap
 	EntryExecutedHook func(entry *common.BinlogEntry)
 
@@ -264,10 +307,11 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 	} else {
 		if binlogEntry.Index == 0 {
 			if rotated {
-				a.logger.Debug("binlog rotated", "file", a.replayingBinlogFile)
+				a.logger.Debug("binlog rotated. WaitForAllCommitted before", "file", a.replayingBinlogFile)
 				if !a.mtsManager.WaitForAllCommitted() {
 					return nil // TODO shutdown
 				}
+				a.logger.Debug("binlog rotated. WaitForAllCommitted after", "file", a.replayingBinlogFile)
 				a.mtsManager.lastCommitted = 0
 				a.mtsManager.lastEnqueue = 0
 				a.wsManager.resetCommonParent(0)
@@ -314,13 +358,16 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 		}
 
 		if !binlogEntry.IsPartOfBigTx() && !a.mysqlContext.UseMySQLDependency {
-			newLC := a.wsManager.GatLastCommit(entryCtx)
+			newLC := a.wsManager.GatLastCommit(entryCtx, a.logger)
 			binlogEntry.Coordinates.LastCommitted = newLC
 			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.SeqenceNumber,
 				"gno", binlogEntry.Coordinates.GNO)
 		}
 
 		if binlogEntry.IsPartOfBigTx() {
+			if binlogEntry.Index == 0 {
+				a.mtsManager.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber
+			}
 			err = a.ApplyBinlogEvent(0, entryCtx)
 			if err != nil {
 				return err
@@ -381,7 +428,6 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 			for _, entry := range binlogEntries.Entries {
 				a.binlogEntryQueue <- entry
-				a.logger.Debug("")
 				atomic.AddInt64(a.memory2, int64(entry.Size()))
 			}
 
@@ -497,6 +543,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			logger.Debug("not dml", "query", event.Query)
 
 			execQuery := func(query string) error {
+				a.logger.Debug("execQuery", "query", query)
 				_, err = dbApplier.Tx.ExecContext(a.ctx, query)
 				if err != nil {
 					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
@@ -514,7 +561,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 
 			if event.CurrentSchema != "" {
 				query := fmt.Sprintf("USE %s", mysqlconfig.EscapeName(event.CurrentSchema))
-				logger.Debug("use", "query", query)
 				err := execQuery(query)
 				if err != nil {
 					return err
@@ -542,12 +588,38 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				}
 			}
 
+			flag, err := ParseQueryEventFlags(event.Flags, logger)
+			if err != nil {
+				return err
+			}
+			if flag.NoForeignKeyChecks && a.mysqlContext.ForeignKeyChecks {
+				err = execQuery(querySetFKChecksOff)
+				if err != nil {
+					return err
+				}
+			}
+
 			err = execQuery(event.Query)
 			if err != nil {
 				return err
 			}
 			logger.Debug("Exec.after", "query", event.Query)
+
+			if flag.NoForeignKeyChecks && a.mysqlContext.ForeignKeyChecks {
+				err = execQuery(querySetFKChecksOn)
+				if err != nil {
+					return err
+				}
+			}
 		default:
+			flag := binary.LittleEndian.Uint16(event.Flags)
+			noFKCheckFlag := flag & RowsEventFlagNoForeignKeyChecks != 0
+			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
+				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
+				if err != nil {
+					return errors.Wrap(err, "querySetFKChecksOff")
+				}
+			}
 			logger.Debug("a dml event")
 			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx,
 				binlogEntryCtx.TableItems[i])
@@ -570,6 +642,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 					"err", err)
 				return err
 			}
+
 			nr, err := r.RowsAffected()
 			if err != nil {
 				logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GNO, "event", i, "err", err)
@@ -577,6 +650,13 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GNO, "event", i, "nr", nr)
 			}
 			totalDelta += rowDelta
+
+			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
+				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOn)
+				if err != nil {
+					return errors.Wrap(err, "querySetFKChecksOn")
+				}
+			}
 		}
 		timestamp = event.Timestamp
 	}
@@ -651,6 +731,11 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 					a.logger.Error(err.Error())
 					return err
 				}
+				uk, err := base.GetCandidateUniqueKeys(a.logger, a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.Columns)
+				if err != nil {
+					return err
+				}
+				tableItem.Columns.UniqueKeys = uk
 				err = base.ApplyColumnTypes(a.db, dmlEvent.DatabaseName, dmlEvent.TableName, tableItem.Columns)
 				if err != nil {
 					err = errors.Wrapf(err, "ApplyColumnTypes. %v %v", dmlEvent.DatabaseName, dmlEvent.TableName)
@@ -664,4 +749,111 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 		}
 	}
 	return nil
+}
+
+type QueryEventFlags struct {
+	NoForeignKeyChecks bool
+}
+
+func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, err error) {
+	logger = logger.Named("ParseQueryEventFlags")
+
+	if logger.IsDebug() {
+		logger.Debug("ParseQueryEventFlags", "bytes", hex.EncodeToString(bs))
+	}
+
+	// https://dev.mysql.com/doc/internals/en/query-event.html
+	for i := 0; i < len(bs); {
+		flag := bs[i]
+		i += 1
+		switch flag {
+		case Q_FLAGS2_CODE: // Q_FLAGS2_CODE
+			v := binary.LittleEndian.Uint32(bs[i:i+4])
+			i += 4
+			if v & OPTION_AUTO_IS_NULL != 0 {
+				//log.Printf("OPTION_AUTO_IS_NULL")
+			}
+			if v & OPTION_NOT_AUTOCOMMIT != 0 {
+				//log.Printf("OPTION_NOT_AUTOCOMMIT")
+			}
+			if v & OPTION_NO_FOREIGN_KEY_CHECKS != 0 {
+				r.NoForeignKeyChecks = true
+			}
+			if v & OPTION_RELAXED_UNIQUE_CHECKS != 0 {
+				//log.Printf("OPTION_RELAXED_UNIQUE_CHECKS")
+			}
+		case Q_SQL_MODE_CODE:
+			_ = binary.LittleEndian.Uint64(bs[i:i+8])
+			i += 8
+		case Q_CATALOG:
+			n := int(bs[i])
+			i += 1
+			i += n
+			i += 1 // TODO What does 'only written length > 0' mean?
+		case Q_AUTO_INCREMENT:
+			i += 2 + 2
+		case Q_CHARSET_CODE:
+			i += 2 + 2 + 2
+		case Q_TIME_ZONE_CODE:
+			n := int(bs[i])
+			i += 1
+			i += n
+		case Q_CATALOG_NZ_CODE:
+			length := int(bs[i])
+			i += 1
+			_ = string(bs[i:i+length])
+			i += length
+		case Q_LC_TIME_NAMES_CODE:
+			i += 2
+		case Q_CHARSET_DATABASE_CODE:
+			i += 2
+		case Q_TABLE_MAP_FOR_UPDATE_CODE:
+			i += 8
+		case Q_MASTER_DATA_WRITTEN_CODE:
+			i += 4
+		case Q_INVOKERS:
+			n := int(bs[i])
+			i += 1
+			username := string(bs[i:i+n])
+			i += n
+			n = int(bs[i])
+			i += 1
+			hostname := string(bs[i:i+n])
+			i += n
+			logger.Debug("Q_INVOKERS", "username", username, "hostname", hostname)
+		case Q_UPDATED_DB_NAMES:
+			count := int(bs[i])
+			i += 1
+			for j := 0; j < count; j++ {
+				i0 := i
+				for bs[i] != 0 {
+					i += 1
+				}
+				schemaName := string(bs[i0:i])
+				logger.Debug("Q_UPDATED_DB_NAMES", "schema", schemaName, "i", i, "j", j)
+				i += 1 // nul-terminated
+			}
+		case Q_MICROSECONDS:
+			i += 3
+		case Q_COMMIT_TS:
+			// not used in mysql
+		case Q_COMMIT_TS2:
+			// not used in mysql
+		case Q_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
+			i += 1
+		case Q_DDL_LOGGED_WITH_XID:
+			i += 8
+		case Q_DEFAULT_COLLATION_FOR_UTF8MB4:
+			i += 2
+		case Q_SQL_REQUIRE_PRIMARY_KEY:
+			i += 1
+		case Q_DEFAULT_TABLE_ENCRYPTION:
+			i += 1
+		default:
+			return r, fmt.Errorf("ParseQueryEventFlags. unknown flag 0x%x bytes %v",
+				flag, hex.EncodeToString(bs))
+		}
+	}
+
+	return r, nil
 }

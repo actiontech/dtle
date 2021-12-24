@@ -10,30 +10,30 @@ import (
 	"github.com/actiontech/dtle/g"
 )
 
-var BL *BlackList
+var BL *Blacklist
 
 func init() {
-	BL = new(BlackList)
-	BL.blackList = make(map[string]*BlackItem)
+	BL = new(Blacklist)
+	BL.blacklist = make(map[string]*BlacklistItem)
 	BL.lock = new(sync.Mutex)
 }
 
-type BlackList struct {
-	blackList map[string]*BlackItem
+type Blacklist struct {
+	blacklist map[string]*BlacklistItem
 	lock      *sync.Mutex
 }
 
-type BlackItem struct {
+type BlacklistItem struct {
 	validateExpiredTime time.Time
 	expiredTime         time.Time
 	times               int
 }
 
-func (b *BlackList) setBlackList(key string, duration time.Duration) {
+func (b *Blacklist) setBlacklist(key string, duration time.Duration) {
 	b.lock.Lock()
-	blackItem, ok := b.blackList[key]
+	blackItem, ok := b.blacklist[key]
 	if !ok {
-		blackItem = new(BlackItem)
+		blackItem = new(BlacklistItem)
 	}
 	now := time.Now()
 	if now.After(blackItem.validateExpiredTime) {
@@ -44,13 +44,13 @@ func (b *BlackList) setBlackList(key string, duration time.Duration) {
 	if blackItem.times >= 3 {
 		blackItem.expiredTime = now.Add(duration)
 	}
-	b.blackList[key] = blackItem
+	b.blacklist[key] = blackItem
 	b.lock.Unlock()
 }
 
-func (b *BlackList) blackListExist(key string) (int, bool) {
+func (b *Blacklist) blacklistExist(key string) (int, bool) {
 	b.lock.Lock()
-	v, ok := b.blackList[key]
+	v, ok := b.blacklist[key]
 	b.lock.Unlock()
 	now := time.Now()
 	if ok && time.Now().Before(v.expiredTime) {
@@ -60,7 +60,7 @@ func (b *BlackList) blackListExist(key string) (int, bool) {
 }
 
 // validate current user in blacklist and update blacklist
-func ValidatePassword(blackListKey, currentPwd, verifiedPwd string) error {
+func ValidatePassword(blacklistKey, currentPwd, verifiedPwd string) error {
 	realCurrentPwd, err := handler.DecryptPasswordSupportNoRsaKey(currentPwd, g.RsaPrivateKey)
 	if err != nil {
 		return fmt.Errorf("decrypt current password err")
@@ -70,7 +70,7 @@ func ValidatePassword(blackListKey, currentPwd, verifiedPwd string) error {
 		return fmt.Errorf("decrypt verified password err")
 	}
 	if realCurrentPwd != realVerifiedPwd {
-		BL.setBlackList(blackListKey, time.Minute*30)
+		BL.setBlacklist(blacklistKey, time.Minute*30)
 		return fmt.Errorf("user or password is wrong")
 	}
 	return nil

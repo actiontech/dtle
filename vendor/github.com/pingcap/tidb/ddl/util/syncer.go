@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -23,14 +24,16 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/clientv3/concurrency"
-	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
 	"github.com/pingcap/errors"
-	"github.com/pingcap/parser/terror"
+	"github.com/pingcap/failpoint"
 	"github.com/pingcap/tidb/metrics"
 	"github.com/pingcap/tidb/owner"
+	"github.com/pingcap/tidb/parser/terror"
+	tidbutil "github.com/pingcap/tidb/util"
 	"github.com/pingcap/tidb/util/logutil"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/clientv3/concurrency"
+	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.uber.org/zap"
 )
 
@@ -61,8 +64,6 @@ var (
 	// SyncerSessionTTL is the etcd session's TTL in seconds.
 	// and it's an exported variable for testing.
 	SyncerSessionTTL = 90
-	// ddlLogCtx uses for log.
-	ddlLogCtx = context.Background()
 )
 
 // SchemaSyncer is used to synchronize schema version between the DDL worker leader and followers through etcd.
@@ -72,8 +73,6 @@ type SchemaSyncer interface {
 	Init(ctx context.Context) error
 	// UpdateSelfVersion updates the current version to the self path on etcd.
 	UpdateSelfVersion(ctx context.Context, version int64) error
-	// RemoveSelfVersionPath remove the self path from etcd.
-	RemoveSelfVersionPath() error
 	// OwnerUpdateGlobalVersion updates the latest version to the global path on etcd until updating is successful or the ctx is done.
 	OwnerUpdateGlobalVersion(ctx context.Context, version int64) error
 	// GlobalVersionCh gets the chan for watching global version.
@@ -95,8 +94,8 @@ type SchemaSyncer interface {
 	NotifyCleanExpiredPaths() bool
 	// StartCleanWork starts to clean up tasks.
 	StartCleanWork()
-	// CloseCleanWork ends cleanup tasks.
-	CloseCleanWork()
+	// Close ends SchemaSyncer.
+	Close()
 }
 
 type ownerChecker interface {
@@ -115,24 +114,28 @@ type schemaVersionSyncer struct {
 	// for clean worker
 	ownerChecker              ownerChecker
 	notifyCleanExpiredPathsCh chan struct{}
-	quiteCh                   chan struct{}
+	ctx                       context.Context
+	cancel                    context.CancelFunc
+	cleanGroup                sync.WaitGroup
 }
 
 // NewSchemaSyncer creates a new SchemaSyncer.
-func NewSchemaSyncer(etcdCli *clientv3.Client, id string, oc ownerChecker) SchemaSyncer {
+func NewSchemaSyncer(ctx context.Context, etcdCli *clientv3.Client, id string, oc ownerChecker) SchemaSyncer {
+	childCtx, cancelFunc := context.WithCancel(ctx)
 	return &schemaVersionSyncer{
 		etcdCli:                   etcdCli,
 		selfSchemaVerPath:         fmt.Sprintf("%s/%s", DDLAllSchemaVersions, id),
 		ownerChecker:              oc,
 		notifyCleanExpiredPathsCh: make(chan struct{}, 1),
-		quiteCh:                   make(chan struct{}),
+		ctx:                       childCtx,
+		cancel:                    cancelFunc,
 	}
 }
 
 // PutKVToEtcd puts key value to etcd.
 // etcdCli is client of etcd.
 // retryCnt is retry time when an error occurs.
-// opts is configures of etcd Operations.
+// opts are configures of etcd Operations.
 func PutKVToEtcd(ctx context.Context, etcdCli *clientv3.Client, retryCnt int, key, val string,
 	opts ...clientv3.OpOption) error {
 	var err error
@@ -147,7 +150,7 @@ func PutKVToEtcd(ctx context.Context, etcdCli *clientv3.Client, retryCnt int, ke
 		if err == nil {
 			return nil
 		}
-		logutil.Logger(ddlLogCtx).Warn("[ddl] etcd-cli put kv failed", zap.String("key", key), zap.String("value", val), zap.Error(err), zap.Int("retryCnt", i))
+		logutil.BgLogger().Warn("[ddl] etcd-cli put kv failed", zap.String("key", key), zap.String("value", val), zap.Error(err), zap.Int("retryCnt", i))
 		time.Sleep(keyOpRetryInterval)
 	}
 	return errors.Trace(err)
@@ -194,6 +197,13 @@ func (s *schemaVersionSyncer) storeSession(session *concurrency.Session) {
 
 // Done implements SchemaSyncer.Done interface.
 func (s *schemaVersionSyncer) Done() <-chan struct{} {
+	failpoint.Inject("ErrorMockSessionDone", func(val failpoint.Value) {
+		if val.(bool) {
+			err := s.loadSession().Close()
+			logutil.BgLogger().Error("close session failed", zap.Error(err))
+		}
+	})
+
 	return s.loadSession().Done()
 }
 
@@ -245,7 +255,7 @@ func (s *schemaVersionSyncer) WatchGlobalSchemaVer(ctx context.Context) {
 		s.mu.Lock()
 		s.mu.globalVerCh = ch
 		s.mu.Unlock()
-		logutil.Logger(ddlLogCtx).Info("[ddl] syncer watch global schema finished")
+		logutil.BgLogger().Info("[ddl] syncer watch global schema finished")
 	}()
 }
 
@@ -271,8 +281,8 @@ func (s *schemaVersionSyncer) OwnerUpdateGlobalVersion(ctx context.Context, vers
 	return errors.Trace(err)
 }
 
-// RemoveSelfVersionPath implements SchemaSyncer.RemoveSelfVersionPath interface.
-func (s *schemaVersionSyncer) RemoveSelfVersionPath() error {
+// removeSelfVersionPath remove the self path from etcd.
+func (s *schemaVersionSyncer) removeSelfVersionPath() error {
 	startTime := time.Now()
 	var err error
 	defer func() {
@@ -294,7 +304,7 @@ func DeleteKeyFromEtcd(key string, etcdCli *clientv3.Client, retryCnt int, timeo
 		if err == nil {
 			return nil
 		}
-		logutil.Logger(ddlLogCtx).Warn("[ddl] etcd-cli delete key failed", zap.String("key", key), zap.Error(err), zap.Int("retryCnt", i))
+		logutil.BgLogger().Warn("[ddl] etcd-cli delete key failed", zap.String("key", key), zap.Error(err), zap.Int("retryCnt", i))
 	}
 	return errors.Trace(err)
 }
@@ -316,7 +326,7 @@ func (s *schemaVersionSyncer) MustGetGlobalVersion(ctx context.Context) (int64, 
 	for {
 		if err != nil {
 			if failedCnt%intervalCnt == 0 {
-				logutil.Logger(ddlLogCtx).Info("[ddl] syncer get global version failed", zap.Error(err))
+				logutil.BgLogger().Info("[ddl] syncer get global version failed", zap.Error(err))
 			}
 			time.Sleep(keyOpRetryInterval)
 			failedCnt++
@@ -370,7 +380,7 @@ func (s *schemaVersionSyncer) OwnerCheckAllVersions(ctx context.Context, latestV
 
 		resp, err := s.etcdCli.Get(ctx, DDLAllSchemaVersions, clientv3.WithPrefix())
 		if err != nil {
-			logutil.Logger(ddlLogCtx).Info("[ddl] syncer check all versions failed, continue checking.", zap.Error(err))
+			logutil.BgLogger().Info("[ddl] syncer check all versions failed, continue checking.", zap.Error(err))
 			continue
 		}
 
@@ -382,13 +392,13 @@ func (s *schemaVersionSyncer) OwnerCheckAllVersions(ctx context.Context, latestV
 
 			ver, err := strconv.Atoi(string(kv.Value))
 			if err != nil {
-				logutil.Logger(ddlLogCtx).Info("[ddl] syncer check all versions, convert value to int failed, continue checking.", zap.String("ddl", string(kv.Key)), zap.String("value", string(kv.Value)), zap.Error(err))
+				logutil.BgLogger().Info("[ddl] syncer check all versions, convert value to int failed, continue checking.", zap.String("ddl", string(kv.Key)), zap.String("value", string(kv.Value)), zap.Error(err))
 				succ = false
 				break
 			}
 			if int64(ver) < latestVer {
 				if notMatchVerCnt%intervalCnt == 0 {
-					logutil.Logger(ddlLogCtx).Info("[ddl] syncer check all versions, someone is not synced, continue checking",
+					logutil.BgLogger().Info("[ddl] syncer check all versions, someone is not synced, continue checking",
 						zap.String("ddl", string(kv.Key)), zap.Int("currentVer", ver), zap.Int64("latestVer", latestVer))
 				}
 				succ = false
@@ -415,6 +425,10 @@ const (
 var NeededCleanTTL = int64(-60)
 
 func (s *schemaVersionSyncer) StartCleanWork() {
+	defer tidbutil.Recover(metrics.LabelDDLSyncer, "StartCleanWorker", nil, false)
+	s.cleanGroup.Add(1)
+	defer s.cleanGroup.Done()
+
 	for {
 		select {
 		case <-s.notifyCleanExpiredPathsCh:
@@ -423,11 +437,11 @@ func (s *schemaVersionSyncer) StartCleanWork() {
 			}
 
 			for i := 0; i < opDefaultRetryCnt; i++ {
-				childCtx, cancelFunc := context.WithTimeout(context.Background(), opDefaultTimeout)
+				childCtx, cancelFunc := context.WithTimeout(s.ctx, opDefaultTimeout)
 				resp, err := s.etcdCli.Leases(childCtx)
 				cancelFunc()
 				if err != nil {
-					logutil.Logger(ddlLogCtx).Info("[ddl] syncer clean expired paths, failed to get leases.", zap.Error(err))
+					logutil.BgLogger().Info("[ddl] syncer clean expired paths, failed to get leases.", zap.Error(err))
 					continue
 				}
 
@@ -436,14 +450,20 @@ func (s *schemaVersionSyncer) StartCleanWork() {
 				}
 				time.Sleep(opRetryInterval)
 			}
-		case <-s.quiteCh:
+		case <-s.ctx.Done():
 			return
 		}
 	}
 }
 
-func (s *schemaVersionSyncer) CloseCleanWork() {
-	close(s.quiteCh)
+func (s *schemaVersionSyncer) Close() {
+	s.cancel()
+	s.cleanGroup.Wait()
+
+	err := s.removeSelfVersionPath()
+	if err != nil {
+		logutil.BgLogger().Error("[ddl] remove self version path failed", zap.Error(err))
+	}
 }
 
 func (s *schemaVersionSyncer) NotifyCleanExpiredPaths() bool {
@@ -472,11 +492,11 @@ func (s *schemaVersionSyncer) doCleanExpirePaths(leases []clientv3.LeaseStatus) 
 	for _, lease := range leases {
 		// The DDL owner key uses '%x', so here print it too.
 		leaseID := fmt.Sprintf("%x, %d", lease.ID, lease.ID)
-		childCtx, cancelFunc := context.WithTimeout(context.Background(), opDefaultTimeout)
+		childCtx, cancelFunc := context.WithTimeout(s.ctx, opDefaultTimeout)
 		ttlResp, err := s.etcdCli.TimeToLive(childCtx, lease.ID)
 		cancelFunc()
 		if err != nil {
-			logutil.Logger(ddlLogCtx).Info("[ddl] syncer clean expired paths, failed to get one TTL.", zap.String("leaseID", leaseID), zap.Error(err))
+			logutil.BgLogger().Info("[ddl] syncer clean expired paths, failed to get one TTL.", zap.String("leaseID", leaseID), zap.Error(err))
 			failedGetIDs++
 			continue
 		}
@@ -489,15 +509,15 @@ func (s *schemaVersionSyncer) doCleanExpirePaths(leases []clientv3.LeaseStatus) 
 		}
 
 		st := time.Now()
-		childCtx, cancelFunc = context.WithTimeout(context.Background(), opDefaultTimeout)
+		childCtx, cancelFunc = context.WithTimeout(s.ctx, opDefaultTimeout)
 		_, err = s.etcdCli.Revoke(childCtx, lease.ID)
 		cancelFunc()
 		if err != nil && terror.ErrorEqual(err, rpctypes.ErrLeaseNotFound) {
-			logutil.Logger(ddlLogCtx).Warn("[ddl] syncer clean expired paths, failed to revoke lease.", zap.String("leaseID", leaseID),
+			logutil.BgLogger().Warn("[ddl] syncer clean expired paths, failed to revoke lease.", zap.String("leaseID", leaseID),
 				zap.Int64("TTL", ttlResp.TTL), zap.Error(err))
 			failedRevokeIDs++
 		}
-		logutil.Logger(ddlLogCtx).Warn("[ddl] syncer clean expired paths,", zap.String("leaseID", leaseID), zap.Int64("TTL", ttlResp.TTL))
+		logutil.BgLogger().Warn("[ddl] syncer clean expired paths,", zap.String("leaseID", leaseID), zap.Int64("TTL", ttlResp.TTL))
 		metrics.OwnerHandleSyncerHistogram.WithLabelValues(metrics.OwnerCleanOneExpirePath, metrics.RetLabel(err)).Observe(time.Since(st).Seconds())
 	}
 

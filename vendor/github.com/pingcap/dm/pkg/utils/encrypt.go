@@ -17,29 +17,38 @@ import (
 	"encoding/base64"
 
 	"github.com/pingcap/dm/pkg/encrypt"
-	"github.com/pingcap/errors"
+	"github.com/pingcap/dm/pkg/terror"
 )
 
-// Encrypt tries to encrypt plaintext to base64 encoded ciphertext
+// Encrypt tries to encrypt plaintext to base64 encoded ciphertext.
 func Encrypt(plaintext string) (string, error) {
 	ciphertext, err := encrypt.Encrypt([]byte(plaintext))
 	if err != nil {
-		return "", errors.Trace(err)
+		return "", err
 	}
 
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-// Decrypt tries to decrypt base64 encoded ciphertext to plaintext
+// Decrypt tries to decrypt base64 encoded ciphertext to plaintext.
 func Decrypt(ciphertextB64 string) (string, error) {
 	ciphertext, err := base64.StdEncoding.DecodeString(ciphertextB64)
 	if err != nil {
-		return "", errors.Annotatef(err, "can not decrypt password %s", ciphertextB64)
+		return "", terror.ErrEncCipherTextBase64Decode.Delegate(err, ciphertextB64)
 	}
 
 	plaintext, err := encrypt.Decrypt(ciphertext)
 	if err != nil {
-		return "", errors.Annotatef(err, "can not decrypt password %s", ciphertextB64)
+		return "", terror.Annotatef(err, "can not decrypt password %s", ciphertextB64)
 	}
 	return string(plaintext), nil
+}
+
+// DecryptOrPlaintext tries to decrypt base64 encoded ciphertext to plaintext or return plaintext.
+func DecryptOrPlaintext(ciphertextB64 string) string {
+	plaintext, err := Decrypt(ciphertextB64)
+	if err != nil {
+		return ciphertextB64
+	}
+	return plaintext
 }

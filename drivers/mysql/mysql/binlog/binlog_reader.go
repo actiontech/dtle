@@ -9,34 +9,29 @@ package binlog
 import (
 	"bytes"
 	gosql "database/sql"
+	"encoding/binary"
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
+	parserformat "github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
+	"github.com/pkg/errors"
 	"os"
 	"path"
 	"path/filepath"
 	"sync/atomic"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	parserformat "github.com/pingcap/parser/format"
-	"github.com/pingcap/parser/model"
-	"github.com/pkg/errors"
-
 	"github.com/cznic/mathutil"
 
-	"github.com/pingcap/dm/dm/pb"
-	"github.com/pingcap/dm/pkg/gtid"
-	"github.com/pingcap/dm/pkg/streamer"
-
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/actiontech/dtle/g"
-
-	"github.com/pingcap/parser"
-	"github.com/pingcap/parser/ast"
+	"github.com/pingcap/tidb/parser"
+	"github.com/pingcap/tidb/parser/ast"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
@@ -44,10 +39,17 @@ import (
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	hclog "github.com/hashicorp/go-hclog"
+
 	dmrelay "github.com/pingcap/dm/relay"
+	dmconfig "github.com/pingcap/dm/dm/config"
+	dmlog "github.com/pingcap/dm/pkg/log"
+	dmpb "github.com/pingcap/dm/dm/pb"
+	dmretry "github.com/pingcap/dm/relay/retry"
+	dmstreamer "github.com/pingcap/dm/pkg/streamer"
+
 	uuid "github.com/satori/go.uuid"
-	gomysql "github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 	"golang.org/x/net/context"
 )
 
@@ -68,21 +70,21 @@ type BinlogReader struct {
 	binlogSyncer    *replication.BinlogSyncer
 	binlogStreamer0 *replication.BinlogStreamer // for the functions added by us.
 	// for relay & streaming
-	binlogStreamer streamer.Streamer
+	binlogStreamer dmstreamer.Streamer
 	// for relay
-	binlogReader      *streamer.BinlogReader
+	binlogReader      *dmstreamer.BinlogReader
 	currentCoord      common.BinlogCoordinatesX
 	currentCoordMutex *sync.Mutex
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
-	mysqlContext         *common.MySQLDriverConfig
-	currentReplicateDoDb []*common.DataSource
+	mysqlContext *common.MySQLDriverConfig
 	// dynamic config, include all tables (implicitly assigned or dynamically created)
-	tables map[string](map[string]*common.TableContext)
+	tables map[string]*common.SchemaContext
 
 	hasBeginQuery bool
 	entryContext  *common.BinlogEntryContext
 	ReMap         map[string]*regexp.Regexp // This is a cache for regexp.
 
+	ctx          context.Context
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
@@ -96,12 +98,13 @@ type BinlogReader struct {
 
 	serverUUID          string
 	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
+	netWriteTimeout     int
 
 	targetGtid          gomysql.GTIDSet
 	currentGtidSet      gomysql.GTIDSet
 	currentGtidSetMutex sync.RWMutex
 
-	HasBigTx sync.WaitGroup
+	BigTxCount int32
 }
 
 type SqlFilter struct {
@@ -165,9 +168,11 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 	return s, nil
 }
 
-func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
-	replicateDoDb []*common.DataSource, sqleContext *sqle.Context, memory *int64, db *gosql.DB,
-	targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue) (binlogReader *BinlogReader, err error) {
+func NewBinlogReader(
+	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
+	replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context,
+	memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue,
+	nwTimeout int, ctx context.Context) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -175,20 +180,21 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 	}
 
 	binlogReader = &BinlogReader{
+		ctx:                  ctx,
 		execCtx:              execCtx,
 		logger:               logger,
 		currentCoord:         common.BinlogCoordinatesX{},
 		currentCoordMutex:    &sync.Mutex{},
 		mysqlContext:         cfg,
-		currentReplicateDoDb: replicateDoDb,
 		ReMap:                make(map[string]*regexp.Regexp),
 		shutdownCh:           make(chan struct{}),
-		tables:               make(map[string](map[string]*common.TableContext)),
+		tables:               make(map[string]*common.SchemaContext),
 		sqlFilter:            sqlFilter,
 		maybeSqleContext:     sqleContext,
 		memory:               memory,
 		db:                   db,
 		lowerCaseTableNames:  lctn,
+		netWriteTimeout:      nwTimeout,
 	}
 
 	binlogReader.serverUUID, err = sql.GetServerUUID(db)
@@ -204,14 +210,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 		}
 	}
 
-	for _, db := range replicateDoDb {
-		tableMap := binlogReader.getDbTableMap(db.TableSchema)
-		for _, table := range db.Tables {
-			if err := binlogReader.addTableToTableMap(tableMap, table); err != nil {
-				return nil, err
-			}
-		}
-	}
+	binlogReader.tables = replicateDoDb
 
 	id, err := util.NewIdWorker(2, 3, util.SnsEpoch)
 	if err != nil {
@@ -248,6 +247,7 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 			ParseTime: false, // must be false, or gencode will complain.
 
 			MemLimitSize: int64(g.MemAvailable * 10 / 2),
+			MemLimitSeconds: binlogReader.netWriteTimeout / 2,
 		}
 		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	}
@@ -255,26 +255,6 @@ func NewBinlogReader(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig,
 	binlogReader.mysqlContext.Stage = StageRegisteringSlaveOnMaster
 
 	return binlogReader, err
-}
-
-func (b *BinlogReader) getDbTableMap(schemaName string) map[string]*common.TableContext {
-	tableMap, ok := b.tables[schemaName]
-	if !ok {
-		tableMap = make(map[string]*common.TableContext)
-		b.tables[schemaName] = tableMap
-	}
-	return tableMap
-}
-func (b *BinlogReader) addTableToTableMap(tableMap map[string]*common.TableContext, table *common.Table) error {
-	whereCtx, err := common.NewWhereCtx(table.GetWhere(), table)
-	if err != nil {
-		err = errors.Wrapf(err, "parsing where %v %v where %v", table.TableSchema, table.TableName, table.GetWhere())
-		b.logger.Error(err.Error())
-		return err
-	}
-
-	tableMap[table.TableName] = common.NewTableContext(table, whereCtx)
-	return nil
 }
 
 func (b *BinlogReader) getBinlogDir() string {
@@ -291,112 +271,97 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 		"file", coordinates.LogFile, "pos", coordinates.LogPos, "gtid", coordinates.GtidSet)
 
 	if b.mysqlContext.BinlogRelay {
-		startPos := gomysql.Position{Pos: uint32(coordinates.LogPos), Name: coordinates.LogFile}
-
-		dbConfig := dmrelay.DBConfig{
+		dbConfig := dmconfig.DBConfig{
 			Host:     b.mysqlContext.ConnectionConfig.Host,
 			Port:     b.mysqlContext.ConnectionConfig.Port,
 			User:     b.mysqlContext.ConnectionConfig.User,
 			Password: b.mysqlContext.ConnectionConfig.Password,
 		}
 
-		// Default to replay position. Change to local relay position if the relay log exists.
-		var relayGtid string = coordinates.GtidSet
-
 		relayConfig := &dmrelay.Config{
-			ServerID:   int(b.serverId),
-			Flavor:     "mysql",
-			From:       dbConfig,
-			RelayDir:   b.getBinlogDir(),
-			BinLogName: "",
-			EnableGTID: true,
-			BinlogGTID: relayGtid,
+			EnableGTID:  true,
+			RelayDir:    b.getBinlogDir(),
+			ServerID:    uint32(b.serverId),
+			Flavor:      "mysql",
+			From:        dbConfig,
+			BinLogName:  "",
+			BinlogGTID: coordinates.GtidSet,
+			ReaderRetry: dmretry.ReaderRetryConfig{
+				// value from dm/relay/relay_test.go
+				BackoffRollback: 200 * time.Millisecond,
+				BackoffMax:      1 * time.Second,
+				BackoffMin:      1 * time.Millisecond,
+				BackoffJitter:   true,
+				BackoffFactor:   2,
+			},
 		}
 		b.relay = dmrelay.NewRelay(relayConfig)
-		err = b.relay.Init()
+		err = b.relay.Init(b.ctx)
 		if err != nil {
 			return err
 		}
 
-		meta := b.relay.GetMeta()
-
-		{ // Update relayGtid if metaGtid is not empty, aka if there is local relaylog.
-			_, metaGtid := meta.GTID()
-			metaGtidStr := metaGtid.String()
-			if metaGtidStr != "" {
-				relayGtid = metaGtidStr
-			}
-		}
-
-		changed, err := meta.AdjustWithStartPos(coordinates.LogFile, relayGtid, true)
-		if err != nil {
-			return err
-		}
-		b.logger.Debug("AdjustWithStartPos.after", "changed", changed)
-
-		processResultCh := make(chan pb.ProcessResult)
 		var ctx context.Context
-		ctx, b.relayCancelF = context.WithCancel(context.Background())
+		ctx, b.relayCancelF = context.WithCancel(b.ctx)
 
-		go b.relay.Process(ctx, processResultCh)
-
-		loc, err := time.LoadLocation("Local") // TODO
-
-		brConfig := &streamer.BinlogReaderConfig{
-			RelayDir: b.getBinlogDir(),
-			Timezone: loc,
+		{
+			loc, _ := time.LoadLocation("Local") // TODO
+			brConfig := &dmstreamer.BinlogReaderConfig{
+				RelayDir: b.getBinlogDir(),
+				Timezone: loc,
+			}
+			b.binlogReader = dmstreamer.NewBinlogReader(dmlog.L(), brConfig)
 		}
-		b.binlogReader = streamer.NewBinlogReader(brConfig)
 
 		go func() {
-			select {
-			case <-b.shutdownCh:
-			case pr := <-processResultCh:
-				b.logger.Warn("relay.Process stopped", "isCancelled", pr.IsCanceled, "deail", string(pr.Detail))
-				for _, prErr := range pr.Errors {
-					b.logger.Error("relay.Process error", "err", prErr)
-				}
-
-				_ = b.binlogReader.Close()
-				b.relay.Close()
+			pr := b.relay.Process(ctx)
+			b.logger.Warn("relay.Process stopped", "isCancelled", pr.IsCanceled, "deail", string(pr.Detail))
+			for _, prErr := range pr.Errors {
+				b.logger.Error("relay.Process error", "err", prErr)
 			}
+
+			b.binlogReader.Close()
+			b.relay.Close()
 		}()
 
-		targetGtid, err := gtid.ParserGTID("mysql", coordinates.GtidSet)
+		targetGtid, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
 		if err != nil {
 			return err
 		}
 
-		chWait := make(chan struct{})
-		go func() {
-			for {
-				if b.shutdown {
-					break
-				}
-				if b.relay.IsClosed() {
-					b.logger.Info("Relay: closed. stop waiting")
-					break
-				}
-				_, p := meta.Pos()
-				_, gs := meta.GTID()
-
-				if targetGtid.Contain(gs) {
-					b.logger.Debug("Relay: keep waiting.", "pos", p, "gs", gs)
-				} else {
-					b.logger.Debug("Relay: stop waiting.", "pos", p, "gs", gs)
-					break
-				}
-
-				time.Sleep(1 * time.Second)
+		for {
+			if b.shutdown {
+				break
 			}
-			close(chWait)
-		}()
+			if b.relay.IsClosed() {
+				b.logger.Info("Relay: closed. stop waiting")
+				break
+			}
+			s := b.relay.Status(nil).(*dmpb.RelayStatus)
+			gsStr := s.GetRelayBinlogGtid()
+			p := s.GetRelayBinlog()
 
-		<-chWait
+			gs, err := gomysql.ParseMysqlGTIDSet(gsStr)
+			if err != nil {
+				b.logger.Error("waiting relay. err at ParseMysqlGTIDSet", "err", err)
+				b.relay.Close()
+				break
+			}
+
+			if gs.Contain(targetGtid) {
+				b.logger.Debug("Relay: stop waiting.", "pos", p, "gs", gsStr)
+				break
+			} else {
+				b.logger.Debug("Relay: keep waiting.", "pos", p, "gs", gsStr)
+			}
+
+			time.Sleep(1 * time.Second)
+		}
+
 		if b.relay.IsClosed() {
 			return fmt.Errorf("relay has been closed")
 		}
-		b.binlogStreamer, err = b.binlogReader.StartSync(startPos)
+		b.binlogStreamer, err = b.binlogReader.StartSyncByGTID(targetGtid)
 		if err != nil {
 			b.logger.Debug("err at StartSync", "err", err)
 			return err
@@ -482,195 +447,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 		}
 	case replication.QUERY_EVENT:
-		gno := b.entryContext.Entry.Coordinates.GNO
-		evt := ev.Event.(*replication.QueryEvent)
-		query := string(evt.Query)
-
-		if evt.ErrorCode != 0 {
-			b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled.",
-				"ErrorCode", evt.ErrorCode, "query", query, "gno", gno)
-		}
-		currentSchema := string(evt.Schema)
-
-		b.logger.Debug("query event", "schema", currentSchema, "query", query)
-
-		upperQuery := strings.ToUpper(query)
-		if upperQuery == "BEGIN" {
-			b.hasBeginQuery = true
-		} else {
-			if upperQuery == "COMMIT" || !b.hasBeginQuery {
-				err := b.checkDtleQueryOSID(query)
-				if err != nil {
-					return errors.Wrap(err, "checkDtleQueryOSID")
-				}
-
-				queryInfo, err := b.resolveQuery(currentSchema, query, b.skipQueryDDL)
-				if err != nil {
-					return errors.Wrap(err, "resolveQuery")
-				}
-
-				skipSql := false
-				if queryInfo.isSkip || isSkipQuery(query) {
-					// queries that should be skipped regardless of ExpandSyntaxSupport
-					skipSql = true
-				} else {
-					if !b.mysqlContext.ExpandSyntaxSupport {
-						skipSql = queryInfo.isExpand || isExpandSyntaxQuery(query)
-					}
-				}
-
-				currentSchemaRename := currentSchema
-				schema := b.findCurrentSchema(currentSchema)
-				if schema != nil && schema.TableSchemaRename != "" {
-					currentSchemaRename = schema.TableSchemaRename
-				}
-
-				if skipSql || !queryInfo.isRecognized {
-					if skipSql {
-						b.logger.Warn("skipQuery", "query", query, "gno", gno)
-					} else {
-						if !queryInfo.isRecognized {
-							b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query, "gno", gno)
-						}
-
-						event := common.NewQueryEvent(
-							currentSchemaRename,
-							b.setDtleQuery(query),
-							common.NotDML,
-							ev.Header.Timestamp,
-						)
-
-						b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
-						b.entryContext.OriginalSize += len(ev.RawData)
-					}
-					b.sendEntry(entriesChannel)
-					return nil
-				}
-
-				skipEvent := false
-
-				b.sqleExecDDL(currentSchema, queryInfo.ast)
-
-				if b.sqlFilter.NoDDL {
-					skipEvent = true
-				}
-
-				sql := queryInfo.sql
-				if sql != "" {
-					realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
-					tableName := queryInfo.table.Table
-					err = b.updateCurrentReplicateDoDb(realSchema, tableName)
-					if err != nil {
-						return errors.Wrap(err, "updateCurrentReplicateDoDb")
-					}
-
-					if b.skipQueryDDL(realSchema, tableName) {
-						b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
-							"realSchema", realSchema, "tableName", tableName, "gno", gno)
-					} else {
-						if realSchema != currentSchema {
-							schema = b.findCurrentSchema(realSchema)
-						}
-						table := b.findCurrentTable(schema, tableName)
-
-						skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
-						switch realAst := queryInfo.ast.(type) {
-						case *ast.CreateDatabaseStmt:
-							b.sqleAfterCreateSchema(queryInfo.table.Schema)
-						case *ast.CreateTableStmt:
-							b.logger.Debug("ddl is create table")
-							err := b.updateTableMeta(table, realSchema, tableName, gno, query)
-							if err != nil {
-								return err
-							}
-						//case *ast.DropTableStmt:
-						case *ast.AlterTableStmt:
-							b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
-
-							fromTable := table
-							tableNameX := tableName
-
-							for iSpec := range realAst.Specs {
-								switch realAst.Specs[iSpec].Tp {
-								case ast.AlterTableRenameTable:
-									fromTable = nil
-									tableNameX = realAst.Specs[iSpec].NewTable.Name.O
-								default:
-									// do nothing
-								}
-							}
-							err := b.updateTableMeta(fromTable, realSchema, tableNameX, gno, query)
-							if err != nil {
-								return err
-							}
-						case *ast.RenameTableStmt:
-							for _, tt := range realAst.TableToTables {
-								newSchemaName := g.StringElse(tt.NewTable.Schema.O, currentSchema)
-								tableName := tt.NewTable.Name.O
-								b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
-									"newTable", tableName)
-								if !b.skipQueryDDL(newSchemaName, tableName) {
-									err := b.updateTableMeta(nil, newSchemaName, tableName, gno, query)
-									if err != nil {
-										return err
-									}
-								} else {
-									b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
-										"newTable", tableName)
-								}
-							}
-						}
-
-						if schema != nil && schema.TableSchemaRename != "" {
-							queryInfo.table.Schema = schema.TableSchemaRename
-							realSchema = schema.TableSchemaRename
-						} else {
-							// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
-							// or schema.TableSchemaRename == "" means no renaming
-						}
-
-						if table != nil && table.TableRename != "" {
-							queryInfo.table.Table = table.TableRename
-						}
-						// mapping
-						schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
-						if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
-							sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast)
-							if nil != err {
-								return fmt.Errorf("ddl mapping failed: %v", err)
-							}
-						}
-
-						if skipEvent {
-							b.logger.Debug("skipped a ddl event.", "query", query)
-						} else {
-							if realSchema == "" || queryInfo.table.Table == "" {
-								b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-									"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
-							}
-
-							event := common.NewQueryEventAffectTable(
-								currentSchemaRename,
-								b.setDtleQuery(sql),
-								common.NotDML,
-								queryInfo.table,
-								ev.Header.Timestamp,
-							)
-							if table != nil {
-								tableBs, err := common.EncodeTable(table)
-								if err != nil {
-									return errors.Wrap(err, "EncodeTable(table)")
-								}
-								event.Table = tableBs
-							}
-							b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
-						}
-					}
-				}
-				b.entryContext.OriginalSize += len(ev.RawData)
-				b.sendEntry(entriesChannel)
-			}
-		}
+		return b.handleQueryEvent(ev, entriesChannel)
 	case replication.XID_EVENT:
 		evt := ev.Event.(*replication.XIDEvent)
 		b.currentCoord.LogPos = int64(ev.Header.LogPos)
@@ -694,190 +471,229 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
-			schemaName := string(rowsEvent.Table.Schema)
-			tableName := string(rowsEvent.Table.Table)
-			b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
-				"gno", b.entryContext.Entry.Coordinates.GNO)
+			return b.handleRowsEvent(ev, rowsEvent, entriesChannel)
+		}
+	}
+	return nil
+}
 
-			dml := common.ToEventDML(ev.Header.EventType)
-			skip, table := b.skipRowEvent(rowsEvent, dml)
-			if skip {
-				b.logger.Debug("skip rowsEvent", "schema", schemaName, "table", tableName,
-					"gno", b.entryContext.Entry.Coordinates.GNO)
-				return nil
-			}
+func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
+	entriesChannel chan<- *common.BinlogEntryContext) error {
 
-			if b.sqlFilter.NoDML ||
-				(b.sqlFilter.NoDMLDelete && dml == common.DeleteDML) ||
-				(b.sqlFilter.NoDMLInsert && dml == common.InsertDML) ||
-				(b.sqlFilter.NoDMLUpdate && dml == common.UpdateDML) {
+	gno := b.entryContext.Entry.Coordinates.GNO
+	evt := ev.Event.(*replication.QueryEvent)
+	query := string(evt.Query)
 
-				b.logger.Debug("skipped_a_dml_event.", "type", dml, "schema", schemaName, "table", tableName)
-				return nil
-			}
+	if evt.ErrorCode != 0 {
+		b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled.",
+			"ErrorCode", evt.ErrorCode, "query", query, "gno", gno)
+	}
+	currentSchema := string(evt.Schema)
 
-			if dml == common.NotDML {
-				return fmt.Errorf("unknown DML type: %s", ev.Header.EventType.String())
-			}
-			dmlEvent := common.NewDataEvent(
-				schemaName,
-				tableName,
-				dml,
-				rowsEvent.ColumnCount,
-				ev.Header.Timestamp,
-			)
-			dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
+	b.logger.Debug("query event", "schema", currentSchema, "query", query)
 
-			/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+	upperQuery := strings.ToUpper(query)
+	if upperQuery == "BEGIN" {
+		b.hasBeginQuery = true
+	} else {
+		if upperQuery == "COMMIT" || !b.hasBeginQuery {
+			err := b.checkDtleQueryOSID(query)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "checkDtleQueryOSID")
 			}
-			dmlEvent.OriginalTableColumns = originalTableColumns*/
 
-			// It is hard to calculate exact row size. We use estimation.
-			avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
+			queryInfo, err := b.resolveQuery(currentSchema, query, b.skipQueryDDL)
+			if err != nil {
+				return errors.Wrap(err, "resolveQuery")
+			}
 
-			for i, row := range rowsEvent.Rows {
-				//for _, col := range row {
-				//	b.logger.Debug("*** column type", "col", col, "type", hclog.Fmt("%T", col))
-				//}
-				b.logger.Trace("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
-				if dml == common.UpdateDML && i%2 == 1 {
-					// An update has two rows (WHERE+SET)
-					// We do both at the same time
-					continue
+			skipSql := false
+			if queryInfo.isSkip || isSkipQuery(query) {
+				// queries that should be skipped regardless of ExpandSyntaxSupport
+				skipSql = true
+			} else {
+				if !b.mysqlContext.ExpandSyntaxSupport {
+					skipSql = queryInfo.isExpand || isExpandSyntaxQuery(query)
 				}
-				switch dml {
-				case common.InsertDML:
-					{
-						dmlEvent.NewColumnValues = ToColumnValuesV2(row)
-					}
-				case common.UpdateDML:
-					{
-						dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
-						dmlEvent.NewColumnValues = ToColumnValuesV2(rowsEvent.Rows[i+1])
-					}
-				case common.DeleteDML:
-					{
-						dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
-					}
-				}
+			}
 
-				//b.logger.Debug("event before row", "values", dmlEvent.WhereColumnValues)
-				//b.logger.Debug("event after row", "values", dmlEvent.NewColumnValues)
-				whereTrue := true
-				var err error
-				if table != nil && !table.WhereCtx.IsDefault {
-					switch dml {
-					case common.InsertDML:
-						whereTrue, err = table.WhereTrue(dmlEvent.NewColumnValues)
-						if err != nil {
-							return err
-						}
-					case common.UpdateDML:
-						before, err := table.WhereTrue(dmlEvent.WhereColumnValues)
-						if err != nil {
-							return err
-						}
-						after, err := table.WhereTrue(dmlEvent.NewColumnValues)
-						if err != nil {
-							return err
-						}
-						if !before && !after {
-							whereTrue = false
-						} else if !before {
-							dmlEvent.DML = common.InsertDML
-							dmlEvent.WhereColumnValues = nil
-						} else if !after {
-							dmlEvent.DML = common.DeleteDML
-							dmlEvent.NewColumnValues = nil
-						} else {
-							// before == after == true
-						}
-					case common.DeleteDML:
-						whereTrue, err = table.WhereTrue(dmlEvent.WhereColumnValues)
-						if err != nil {
-							return err
-						}
+			currentSchemaRename := currentSchema
+			schema := b.findCurrentSchema(currentSchema)
+			if schema != nil && schema.TableSchemaRename != "" {
+				currentSchemaRename = schema.TableSchemaRename
+			}
+
+			if skipSql || !queryInfo.isRecognized {
+				if skipSql {
+					b.logger.Warn("skipQuery", "query", query, "gno", gno)
+				} else {
+					if !queryInfo.isRecognized {
+						b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query, "gno", gno)
 					}
+
+					event := common.NewQueryEvent(
+						currentSchemaRename,
+						b.setDtleQuery(query),
+						common.NotDML,
+						ev.Header.Timestamp,
+						evt.StatusVars,
+					)
+
+					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
+					b.entryContext.OriginalSize += len(ev.RawData)
 				}
-				if table != nil && table.Table.TableRename != "" {
-					dmlEvent.TableName = table.Table.TableRename
-					b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
-				}
-				schema := b.findCurrentSchema(schemaName)
-				if schema != nil && schema.TableSchemaRename != "" {
-					b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schema.TableSchemaRename)
-					dmlEvent.DatabaseName = schema.TableSchemaRename
+				b.sendEntry(entriesChannel)
+				return nil
+			}
+
+			skipEvent := false
+
+			b.sqleExecDDL(currentSchema, queryInfo.ast)
+
+			if b.sqlFilter.NoDDL {
+				skipEvent = true
+			}
+
+			sql := queryInfo.sql
+			realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
+			tableName := queryInfo.table.Table
+
+			if b.skipQueryDDL(realSchema, tableName) {
+				b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
+					"realSchema", realSchema, "tableName", tableName, "gno", gno)
+			} else {
+				err = b.updateCurrentReplicateDoDb(realSchema, tableName)
+				if err != nil {
+					return errors.Wrap(err, "updateCurrentReplicateDoDb")
 				}
 
-				if table != nil && !table.DefChangedSent {
-					b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
-					if table.Table == nil {
-						b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
-							"schema", schemaName, "table", tableName)
+				if realSchema != currentSchema {
+					schema = b.findCurrentSchema(realSchema)
+				}
+				tableCtx := b.findCurrentTable(schema, tableName)
+				var table *common.Table
+				if tableCtx != nil {
+					table = tableCtx.Table
+				}
+
+				skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
+				switch realAst := queryInfo.ast.(type) {
+				case *ast.CreateDatabaseStmt:
+					b.sqleAfterCreateSchema(queryInfo.table.Schema)
+				case *ast.DropDatabaseStmt:
+					b.removeFKChildSchema(realAst.Name)
+				case *ast.CreateTableStmt:
+					b.logger.Debug("ddl is create table")
+					_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query)
+					if err != nil {
+						return err
+					}
+				case *ast.DropTableStmt:
+					if realAst.IsView {
+						// do nothing
 					} else {
-						tableBs, err := common.EncodeTable(table.Table)
+						for _, t := range realAst.Tables {
+							dropTableSchema := g.StringElse(t.Schema.O, currentSchema)
+							b.removeFKChild(dropTableSchema, t.Name.O)
+						}
+					}
+				case *ast.DropIndexStmt:
+					_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query)
+					if err != nil {
+						return err
+					}
+				case *ast.AlterTableStmt:
+					b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
+
+					fromTable := table
+					newSchemaName := realSchema
+					newTableName := tableName
+
+					for _, spec := range realAst.Specs {
+						switch spec.Tp {
+						case ast.AlterTableRenameTable:
+							fromTable = nil
+							newSchemaName = g.StringElse(spec.NewTable.Schema.O, currentSchema)
+							newTableName = spec.NewTable.Name.O
+						case ast.AlterTableAddConstraint, ast.AlterTableDropForeignKey:
+							b.removeFKChild(realSchema, fromTable.TableName)
+						default:
+							// do nothing
+						}
+					}
+
+					if !b.skipQueryDDL(newSchemaName, newTableName) {
+						_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, query)
+						if err != nil {
+							return err
+						}
+					}
+				case *ast.RenameTableStmt:
+					for _, tt := range realAst.TableToTables {
+						newSchemaName := g.StringElse(tt.NewTable.Schema.O, currentSchema)
+						newTableName := tt.NewTable.Name.O
+						b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
+							"newTable", newTableName)
+						if !b.skipQueryDDL(newSchemaName, newTableName) {
+							_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, query)
+							if err != nil {
+								return err
+							}
+						} else {
+							b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
+								"newTable", newTableName)
+						}
+					}
+				}
+
+				if schema != nil && schema.TableSchemaRename != "" {
+					queryInfo.table.Schema = schema.TableSchemaRename
+					realSchema = schema.TableSchemaRename
+				} else {
+					// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
+					// or schema.TableSchemaRename == "" means no renaming
+				}
+
+				if table != nil && table.TableRename != "" {
+					queryInfo.table.Table = table.TableRename
+				}
+				// mapping
+				schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
+				if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
+					sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast)
+					if nil != err {
+						return fmt.Errorf("ddl mapping failed: %v", err)
+					}
+				}
+
+				if skipEvent {
+					b.logger.Debug("skipped a ddl event.", "query", query)
+				} else {
+					if realSchema == "" || queryInfo.table.Table == "" {
+						b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
+							"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
+					}
+
+					event := common.NewQueryEventAffectTable(
+						currentSchemaRename,
+						b.setDtleQuery(sql),
+						common.NotDML,
+						queryInfo.table,
+						ev.Header.Timestamp,
+						evt.StatusVars,
+					)
+					if table != nil {
+						tableBs, err := common.EncodeTable(table)
 						if err != nil {
 							return errors.Wrap(err, "EncodeTable(table)")
 						}
-						dmlEvent.Table = tableBs
+						event.Table = tableBs
 					}
-
-					table.DefChangedSent = true
-				}
-
-				if whereTrue {
-					if dmlEvent.WhereColumnValues != nil {
-						b.entryContext.OriginalSize += avgRowSize
-					}
-					if dmlEvent.NewColumnValues != nil {
-						b.entryContext.OriginalSize += avgRowSize
-					}
-					// The channel will do the throttling. Whoever is reding from the channel
-					// decides whether action is taken sycnhronously (meaning we wait before
-					// next iteration) or asynchronously (we keep pushing more events)
-					// In reality, reads will be synchronous
-					if table != nil && len(table.Table.ColumnMap) > 0 {
-						if dmlEvent.NewColumnValues != nil {
-							newRow := make([]interface{}, len(table.Table.ColumnMap))
-							for i := range table.Table.ColumnMap {
-								idx := table.Table.ColumnMap[i]
-								newRow[i] = dmlEvent.NewColumnValues.AbstractValues[idx]
-							}
-							dmlEvent.NewColumnValues.AbstractValues = newRow
-						}
-
-						if dmlEvent.WhereColumnValues != nil {
-							newRow := make([]interface{}, len(table.Table.ColumnMap))
-							for i := range table.Table.ColumnMap {
-								idx := table.Table.ColumnMap[i]
-								newRow[i] = dmlEvent.WhereColumnValues.AbstractValues[idx]
-							}
-							dmlEvent.WhereColumnValues.AbstractValues = newRow
-						}
-					}
-					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
-				} else {
-					b.logger.Debug("event has not passed 'where'")
-				}
-
-				if b.entryContext.OriginalSize >= bigTxSplittingSize {
-					b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
-					b.entryContext.Entry.Final = false
-					b.sendEntry(entriesChannel)
-					entry := common.NewBinlogEntry()
-					entry.Coordinates = b.entryContext.Entry.Coordinates
-					entry.Index = b.entryContext.Entry.Index + 1
-					entry.Final = true
-					b.entryContext = &common.BinlogEntryContext{
-						Entry:        entry,
-						TableItems:   nil,
-						OriginalSize: 1,
-					}
+					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
 				}
 			}
-			return nil
+			b.entryContext.OriginalSize += len(ev.RawData)
+			b.sendEntry(entriesChannel)
 		}
 	}
 	return nil
@@ -936,10 +752,15 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 }
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
-	if b.entryContext.Entry.IsPartOfBigTx() {
-		b.HasBigTx.Add(1)
+	isBig := b.entryContext.Entry.IsPartOfBigTx()
+	if isBig {
+		newVal := atomic.AddInt32(&b.BigTxCount, 1)
+		if newVal == 1 {
+			g.AddBigTxJob()
+		}
 	}
-	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events))
+	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events),
+		"isBig", isBig)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	entriesChannel <- b.entryContext
 	atomic.AddUint32(&b.extractedTxCount, 1)
@@ -1062,7 +883,16 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 		}
 
 		b.logger.Trace("b.HasBigTx.Wait. before")
-		b.HasBigTx.Wait()
+		for i := 0; atomic.LoadInt32(&b.BigTxCount) > 0 || g.BigTxReachMax(); i++ {
+			if b.shutdown {
+				break
+			}
+			if i >= b.netWriteTimeout * 1000 / 10 / 2 {
+				b.logger.Info("reach netWriteTimeout limit. allow reading one event")
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		b.logger.Trace("b.HasBigTx.Wait. after")
 
 		ev, err := b.binlogStreamer.GetEvent(context.Background())
@@ -1215,10 +1045,11 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		}, false)
 		result.isExpand = true
 	case *ast.RenameTableStmt:
-		setTable(v.OldTable, false)
-		mayLowerTable(v.NewTable)
-		for _, t2t := range v.TableToTables {
+		for i, t2t := range v.TableToTables {
 			// TODO handle extra tables in v.TableToTables[1:]
+			if i == 0 {
+				setTable(t2t.OldTable, false)
+			}
 			mayLowerTable(t2t.OldTable)
 			mayLowerTable(t2t.NewTable)
 		}
@@ -1233,7 +1064,6 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		r := &parserformat.RestoreCtx{
 			Flags:     parserformat.DefaultRestoreFlags,
 			In:        bs,
-			JoinLevel: 0,
 		}
 		err = stmt.Restore(r)
 		if err != nil {
@@ -1363,25 +1193,19 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 	case "sys", "information_schema", "performance_schema":
 		return true, nil
 	default:
-		//if table in tartget Table, do this event
-		for schemaName, tableMap := range b.tables {
-			if b.matchString(schemaName, string(rowsEvent.Table.Schema)) || schemaName == "" {
-				for tableName, tableCtx := range tableMap {
-					if b.matchString(tableName, tableOrigin) {
-						return false, tableCtx
-					}
-				}
+		if schemaContext, ok := b.tables[string(rowsEvent.Table.Schema)]; ok {
+			if tableCtx, ok := schemaContext.TableMap[tableOrigin]; ok {
+				return false, tableCtx
+			}
+		}
+		// TODO when will schemaName be empty?
+		if schemaContext, ok := b.tables[""]; ok {
+			if tableCtx, ok := schemaContext.TableMap[tableOrigin]; ok {
+				return false, tableCtx
 			}
 		}
 		return true, nil
 	}
-}
-
-func (b *BinlogReader) matchString(pattern string, t string) bool {
-	/*if re, ok := b.ReMap[pattern]; ok {
-		return re.MatchString(t)
-	}*/
-	return pattern == t
 }
 
 func (b *BinlogReader) matchTable(patternTBS []*common.DataSource, schemaName string, tableName string) bool {
@@ -1439,9 +1263,15 @@ func (b *BinlogReader) Close() error {
 
 	// Historically there was a:
 	if b.mysqlContext.BinlogRelay {
-		b.binlogReader.Close()
-		b.relayCancelF()
-		b.relay.Close()
+		if b.binlogReader != nil {
+			b.binlogReader.Close()
+		}
+		if b.relayCancelF != nil {
+			b.relayCancelF()
+		}
+		if b.relay != nil {
+			b.relay.Close()
+		}
 	} else {
 		b.binlogSyncer.Close()
 	}
@@ -1452,21 +1282,21 @@ func (b *BinlogReader) Close() error {
 }
 
 // gno, query: for debug use
-func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, tableName string,
-	gno int64, query string) error {
+func (b *BinlogReader) updateTableMeta(currentSchema string, table *common.Table, realSchema string, tableName string,
+	gno int64, query string) (*common.TableContext, error) {
 
 	var err error
 
 	if b.maybeSqleContext == nil {
 		b.logger.Debug("ignore updating table meta", "schema", realSchema, "table", tableName)
-		return nil
+		return nil, nil
 	}
 
-	columns, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
+	columns, fkParent, err := base.GetTableColumnsSqle(b.maybeSqleContext, realSchema, tableName)
 	if err != nil {
 		b.logger.Warn("updateTableMeta: cannot get table info after ddl.", "err", err,
 			"realSchema", realSchema, "tableName", tableName, "gno", gno, "query", query)
-		return err
+		return nil, err
 	}
 	b.logger.Debug("binlog_reader. new columns.",
 		"schema", realSchema, "table", tableName, "columns", columns.String())
@@ -1480,37 +1310,40 @@ func (b *BinlogReader) updateTableMeta(table *common.Table, realSchema string, t
 	}
 	table.OriginalTableColumns = columns
 	table.ColumnMap = mysqlconfig.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
-	tableMap := b.getDbTableMap(realSchema)
-	err = b.addTableToTableMap(tableMap, table)
-	if err != nil {
-		err = errors.Wrapf(err, "addTableToTableMap. gno %v query %v", gno, query)
-		b.logger.Error("failed to make table context", "err", err)
-		return err
-	}
 
-	return nil
+	schemaContext := b.findCurrentSchema(realSchema)
+	tableCtx, err := common.NewTableContext(table)
+	if err != nil {
+		return nil, err
+	}
+	schemaContext.TableMap[table.TableName] = tableCtx
+	b.addFKChildren(currentSchema, fkParent, realSchema, tableName)
+
+	return tableCtx, nil
 }
 
 func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName string) error {
-	if "" == schemaName {
+	if schemaName == "" {
 		return fmt.Errorf("schema name should not be empty. table %v", tableName)
 	}
 
 	var currentSchemaReplConfig *common.DataSource
 	currentSchema := b.findCurrentSchema(schemaName)
 	currentSchemaReplConfig = b.findSchemaConfig(b.mysqlContext.ReplicateDoDb, schemaName)
-	if nil == currentSchema { // update current schema
+	if currentSchema == nil { // update current schema
 		if len(b.mysqlContext.ReplicateDoDb) > 0 {
-			if nil == currentSchemaReplConfig {
+			if currentSchemaReplConfig == nil {
 				//  the schema doesn't need to be replicated
 				return nil
 			}
 
 			schemaRename := ""
 			schemaRenameRegex := currentSchemaReplConfig.TableSchemaRename
-			if currentSchemaReplConfig.TableSchema != "" { // match currentSchemaReplConfig.TableSchema and currentSchemaReplConfig.TableSchemaRename
+			if currentSchemaReplConfig.TableSchema != "" {
+				// match currentSchemaReplConfig.TableSchema and currentSchemaReplConfig.TableSchemaRename
 				schemaRename = currentSchemaReplConfig.TableSchemaRename
-			} else if currentSchemaReplConfig.TableSchemaRegex != "" { // match currentSchemaReplConfig.TableSchemaRegex and currentSchemaReplConfig.TableSchemaRename
+			} else if currentSchemaReplConfig.TableSchemaRegex != "" {
+				// match currentSchemaReplConfig.TableSchemaRegex and currentSchemaReplConfig.TableSchemaRename
 				// TODO check & compile one time
 				schemaNameRegex, err := regexp.Compile(currentSchemaReplConfig.TableSchemaRegex)
 				if err != nil {
@@ -1525,34 +1358,29 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 			}
 
 			// add schema to currentReplicateDoDb
-			currentSchema = &common.DataSource{
-				TableSchema:       schemaName,
-				TableSchemaRegex:  currentSchemaReplConfig.TableSchemaRegex,
-				TableSchemaRename: schemaRename,
-			}
+			currentSchema = common.NewSchemaContext(schemaName)
+			currentSchema.TableSchemaRename = schemaRename
 		} else { // replicate all schemas and tables
-			currentSchema = &common.DataSource{
-				TableSchema: schemaName,
-			}
+			currentSchema = common.NewSchemaContext(schemaName)
 		}
-		b.currentReplicateDoDb = append(b.currentReplicateDoDb, currentSchema)
+		b.tables[schemaName] = currentSchema
 	}
 
-	if "" == tableName {
+	if tableName == "" {
 		return nil
 	}
 
 	currentTable := b.findCurrentTable(currentSchema, tableName)
-	if nil != currentTable {
+	if currentTable != nil {
 		// table already exists
 		return nil
 	}
 
 	// update current table
 	var newTable *common.Table
-	if nil != currentSchemaReplConfig && len(currentSchemaReplConfig.Tables) > 0 {
+	if currentSchemaReplConfig != nil && len(currentSchemaReplConfig.Tables) > 0 {
 		currentTableConfig := b.findTableConfig(currentSchemaReplConfig, tableName)
-		if nil == currentTableConfig {
+		if currentTableConfig == nil {
 			// the table doesn't need to be replicated
 			return nil
 		}
@@ -1602,8 +1430,12 @@ func (b *BinlogReader) updateCurrentReplicateDoDb(schemaName string, tableName s
 		newTable.TableSchemaRename = currentSchema.TableSchemaRename
 	}
 
-	if nil != newTable {
-		currentSchema.Tables = append(currentSchema.Tables, newTable)
+	if newTable != nil {
+		tableCtx, err := common.NewTableContext(newTable)
+		if err != nil {
+			return err
+		}
+		currentSchema.TableMap[tableName] = tableCtx
 	}
 	return nil
 }
@@ -1616,7 +1448,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 	}
 
 	wrappingDir := b.getBinlogDir()
-	fs, err := streamer.ReadDir(wrappingDir)
+	fs, err := os.ReadDir(wrappingDir)
 	if err != nil {
 		logger.Error("ReadDir error", "dir", wrappingDir, "err", err)
 		return
@@ -1628,17 +1460,10 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 		// https://pingcap.com/docs-cn/v3.0/reference/tools/data-migration/relay-log/
 		// <server-uuid>.<subdir-seq-number>
 		// currently there should only be .000001, but we loop to the last one.
-		subdir := filepath.Join(wrappingDir, fs[i])
-		stat, err := os.Stat(subdir)
-		if err != nil {
-			logger.Error("err at stat", "err", err)
-			return
+		if fs[i].IsDir() {
+			dir = filepath.Join(wrappingDir, fs[i].Name())
 		} else {
-			if stat.IsDir() {
-				dir = subdir
-			} else {
-				// meta-files like server-uuid.index
-			}
+			// meta-files like server-uuid.index
 		}
 	}
 
@@ -1649,7 +1474,7 @@ func (b *BinlogReader) OnApplierRotate(binlogFile string) {
 
 	realBinlogFile := normalizeBinlogFilename(binlogFile)
 
-	cmp, err := streamer.CollectBinlogFilesCmp(dir, realBinlogFile, streamer.FileCmpLess)
+	cmp, err := dmstreamer.CollectBinlogFilesCmp(dir, realBinlogFile, dmstreamer.FileCmpLess)
 	if err != nil {
 		logger.Error("err at cmp", "err", err)
 	}
@@ -1714,15 +1539,16 @@ func (b *BinlogReader) sqleAfterCreateSchema(schema string) {
 		b.maybeSqleContext.LoadTables(schema, nil)
 	}
 }
-func (b *BinlogReader) findCurrentSchema(schemaName string) *common.DataSource {
-	if schemaName != "" {
-		for i := range b.currentReplicateDoDb {
-			if b.currentReplicateDoDb[i].TableSchema == schemaName {
-				return b.currentReplicateDoDb[i]
-			}
-		}
+func (b *BinlogReader) findCurrentSchema(schemaName string) *common.SchemaContext {
+	if schemaName == "" {
+		return nil
 	}
-	return nil
+	schemaContext, ok := b.tables[schemaName]
+	if !ok {
+		return nil
+	}
+
+	return schemaContext
 }
 
 func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, schemaName string) *common.DataSource {
@@ -1748,15 +1574,15 @@ func (b *BinlogReader) findSchemaConfig(schemaConfigs []*common.DataSource, sche
 	return nil
 }
 
-func (b *BinlogReader) findCurrentTable(maybeSchema *common.DataSource, tableName string) *common.Table {
-	if maybeSchema != nil {
-		for j := range maybeSchema.Tables {
-			if maybeSchema.Tables[j].TableName == tableName {
-				return maybeSchema.Tables[j]
-			}
-		}
+func (b *BinlogReader) findCurrentTable(maybeSchema *common.SchemaContext, tableName string) *common.TableContext {
+	if maybeSchema == nil {
+		return nil
 	}
-	return nil
+	table, ok := maybeSchema.TableMap[tableName]
+	if !ok {
+		return nil
+	}
+	return table
 }
 
 func (b *BinlogReader) findTableConfig(maybeSchemaConfig *common.DataSource, tableName string) *common.Table {
@@ -1786,17 +1612,17 @@ func (b *BinlogReader) generateRenameMaps() (oldSchemaToNewSchema map[string]str
 	oldSchemaToNewSchema = map[string]string{}
 	oldSchemaToTablesRenameMap = map[string]map[string]string{}
 
-	for _, db := range b.currentReplicateDoDb {
+	for _, db := range b.tables {
 		if db.TableSchemaRename != "" {
 			oldSchemaToNewSchema[db.TableSchema] = db.TableSchemaRename
 		}
 
 		tablesRenameMap := map[string]string{}
-		for _, tb := range db.Tables {
-			if tb.TableRename == "" {
+		for _, tb := range db.TableMap {
+			if tb.Table.TableRename == "" {
 				continue
 			}
-			tablesRenameMap[tb.TableName] = tb.TableRename
+			tablesRenameMap[tb.Table.TableName] = tb.Table.TableRename
 		}
 		if len(tablesRenameMap) > 0 {
 			oldSchemaToTablesRenameMap[db.TableSchema] = tablesRenameMap
@@ -1872,4 +1698,246 @@ func (b *BinlogReader) SetTargetGtid(gtid string) (err error) {
 func (b *BinlogReader) onMeetTarget() {
 	b.logger.Info("onMeetTarget", "target", b.targetGtid.String(), "current", b.currentGtidSet.String())
 	_ = b.Close()
+}
+
+func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *replication.RowsEvent,
+	entriesChannel chan<- *common.BinlogEntryContext) error {
+
+	schemaName := string(rowsEvent.Table.Schema)
+	tableName := string(rowsEvent.Table.Table)
+	b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
+		"gno", b.entryContext.Entry.Coordinates.GNO,
+		"flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags)
+
+	dml := common.ToEventDML(ev.Header.EventType)
+	skip, table := b.skipRowEvent(rowsEvent, dml)
+	if skip {
+		b.logger.Debug("skip rowsEvent", "schema", schemaName, "table", tableName,
+			"gno", b.entryContext.Entry.Coordinates.GNO)
+		return nil
+	}
+
+	if b.sqlFilter.NoDML ||
+		(b.sqlFilter.NoDMLDelete && dml == common.DeleteDML) ||
+		(b.sqlFilter.NoDMLInsert && dml == common.InsertDML) ||
+		(b.sqlFilter.NoDMLUpdate && dml == common.UpdateDML) {
+
+		b.logger.Debug("skipped_a_dml_event.", "type", dml, "schema", schemaName, "table", tableName)
+		return nil
+	}
+
+	if dml == common.NotDML {
+		return fmt.Errorf("unknown DML type: %s", ev.Header.EventType.String())
+	}
+	dmlEvent := common.NewDataEvent(
+		schemaName,
+		tableName,
+		dml,
+		rowsEvent.ColumnCount,
+		ev.Header.Timestamp,
+	)
+	if table != nil {
+		dmlEvent.FKParent = len(table.FKChildren) > 0
+	}
+	dmlEvent.Flags = make([]byte, 2)
+	binary.LittleEndian.PutUint16(dmlEvent.Flags, rowsEvent.Flags)
+	dmlEvent.LogPos = int64(ev.Header.LogPos - ev.Header.EventSize)
+
+	/*originalTableColumns, _, err := b.InspectTableColumnsAndUniqueKeys(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+	if err != nil {
+		return err
+	}
+	dmlEvent.OriginalTableColumns = originalTableColumns*/
+
+	// It is hard to calculate exact row size. We use estimation.
+	avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
+
+	for i, row := range rowsEvent.Rows {
+		//for _, col := range row {
+		//	b.logger.Debug("*** column type", "col", col, "type", hclog.Fmt("%T", col))
+		//}
+		b.logger.Trace("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
+		if dml == common.UpdateDML && i%2 == 1 {
+			// An update has two rows (WHERE+SET)
+			// We do both at the same time
+			continue
+		}
+		switch dml {
+		case common.InsertDML:
+			{
+				dmlEvent.NewColumnValues = ToColumnValuesV2(row)
+			}
+		case common.UpdateDML:
+			{
+				dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
+				dmlEvent.NewColumnValues = ToColumnValuesV2(rowsEvent.Rows[i+1])
+			}
+		case common.DeleteDML:
+			{
+				dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
+			}
+		}
+
+		//b.logger.Debug("event before row", "values", dmlEvent.WhereColumnValues)
+		//b.logger.Debug("event after row", "values", dmlEvent.NewColumnValues)
+		whereTrue := true
+		var err error
+		if table != nil && !table.WhereCtx.IsDefault {
+			switch dml {
+			case common.InsertDML:
+				whereTrue, err = table.WhereTrue(dmlEvent.NewColumnValues)
+				if err != nil {
+					return err
+				}
+			case common.UpdateDML:
+				before, err := table.WhereTrue(dmlEvent.WhereColumnValues)
+				if err != nil {
+					return err
+				}
+				after, err := table.WhereTrue(dmlEvent.NewColumnValues)
+				if err != nil {
+					return err
+				}
+				if !before && !after {
+					whereTrue = false
+				} else if !before {
+					dmlEvent.DML = common.InsertDML
+					dmlEvent.WhereColumnValues = nil
+				} else if !after {
+					dmlEvent.DML = common.DeleteDML
+					dmlEvent.NewColumnValues = nil
+				} else {
+					// before == after == true
+				}
+			case common.DeleteDML:
+				whereTrue, err = table.WhereTrue(dmlEvent.WhereColumnValues)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		if table != nil && table.Table.TableRename != "" {
+			dmlEvent.TableName = table.Table.TableRename
+			b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
+		}
+		schemaContext := b.findCurrentSchema(schemaName)
+		if schemaContext != nil && schemaContext.TableSchemaRename != "" {
+			b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schemaContext.TableSchemaRename)
+			dmlEvent.DatabaseName = schemaContext.TableSchemaRename
+		}
+
+		if table != nil && !table.DefChangedSent {
+			b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
+			if table.Table == nil {
+				b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
+					"schema", schemaName, "table", tableName)
+			} else {
+				tableBs, err := common.EncodeTable(table.Table)
+				if err != nil {
+					return errors.Wrap(err, "EncodeTable(table)")
+				}
+				dmlEvent.Table = tableBs
+			}
+
+			table.DefChangedSent = true
+		}
+
+		if whereTrue {
+			if dmlEvent.WhereColumnValues != nil {
+				b.entryContext.OriginalSize += avgRowSize
+			}
+			if dmlEvent.NewColumnValues != nil {
+				b.entryContext.OriginalSize += avgRowSize
+			}
+			// The channel will do the throttling. Whoever is reding from the channel
+			// decides whether action is taken sycnhronously (meaning we wait before
+			// next iteration) or asynchronously (we keep pushing more events)
+			// In reality, reads will be synchronous
+			if table != nil && len(table.Table.ColumnMap) > 0 {
+				if dmlEvent.NewColumnValues != nil {
+					newRow := make([]interface{}, len(table.Table.ColumnMap))
+					for i := range table.Table.ColumnMap {
+						idx := table.Table.ColumnMap[i]
+						newRow[i] = dmlEvent.NewColumnValues.AbstractValues[idx]
+					}
+					dmlEvent.NewColumnValues.AbstractValues = newRow
+				}
+
+				if dmlEvent.WhereColumnValues != nil {
+					newRow := make([]interface{}, len(table.Table.ColumnMap))
+					for i := range table.Table.ColumnMap {
+						idx := table.Table.ColumnMap[i]
+						newRow[i] = dmlEvent.WhereColumnValues.AbstractValues[idx]
+					}
+					dmlEvent.WhereColumnValues.AbstractValues = newRow
+				}
+			}
+			b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
+		} else {
+			b.logger.Debug("event has not passed 'where'")
+		}
+
+		if b.entryContext.OriginalSize >= bigTxSplittingSize {
+			b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
+			b.entryContext.Entry.Final = false
+			b.sendEntry(entriesChannel)
+			entry := common.NewBinlogEntry()
+			entry.Coordinates = b.entryContext.Entry.Coordinates
+			entry.Index = b.entryContext.Entry.Index + 1
+			entry.Final = true
+			b.entryContext = &common.BinlogEntryContext{
+				Entry:        entry,
+				TableItems:   nil,
+				OriginalSize: 1,
+			}
+		}
+	}
+	return nil
+}
+
+
+func (b *BinlogReader) removeFKChildSchema(schema string) {
+	for _, schemaContext := range b.tables {
+		for _, tableContext := range schemaContext.TableMap {
+			for k, _ := range tableContext.FKChildren {
+				if k.Schema == schema {
+					delete(tableContext.FKChildren, k)
+				}
+			}
+
+		}
+	}
+}
+func (b *BinlogReader) removeFKChild(childSchema string, childTable string) {
+	for _, schemaContext := range b.tables {
+		for _, tableContext := range schemaContext.TableMap {
+			// NOTE it is ok to delete not existing items
+			st := common.SchemaTable{childSchema, childTable}
+			if _, ok := tableContext.FKChildren[st]; ok {
+				b.logger.Debug("remove fk child", "parent", tableContext.Table.TableName, "child", st.Table)
+				delete(tableContext.FKChildren, st)
+			}
+		}
+	}
+}
+
+func (b *BinlogReader) addFKChildren(currentSchema string, fkParents []*ast.TableName,
+	childSchema string, childTable string) {
+
+	childST := common.SchemaTable{childSchema, childTable}
+	for _, fkp := range fkParents {
+		parentSchema := g.StringElse(fkp.Schema.O, currentSchema)
+		parentTable := fkp.Name.O
+		schemaContext := b.findCurrentSchema(parentSchema)
+		if schemaContext == nil {
+			b.logger.Warn("FK parent not found 1", "schema", parentSchema, "table", parentTable)
+			return
+		}
+		tableContext := b.findCurrentTable(schemaContext, parentTable)
+		if tableContext == nil {
+			b.logger.Warn("FK parent not found 2", "schema", parentSchema, "table", parentTable)
+			return
+		}
+		tableContext.FKChildren[childST] = struct{}{}
+	}
 }

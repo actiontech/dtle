@@ -17,149 +17,150 @@ import (
 	"bytes"
 
 	"github.com/pingcap/dm/pkg/log"
-	"github.com/pingcap/errors"
-	"github.com/pingcap/parser"
-	"github.com/pingcap/parser/ast"
-	"github.com/pingcap/parser/format"
-	"github.com/pingcap/parser/model"
+	"github.com/pingcap/dm/pkg/terror"
+	"github.com/pingcap/dm/pkg/utils"
+
 	"github.com/pingcap/tidb-tools/pkg/filter"
+	"github.com/pingcap/tidb/parser"
+	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
 	_ "github.com/pingcap/tidb/types/parser_driver" // for import parser driver
+	"go.uber.org/zap"
 )
 
-var (
-	// ErrDropMultipleTables is error that don't allow to drop multiple tables in one statement
-	ErrDropMultipleTables = errors.New("not allow operation: drop multiple tables in one statement")
-	// ErrRenameMultipleTables is error that don't allow to rename multiple tables in one statement
-	ErrRenameMultipleTables = errors.New("not allow operation: rename multiple tables in one statement")
-	// ErrAlterMultipleTables is error that don't allow to alter multiple tables in one statement
-	ErrAlterMultipleTables = errors.New("not allow operation: alter multiple tables in one statement")
+const (
+	// SingleRenameTableNameNum stands for number of TableNames in a single table renaming. it's 2 after
+	// https://github.com/pingcap/parser/pull/1021
+	SingleRenameTableNameNum = 2
 )
 
-// Parse wraps parser.Parse(), makes `parser` suitable for dm
+// Parse wraps parser.Parse(), makes `parser` suitable for dm.
 func Parse(p *parser.Parser, sql, charset, collation string) (stmt []ast.StmtNode, err error) {
 	stmts, warnings, err := p.Parse(sql, charset, collation)
-
-	for _, warning := range warnings {
-		log.Warnf("parsing sql %s:%v", sql, warning)
+	if len(warnings) > 0 {
+		log.L().Warn("parse statement", zap.String("sql", sql), zap.Errors("warning messages", warnings))
 	}
 
-	if err != nil {
-		log.Errorf("parsing sql %s:%v", sql, err)
-	}
-
-	return stmts, errors.Trace(err)
+	return stmts, terror.ErrParseSQL.Delegate(err)
 }
 
-// FetchDDLTableNames returns table names in ddl
-// the result contains [tableName] excepted create table like and rename table
-// for `create table like` DDL, result contains [sourceTableName, sourceRefTableName]
-// for rename table ddl, result contains [oldTableName, newTableName]
-func FetchDDLTableNames(schema string, stmt ast.StmtNode) ([]*filter.Table, error) {
-	var res []*filter.Table
-	switch v := stmt.(type) {
-	case *ast.CreateDatabaseStmt:
-		res = append(res, genTableName(v.Name, ""))
-	case *ast.DropDatabaseStmt:
-		res = append(res, genTableName(v.Name, ""))
-	case *ast.CreateTableStmt:
-		res = append(res, genTableName(v.Table.Schema.O, v.Table.Name.O))
-		if v.ReferTable != nil {
-			res = append(res, genTableName(v.ReferTable.Schema.O, v.ReferTable.Name.O))
-		}
-	case *ast.DropTableStmt:
-		if len(v.Tables) != 1 {
-			return res, ErrDropMultipleTables
-		}
-		res = append(res, genTableName(v.Tables[0].Schema.O, v.Tables[0].Name.O))
-	case *ast.TruncateTableStmt:
-		res = append(res, genTableName(v.Table.Schema.O, v.Table.Name.O))
-	case *ast.AlterTableStmt:
-		res = append(res, genTableName(v.Table.Schema.O, v.Table.Name.O))
-		if v.Specs[0].NewTable != nil {
-			res = append(res, genTableName(v.Specs[0].NewTable.Schema.O, v.Specs[0].NewTable.Name.O))
-		}
-	case *ast.RenameTableStmt:
-		res = append(res, genTableName(v.OldTable.Schema.O, v.OldTable.Name.O))
-		res = append(res, genTableName(v.NewTable.Schema.O, v.NewTable.Name.O))
-	case *ast.CreateIndexStmt:
-		res = append(res, genTableName(v.Table.Schema.O, v.Table.Name.O))
-	case *ast.DropIndexStmt:
-		res = append(res, genTableName(v.Table.Schema.O, v.Table.Name.O))
-	default:
-		return res, errors.Errorf("unknown type ddl %s", stmt)
-	}
-
-	for i := range res {
-		if res[i].Schema == "" {
-			res[i].Schema = schema
-		}
-	}
-
-	return res, nil
+// ref: https://github.com/pingcap/tidb/blob/09feccb529be2830944e11f5fed474020f50370f/server/sql_info_fetcher.go#L46
+type tableNameExtractor struct {
+	curDB  string
+	flavor utils.LowerCaseTableNamesFlavor
+	names  []*filter.Table
 }
 
-// RenameDDLTable renames table names in ddl by given `targetTableNames`
-// argument `targetTableNames` is same with return value of FetchDDLTableNames
-func RenameDDLTable(stmt ast.StmtNode, targetTableNames []*filter.Table) (string, error) {
-	switch v := stmt.(type) {
-	case *ast.CreateDatabaseStmt:
-		v.Name = targetTableNames[0].Schema
-
-	case *ast.DropDatabaseStmt:
-		v.Name = targetTableNames[0].Schema
-
-	case *ast.CreateTableStmt:
-		v.Table.Schema = model.NewCIStr(targetTableNames[0].Schema)
-		v.Table.Name = model.NewCIStr(targetTableNames[0].Name)
-
-		if v.ReferTable != nil {
-			v.ReferTable.Schema = model.NewCIStr(targetTableNames[1].Schema)
-			v.ReferTable.Name = model.NewCIStr(targetTableNames[1].Name)
+func (tne *tableNameExtractor) Enter(in ast.Node) (ast.Node, bool) {
+	if t, ok := in.(*ast.TableName); ok {
+		var tb *filter.Table
+		if tne.flavor == utils.LCTableNamesSensitive {
+			tb = &filter.Table{Schema: t.Schema.O, Name: t.Name.O}
+		} else {
+			tb = &filter.Table{Schema: t.Schema.L, Name: t.Name.L}
 		}
 
-	case *ast.DropTableStmt:
-		if len(v.Tables) > 1 {
-			return "", ErrDropMultipleTables
+		if tb.Schema == "" {
+			tb.Schema = tne.curDB
 		}
+		tne.names = append(tne.names, tb)
+		return in, true
+	}
+	return in, false
+}
 
-		v.Tables[0].Schema = model.NewCIStr(targetTableNames[0].Schema)
-		v.Tables[0].Name = model.NewCIStr(targetTableNames[0].Name)
+func (tne *tableNameExtractor) Leave(in ast.Node) (ast.Node, bool) {
+	return in, true
+}
 
-	case *ast.TruncateTableStmt:
-		v.Table.Schema = model.NewCIStr(targetTableNames[0].Schema)
-		v.Table.Name = model.NewCIStr(targetTableNames[0].Name)
-
-	case *ast.DropIndexStmt:
-		v.Table.Schema = model.NewCIStr(targetTableNames[0].Schema)
-		v.Table.Name = model.NewCIStr(targetTableNames[0].Name)
-	case *ast.CreateIndexStmt:
-		v.Table.Schema = model.NewCIStr(targetTableNames[0].Schema)
-		v.Table.Name = model.NewCIStr(targetTableNames[0].Name)
-	case *ast.RenameTableStmt:
-		if len(v.TableToTables) > 1 {
-			return "", ErrRenameMultipleTables
-		}
-
-		v.TableToTables[0].OldTable.Schema = model.NewCIStr(targetTableNames[0].Schema)
-		v.TableToTables[0].OldTable.Name = model.NewCIStr(targetTableNames[0].Name)
-		v.TableToTables[0].NewTable.Schema = model.NewCIStr(targetTableNames[1].Schema)
-		v.TableToTables[0].NewTable.Name = model.NewCIStr(targetTableNames[1].Name)
-
-	case *ast.AlterTableStmt:
-		if len(v.Specs) > 1 {
-			return "", ErrAlterMultipleTables
-		}
-
-		v.Table.Schema = model.NewCIStr(targetTableNames[0].Schema)
-		v.Table.Name = model.NewCIStr(targetTableNames[0].Name)
-
-		if v.Specs[0].Tp == ast.AlterTableRenameTable {
-			v.Specs[0].NewTable.Schema = model.NewCIStr(targetTableNames[1].Schema)
-			v.Specs[0].NewTable.Name = model.NewCIStr(targetTableNames[1].Name)
-		}
-
+// FetchDDLTables returns tables in ddl the result contains many tables.
+// Because we use visitor pattern, first tableName is always upper-most table in ast
+// specifically, for `create table like` DDL, result contains [sourceTable, sourceRefTable]
+// for rename table ddl, result contains [old1, new1, old2, new2, old3, new3, ...] because of TiDB parser
+// for other DDL, order of tableName is the node visit order.
+func FetchDDLTables(schema string, stmt ast.StmtNode, flavor utils.LowerCaseTableNamesFlavor) ([]*filter.Table, error) {
+	switch stmt.(type) {
+	case ast.DDLNode:
 	default:
-		return "", errors.Errorf("unkown type ddl %+v", stmt)
+		return nil, terror.ErrUnknownTypeDDL.Generate(stmt)
+	}
+
+	// special cases: schema related SQLs doesn't have tableName
+	switch v := stmt.(type) {
+	case *ast.AlterDatabaseStmt:
+		return []*filter.Table{genTableName(v.Name, "")}, nil
+	case *ast.CreateDatabaseStmt:
+		return []*filter.Table{genTableName(v.Name, "")}, nil
+	case *ast.DropDatabaseStmt:
+		return []*filter.Table{genTableName(v.Name, "")}, nil
+	}
+
+	e := &tableNameExtractor{
+		curDB:  schema,
+		flavor: flavor,
+		names:  make([]*filter.Table, 0),
+	}
+	stmt.Accept(e)
+
+	return e.names, nil
+}
+
+type tableRenameVisitor struct {
+	targetNames []*filter.Table
+	i           int
+	hasErr      bool
+}
+
+func (v *tableRenameVisitor) Enter(in ast.Node) (ast.Node, bool) {
+	if v.hasErr {
+		return in, true
+	}
+	if t, ok := in.(*ast.TableName); ok {
+		if v.i >= len(v.targetNames) {
+			v.hasErr = true
+			return in, true
+		}
+		t.Schema = model.NewCIStr(v.targetNames[v.i].Schema)
+		t.Name = model.NewCIStr(v.targetNames[v.i].Name)
+		v.i++
+		return in, true
+	}
+	return in, false
+}
+
+func (v *tableRenameVisitor) Leave(in ast.Node) (ast.Node, bool) {
+	if v.hasErr {
+		return in, false
+	}
+	return in, true
+}
+
+// RenameDDLTable renames tables in ddl by given `targetTables`
+// argument `targetTables` is same with return value of FetchDDLTables
+// returned DDL is formatted like StringSingleQuotes, KeyWordUppercase and NameBackQuotes.
+func RenameDDLTable(stmt ast.StmtNode, targetTables []*filter.Table) (string, error) {
+	switch stmt.(type) {
+	case ast.DDLNode:
+	default:
+		return "", terror.ErrUnknownTypeDDL.Generate(stmt)
+	}
+
+	switch v := stmt.(type) {
+	case *ast.AlterDatabaseStmt:
+		v.Name = targetTables[0].Schema
+	case *ast.CreateDatabaseStmt:
+		v.Name = targetTables[0].Schema
+	case *ast.DropDatabaseStmt:
+		v.Name = targetTables[0].Schema
+	default:
+		visitor := &tableRenameVisitor{
+			targetNames: targetTables,
+		}
+		stmt.Accept(visitor)
+		if visitor.hasErr {
+			return "", terror.ErrRewriteSQL.Generate(stmt, targetTables)
+		}
 	}
 
 	var b []byte
@@ -169,14 +170,15 @@ func RenameDDLTable(stmt ast.StmtNode, targetTableNames []*filter.Table) (string
 		In:    bf,
 	})
 	if err != nil {
-		return "", errors.Annotate(err, "restore ast node")
+		return "", terror.ErrRestoreASTNode.Delegate(err)
 	}
 
 	return bf.String(), nil
 }
 
 // SplitDDL splits multiple operations in one DDL statement into multiple DDL statements
-// if fail to restore, it would not restore the value of `stmt` (it changes it's values if `stmt` is one of  DropTableStmt, RenameTableStmt, AlterTableStmt)
+// returned DDL is formatted like StringSingleQuotes, KeyWordUppercase and NameBackQuotes
+// if fail to restore, it would not restore the value of `stmt` (it changes it's values if `stmt` is one of  DropTableStmt, RenameTableStmt, AlterTableStmt).
 func SplitDDL(stmt ast.StmtNode, schema string) (sqls []string, err error) {
 	var (
 		schemaName = model.NewCIStr(schema) // fill schema name
@@ -188,6 +190,7 @@ func SplitDDL(stmt ast.StmtNode, schema string) (sqls []string, err error) {
 	)
 
 	switch v := stmt.(type) {
+	case *ast.AlterDatabaseStmt:
 	case *ast.CreateDatabaseStmt:
 		v.IfNotExists = true
 	case *ast.DropDatabaseStmt:
@@ -206,7 +209,7 @@ func SplitDDL(stmt ast.StmtNode, schema string) (sqls []string, err error) {
 			err = stmt.Restore(ctx)
 			if err != nil {
 				v.Tables = tables
-				return nil, errors.Annotate(err, "restore ast node")
+				return nil, terror.ErrRestoreASTNode.Delegate(err)
 			}
 
 			sqls = append(sqls, bf.String())
@@ -252,7 +255,7 @@ func SplitDDL(stmt ast.StmtNode, schema string) (sqls []string, err error) {
 			err = stmt.Restore(ctx)
 			if err != nil {
 				v.TableToTables = t2ts
-				return nil, errors.Annotate(err, "restore ast node")
+				return nil, terror.ErrRestoreASTNode.Delegate(err)
 			}
 
 			sqls = append(sqls, bf.String())
@@ -277,12 +280,33 @@ func SplitDDL(stmt ast.StmtNode, schema string) (sqls []string, err error) {
 
 			v.Specs = []*ast.AlterTableSpec{spec}
 
+			// handle `alter table t1 add column (c1 int, c2 int)`
+			if spec.Tp == ast.AlterTableAddColumns && len(spec.NewColumns) > 1 {
+				columns := spec.NewColumns
+				spec.Position = &ast.ColumnPosition{
+					Tp: ast.ColumnPositionNone, // otherwise restore will become "alter table t1 add column (c1 int)"
+				}
+				for _, c := range columns {
+					spec.NewColumns = []*ast.ColumnDef{c}
+					bf.Reset()
+					err = stmt.Restore(ctx)
+					if err != nil {
+						v.Specs = specs
+						v.Table = table
+						return nil, terror.ErrRestoreASTNode.Delegate(err)
+					}
+					sqls = append(sqls, bf.String())
+				}
+				// we have restore SQL for every columns, skip below general restoring and continue on next spec
+				continue
+			}
+
 			bf.Reset()
 			err = stmt.Restore(ctx)
 			if err != nil {
 				v.Specs = specs
 				v.Table = table
-				return nil, errors.Annotate(err, "restore ast node")
+				return nil, terror.ErrRestoreASTNode.Delegate(err)
 			}
 			sqls = append(sqls, bf.String())
 
@@ -295,13 +319,13 @@ func SplitDDL(stmt ast.StmtNode, schema string) (sqls []string, err error) {
 
 		return sqls, nil
 	default:
-		return nil, errors.Errorf("unknown type ddl %+v", stmt)
+		return nil, terror.ErrUnknownTypeDDL.Generate(stmt)
 	}
 
 	bf.Reset()
 	err = stmt.Restore(ctx)
 	if err != nil {
-		return nil, errors.Annotate(err, "restore ast node")
+		return nil, terror.ErrRestoreASTNode.Delegate(err)
 	}
 	sqls = append(sqls, bf.String())
 

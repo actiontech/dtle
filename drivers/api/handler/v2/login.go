@@ -28,50 +28,88 @@ var once sync.Once
 func LoginV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("LoginV2")
 
-	once.Do(createPlatformUser)
 	reqParam := new(models.UserLoginReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	blackListKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login")
-	if leftMinute, exist := BL.blackListExist(blackListKey); exist {
+	blacklistKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login")
+	if leftMinute, exist := BL.blacklistExist(blacklistKey); exist {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("you cannot be login temporarily, please try again after %v minute", leftMinute)))
 	}
 	if !store.Verify(reqParam.CaptchaId, reqParam.Captcha, true) {
-		BL.setBlackList(fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login"), time.Minute*30)
+		BL.setBlacklist(blacklistKey, time.Minute*30)
 		return c.JSON(http.StatusBadRequest, models.BuildBaseResp(fmt.Errorf("verfied failed")))
 	}
+	token, err := innerLogin(logger, reqParam.Tenant, reqParam.Username, reqParam.Password, blacklistKey)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, models.BuildBaseResp(err))
+	}
+	return c.JSON(http.StatusOK, &models.GetUserLoginResV2{
+		Data:     models.UserLoginResV2{Token: token},
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+// @Summary user LoginWithoutVerifyCodeV2
+// @Description user login Without Verify Code
+// @Tags user
+// @Id LoginWithoutVerifyCodeV2
+// @Param user body models.LoginWithoutVerifyCodeReqV2 true "user login request"
+// @Success 200 {object} models.GetUserLoginResV2
+// @router /v2/loginWithoutVerifyCode [post]
+func LoginWithoutVerifyCodeV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("LoginWithoutVerifyCodeV2")
+
+	reqParam := new(models.LoginWithoutVerifyCodeReqV2)
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	blacklistKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "login")
+	if leftMinute, exist := BL.blacklistExist(blacklistKey); exist {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("you cannot be login temporarily, please try again after %v minute", leftMinute)))
+	}
+	token, err := innerLogin(logger, reqParam.Tenant, reqParam.Username, reqParam.Password, blacklistKey)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	return c.JSON(http.StatusOK, &models.GetUserLoginResV2{
+		Data:     models.UserLoginResV2{Token: token},
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
+
+func innerLogin(logger g.LoggerType, tenant, username, password, blacklistKey string) (string, error) {
+	once.Do(createPlatformUser)
+
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
+		return "", fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)
 	}
 
-	user, exist, err := storeManager.GetUser(reqParam.Tenant, reqParam.Username)
+	user, exist, err := storeManager.GetUser(tenant, username)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+		return "", err
 	} else if !exist {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("user or password is wrong")))
+		BL.setBlacklist(blacklistKey, time.Minute*30)
+		return "", fmt.Errorf("user or password is wrong")
 	}
 
-	if err := ValidatePassword(blackListKey, reqParam.Password, user.Password); err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	if err := ValidatePassword(blacklistKey, password, user.Password); err != nil {
+		return "", err
 	}
 
 	// Create token
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
-	claims["group"] = reqParam.Tenant
-	claims["name"] = reqParam.Username
+	claims["group"] = tenant
+	claims["name"] = username
 	claims["exp"] = time.Now().Add(time.Hour * 24).Unix()
 
 	t, err := token.SignedString([]byte(common.JWTSecret))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
+		return "", err
 	}
-	return c.JSON(http.StatusOK, &models.GetUserLoginResV2{
-		Data:     models.UserLoginResV2{Token: t},
-		BaseResp: models.BuildBaseResp(nil),
-	})
+	return t, nil
 }
 
 var store = base64Captcha.DefaultMemStore

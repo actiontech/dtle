@@ -8,6 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -19,7 +20,7 @@ import (
 	"github.com/pingcap/tidb/types"
 )
 
-// Pool is the column pool.
+// Pool is the Column pool.
 // NOTE: Pool is non-copyable.
 type Pool struct {
 	initCap int
@@ -35,7 +36,7 @@ type Pool struct {
 func NewPool(initCap int) *Pool {
 	return &Pool{
 		initCap:         initCap,
-		varLenColPool:   &sync.Pool{New: func() interface{} { return newVarLenColumn(initCap, nil) }},
+		varLenColPool:   &sync.Pool{New: func() interface{} { return newVarLenColumn(initCap) }},
 		fixLenColPool4:  &sync.Pool{New: func() interface{} { return newFixedLenColumn(4, initCap) }},
 		fixLenColPool8:  &sync.Pool{New: func() interface{} { return newFixedLenColumn(8, initCap) }},
 		fixLenColPool16: &sync.Pool{New: func() interface{} { return newFixedLenColumn(16, initCap) }},
@@ -47,19 +48,19 @@ func NewPool(initCap int) *Pool {
 func (p *Pool) GetChunk(fields []*types.FieldType) *Chunk {
 	chk := new(Chunk)
 	chk.capacity = p.initCap
-	chk.columns = make([]*column, len(fields))
+	chk.columns = make([]*Column, len(fields))
 	for i, f := range fields {
 		switch elemLen := getFixedLen(f); elemLen {
 		case varElemLen:
-			chk.columns[i] = p.varLenColPool.Get().(*column)
+			chk.columns[i] = p.varLenColPool.Get().(*Column)
 		case 4:
-			chk.columns[i] = p.fixLenColPool4.Get().(*column)
+			chk.columns[i] = p.fixLenColPool4.Get().(*Column)
 		case 8:
-			chk.columns[i] = p.fixLenColPool8.Get().(*column)
+			chk.columns[i] = p.fixLenColPool8.Get().(*Column)
 		case 16:
-			chk.columns[i] = p.fixLenColPool16.Get().(*column)
+			chk.columns[i] = p.fixLenColPool16.Get().(*Column)
 		case 40:
-			chk.columns[i] = p.fixLenColPool40.Get().(*column)
+			chk.columns[i] = p.fixLenColPool40.Get().(*Column)
 		}
 	}
 	return chk
@@ -81,5 +82,5 @@ func (p *Pool) PutChunk(fields []*types.FieldType, chk *Chunk) {
 			p.fixLenColPool40.Put(chk.columns[i])
 		}
 	}
-	chk.columns = nil // release the column references.
+	chk.columns = nil // release the Column references.
 }

@@ -17,6 +17,9 @@ import (
 	"fmt"
 
 	"github.com/pingcap/dm/pkg/log"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Version information.
@@ -28,7 +31,7 @@ var (
 	GoVersion      = "None"
 )
 
-// GetRawInfo do what its name tells
+// GetRawInfo do what its name tells.
 func GetRawInfo() string {
 	var info string
 	info += fmt.Sprintf("Release Version: %s\n", ReleaseVersion)
@@ -41,23 +44,23 @@ func GetRawInfo() string {
 
 // PrintInfo prints some information of the app, like git hash, binary build time, etc.
 func PrintInfo(app string, callback func()) {
-	oriLevel := log.GetLogLevelAsString()
-	log.SetLevelByString("info")
+	oriLevel := log.SetLevel(zapcore.InfoLevel)
 	printInfo(app)
 	callback()
-	log.SetLevelByString(oriLevel)
+	log.SetLevel(oriLevel)
 }
 
 func printInfo(app string) {
-	log.Infof("Welcome to %s", app)
-	log.Infof("Release Version: %s", ReleaseVersion)
-	log.Infof("Git Commit Hash: %s", GitHash)
-	log.Infof("Git Branch: %s", GitBranch)
-	log.Infof("UTC Build Time: %s", BuildTS)
-	log.Infof("Go Version: %s", GoVersion)
+	log.L().Info("Welcome to "+app,
+		zap.String("Release Version", ReleaseVersion),
+		zap.String("Git Commit Hash", GitHash),
+		zap.String("Git Branch", GitBranch),
+		zap.String("UTC Build Time", BuildTS),
+		zap.String("Go Version", GoVersion),
+	)
 }
 
-// PrintInfo2 print app's info to stdout
+// PrintInfo2 print app's info to stdout.
 func PrintInfo2(app string) {
 	fmt.Printf("Welcome to %s\n", app)
 	fmt.Printf("Release Version: %s\n", ReleaseVersion)

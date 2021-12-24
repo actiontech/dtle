@@ -14,11 +14,11 @@
 package event
 
 import (
-	"github.com/pingcap/errors"
-	gmysql "github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
+	gmysql "github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 
 	"github.com/pingcap/dm/pkg/gtid"
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 // Generator represents a binlog events generator.
@@ -35,42 +35,42 @@ type Generator struct {
 func NewGenerator(flavor string, serverID uint32, latestPos uint32, latestGTID gtid.Set, previousGTIDs gtid.Set, latestXID uint64) (*Generator, error) {
 	prevOrigin := previousGTIDs.Origin()
 	if prevOrigin == nil {
-		return nil, errors.NotValidf("previousGTIDs %s", previousGTIDs)
+		return nil, terror.ErrPreviousGTIDsNotValid.Generate(previousGTIDs)
 	}
 
 	singleGTID, err := verifySingleGTID(flavor, latestGTID)
 	if err != nil {
-		return nil, errors.Annotate(err, "verify single latest GTID in set")
+		return nil, terror.Annotate(err, "verify single latest GTID in set")
 	}
 	switch flavor {
 	case gmysql.MySQLFlavor:
 		uuidSet := singleGTID.(*gmysql.UUIDSet)
 		prevGSet, ok := prevOrigin.(*gmysql.MysqlGTIDSet)
 		if !ok || prevGSet == nil {
-			return nil, errors.NotValidf("GTID set string %s for MySQL", previousGTIDs)
+			return nil, terror.ErrBinlogGTIDMySQLNotValid.Generate(previousGTIDs)
 		}
 		// latestGTID should be one of the latest previousGTIDs
 		prevGTID, ok := prevGSet.Sets[uuidSet.SID.String()]
 		if !ok || prevGTID.Intervals.Len() != 1 || prevGTID.Intervals[0].Stop != uuidSet.Intervals[0].Stop {
-			return nil, errors.NotValidf("latest GTID %s is not one of the latest previousGTIDs %s", latestGTID, previousGTIDs)
+			return nil, terror.ErrBinlogLatestGTIDNotInPrev.Generate(latestGTID, previousGTIDs)
 		}
 
 	case gmysql.MariaDBFlavor:
 		mariaGTID := singleGTID.(*gmysql.MariadbGTID)
 		if mariaGTID.ServerID != serverID {
-			return nil, errors.Errorf("server_id mismatch, in GTID (%d), in serverID (%d)", mariaGTID.ServerID, serverID)
+			return nil, terror.ErrBinlogMariaDBServerIDMismatch.Generate(mariaGTID.ServerID, serverID)
 		}
 		// latestGTID should be one of previousGTIDs
 		prevGSet, ok := prevOrigin.(*gmysql.MariadbGTIDSet)
 		if !ok || prevGSet == nil {
-			return nil, errors.NotValidf("GTID set string %s for MariaDB", previousGTIDs)
+			return nil, terror.ErrBinlogGTIDMariaDBNotValid.Generate(previousGTIDs)
 		}
 		prevGTID, ok := prevGSet.Sets[mariaGTID.DomainID]
 		if !ok || prevGTID.ServerID != mariaGTID.ServerID || prevGTID.SequenceNumber != mariaGTID.SequenceNumber {
-			return nil, errors.NotValidf("latest GTID %s is not one of previousGTIDs %s", latestGTID, previousGTIDs)
+			return nil, terror.ErrBinlogLatestGTIDNotInPrev.Generate(latestGTID, previousGTIDs)
 		}
 	default:
-		return nil, errors.NotValidf("flavor %s", flavor)
+		return nil, terror.ErrBinlogFlavorNotSupport.Generate(flavor)
 	}
 
 	return &Generator{
@@ -95,7 +95,7 @@ func NewGenerator(flavor string, serverID uint32, latestPos uint32, latestGTID g
 func (g *Generator) GenFileHeader() ([]*replication.BinlogEvent, []byte, error) {
 	events, data, err := GenCommonFileHeader(g.Flavor, g.ServerID, g.PreviousGTIDs)
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, err
 	}
 	g.LatestPos = uint32(len(data)) // if generate a binlog file header then reset latest pos
 	return events, data, nil
@@ -106,7 +106,7 @@ func (g *Generator) GenFileHeader() ([]*replication.BinlogEvent, []byte, error) 
 func (g *Generator) GenCreateDatabaseEvents(schema string) ([]*replication.BinlogEvent, []byte, error) {
 	result, err := GenCreateDatabaseEvents(g.Flavor, g.ServerID, g.LatestPos, g.LatestGTID, schema)
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, err
 	}
 	g.updateLatestPosGTID(result.LatestPos, result.LatestGTID)
 	return result.Events, result.Data, nil
@@ -117,7 +117,7 @@ func (g *Generator) GenCreateDatabaseEvents(schema string) ([]*replication.Binlo
 func (g *Generator) GenDropDatabaseEvents(schema string) ([]*replication.BinlogEvent, []byte, error) {
 	result, err := GenDropDatabaseEvents(g.Flavor, g.ServerID, g.LatestPos, g.LatestGTID, schema)
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, err
 	}
 	g.updateLatestPosGTID(result.LatestPos, result.LatestGTID)
 	return result.Events, result.Data, nil
@@ -128,7 +128,7 @@ func (g *Generator) GenDropDatabaseEvents(schema string) ([]*replication.BinlogE
 func (g *Generator) GenCreateTableEvents(schema string, query string) ([]*replication.BinlogEvent, []byte, error) {
 	result, err := GenCreateTableEvents(g.Flavor, g.ServerID, g.LatestPos, g.LatestGTID, schema, query)
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, err
 	}
 	g.updateLatestPosGTID(result.LatestPos, result.LatestGTID)
 	return result.Events, result.Data, nil
@@ -139,7 +139,7 @@ func (g *Generator) GenCreateTableEvents(schema string, query string) ([]*replic
 func (g *Generator) GenDropTableEvents(schema string, table string) ([]*replication.BinlogEvent, []byte, error) {
 	result, err := GenDropTableEvents(g.Flavor, g.ServerID, g.LatestPos, g.LatestGTID, schema, table)
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, err
 	}
 	g.updateLatestPosGTID(result.LatestPos, result.LatestGTID)
 	return result.Events, result.Data, nil
@@ -150,7 +150,7 @@ func (g *Generator) GenDropTableEvents(schema string, table string) ([]*replicat
 func (g *Generator) GenDDLEvents(schema string, query string) ([]*replication.BinlogEvent, []byte, error) {
 	result, err := GenDDLEvents(g.Flavor, g.ServerID, g.LatestPos, g.LatestGTID, schema, query)
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, err
 	}
 	g.updateLatestPosGTID(result.LatestPos, result.LatestGTID)
 	return result.Events, result.Data, nil
@@ -162,7 +162,7 @@ func (g *Generator) GenDDLEvents(schema string, query string) ([]*replication.Bi
 func (g *Generator) GenDMLEvents(eventType replication.EventType, dmlData []*DMLData) ([]*replication.BinlogEvent, []byte, error) {
 	result, err := GenDMLEvents(g.Flavor, g.ServerID, g.LatestPos, g.LatestGTID, eventType, g.LatestXID+1, dmlData)
 	if err != nil {
-		return nil, nil, errors.Trace(err)
+		return nil, nil, err
 	}
 	g.updateLatestPosGTID(result.LatestPos, result.LatestGTID)
 	g.LatestXID++ // increase XID

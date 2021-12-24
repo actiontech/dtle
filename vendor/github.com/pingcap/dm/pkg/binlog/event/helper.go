@@ -14,43 +14,24 @@
 package event
 
 import (
-	"github.com/pingcap/errors"
-	gmysql "github.com/siddontang/go-mysql/mysql"
-	"github.com/siddontang/go-mysql/replication"
+	gmysql "github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 
 	"github.com/pingcap/dm/pkg/gtid"
+	"github.com/pingcap/dm/pkg/terror"
 )
 
 // GTIDsFromPreviousGTIDsEvent get GTID set from a PreviousGTIDsEvent.
 func GTIDsFromPreviousGTIDsEvent(e *replication.BinlogEvent) (gtid.Set, error) {
-	var payload []byte
+	var gSetStr string
 	switch ev := e.Event.(type) {
-	case *replication.GenericEvent:
-		payload = ev.Data
+	case *replication.PreviousGTIDsEvent:
+		gSetStr = ev.GTIDSets
 	default:
-		return nil, errors.Errorf("PreviousGTIDsEvent should be a GenericEvent in go-mysql, but got %T", e.Event)
+		return nil, terror.ErrBinlogPrevGTIDEvNotValid.Generate(e.Event)
 	}
 
-	if e.Header.EventType != replication.PREVIOUS_GTIDS_EVENT {
-		return nil, errors.Errorf("invalid event type %d, expect %d", e.Header.EventType, replication.PREVIOUS_GTIDS_EVENT)
-	}
-
-	set, err := gmysql.DecodeMysqlGTIDSet(payload)
-	if err != nil {
-		return nil, errors.Annotatef(err, "decode from % X", payload)
-	}
-
-	// always MySQL for PreviousGTIDsEvent
-	gSet, err := gtid.ParserGTID(gmysql.MySQLFlavor, "")
-	if err != nil {
-		return nil, errors.Annotatef(err, "parse empty GTID set")
-	}
-	err = gSet.Set(set)
-	if err != nil {
-		return nil, errors.Annotatef(err, "replace GTID set with set %v", set)
-	}
-
-	return gSet, nil
+	return gtid.ParserGTID(gmysql.MySQLFlavor, gSetStr)
 }
 
 // GTIDsFromMariaDBGTIDListEvent get GTID set from a MariaDBGTIDListEvent.
@@ -60,30 +41,30 @@ func GTIDsFromMariaDBGTIDListEvent(e *replication.BinlogEvent) (gtid.Set, error)
 	case *replication.MariadbGTIDListEvent:
 		gtidListEv = ev
 	default:
-		return nil, errors.Errorf("the event should be a MariadbGTIDListEvent, but got %T", e.Event)
+		return nil, terror.ErrBinlogNeedMariaDBGTIDSet.Generate(e.Event)
 	}
 
 	ggSet, err := gmysql.ParseMariadbGTIDSet("")
 	if err != nil {
-		return nil, errors.Annotatef(err, "initial a MariaDB GTID set")
+		return nil, terror.ErrBinlogParseMariaDBGTIDSet.Delegate(err)
 	}
 	mGSet := ggSet.(*gmysql.MariadbGTIDSet)
 	for _, mGTID := range gtidListEv.GTIDs {
 		mgClone := mGTID // use another variable so we can get different pointer (&mgClone below) when iterating
 		err = mGSet.AddSet(&mgClone)
 		if err != nil {
-			return nil, errors.Annotatef(err, "add set %v to GTID set", mGTID)
+			return nil, terror.ErrBinlogMariaDBAddGTIDSet.Delegate(err, mGTID)
 		}
 	}
 
 	// always MariaDB for MariaDBGTIDListEvent
 	gSet, err := gtid.ParserGTID(gmysql.MariaDBFlavor, "")
 	if err != nil {
-		return nil, errors.Annotatef(err, "parse empty GTID set")
+		return nil, terror.Annotatef(err, "parse empty GTID set")
 	}
 	err = gSet.Set(ggSet)
 	if err != nil {
-		return nil, errors.Annotatef(err, "replace GTID set with set %v", ggSet)
+		return nil, terror.Annotatef(err, "replace GTID set with set %v", ggSet)
 	}
 
 	return gSet, nil

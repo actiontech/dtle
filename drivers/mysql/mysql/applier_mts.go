@@ -56,6 +56,7 @@ func NewMtsManager(shutdownCh chan struct{}, logger g.LoggerType) *MtsManager {
 
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForAllCommitted() bool {
+	g.Logger.Debug("WaitForAllCommitted", "lc", mm.lastCommitted, "le", mm.lastEnqueue)
 	for {
 		if mm.lastCommitted == mm.lastEnqueue {
 			return true
@@ -102,6 +103,7 @@ func (mm *MtsManager) LcUpdater() {
 			return
 
 		case seqNum := <-mm.chExecuted:
+//			g.Logger.Debug("LcUpdater", "seq", seqNum)
 			if seqNum <= mm.lastCommitted {
 				// ignore it
 			} else {
@@ -141,31 +143,38 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 		}
 		cols := entryCtx.TableItems[i].Columns
 
-		if len(cols.PKIndex()) == 0 {
-			return []uint64{}
+		if len(cols.UniqueKeys) == 0 {
+			g.Logger.Debug("found an event without writesets", "gno", entry.Coordinates.GNO, "i", i)
 		}
 
-		addHash := func(values *common.ColumnValues) {
-			h := fnv.New64()
-			// hash.WriteXXX never fails
-			_, _ = h.Write([]byte(event.DatabaseName))
-			_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
-			_, _ = h.Write([]byte(event.TableName))
-
-			for _, pki := range cols.PKIndex() {
+		for _, uk := range cols.UniqueKeys {
+			addPKE := func(values *common.ColumnValues) {
+				g.Logger.Debug("writeset use key", "name", uk.Name, "columns", uk.Columns.Ordinals)
+				h := fnv.New64()
+				// hash.WriteXXX never fails
+				_, _ = h.Write([]byte(uk.Name))
+				_, _ = h.Write([]byte(event.DatabaseName))
 				_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
-				_, _ = h.Write(values.BytesColumn(pki))
+				_, _ = h.Write([]byte(event.TableName))
+
+				for _, colIndex := range uk.Columns.Ordinals {
+					if values.IsNull(colIndex) {
+						return // do not add
+					}
+					_, _ = h.Write(g.HASH_STRING_SEPARATOR_BYTES)
+					_, _ = h.Write(values.BytesColumn(colIndex))
+				}
+
+				hashVal := h.Sum64()
+				hashes = append(hashes, hashVal)
+
 			}
-
-			hashVal := h.Sum64()
-			hashes = append(hashes, hashVal)
-		}
-
-		if event.WhereColumnValues != nil {
-			addHash(event.WhereColumnValues)
-		}
-		if event.NewColumnValues != nil {
-			addHash(event.NewColumnValues)
+			if event.WhereColumnValues != nil {
+				addPKE(event.WhereColumnValues)
+			}
+			if event.NewColumnValues != nil {
+				addPKE(event.NewColumnValues)
+			}
 		}
 	}
 
@@ -183,17 +192,29 @@ func NewWritesetManager(historySize int) *WritesetManager {
 		dependencyHistorySize: historySize,
 	}
 }
-func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext) int64 {
-	lastCommit := wm.lastCommonParent
-	hashes := HashTx(entryCtx)
-
+func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext, logger g.LoggerType) int64 {
 	entry := entryCtx.Entry
+	lastCommit := entry.Coordinates.LastCommitted
+
+	hashes := HashTx(entryCtx)
 
 	exceedsCapacity := false
 	canUseWritesets := len(hashes) != 0
 
 	if canUseWritesets {
+		for i := range entry.Events {
+			if entry.Events[i].FKParent {
+				canUseWritesets = false
+				logger.Debug("found fk parent", "gno", entryCtx.Entry.Coordinates.GNO)
+				break
+			}
+		}
+	}
+
+	if canUseWritesets {
 		exceedsCapacity = len(wm.history)+len(hashes) > wm.dependencyHistorySize
+
+		lastCommit = wm.lastCommonParent
 		for _, hash := range hashes {
 			if seq, exist := wm.history[hash]; exist {
 				if seq > lastCommit && seq < entry.Coordinates.SeqenceNumber {

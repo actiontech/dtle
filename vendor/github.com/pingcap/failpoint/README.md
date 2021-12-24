@@ -6,7 +6,7 @@
 [![Coverage Status](https://codecov.io/gh/pingcap/failpoint/branch/master/graph/badge.svg)](https://codecov.io/gh/pingcap/failpoint)
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go)  
 
-An implementation of [failpoints][failpoint] for Golang.
+An implementation of [failpoints][failpoint] for Golang. Fail points are used to add code points where errors may be injected in a user controlled fashion. Fail point is a code snippet that is only executed when the corresponding failpoint is active.
 
 [failpoint]: http://www.freebsd.org/cgi/man.cgi?query=fail
 
@@ -103,6 +103,24 @@ An implementation of [failpoints][failpoint] for Golang.
     - `func Return(results ...interface{}) {}`
     - `func Label(label string) {}`
 
+- Supported failpoint environment variable
+
+    failpoint can be enabled by export environment variables with the following patten, which is quite similar to [freebsd failpoint SYSCTL VARIABLES](https://www.freebsd.org/cgi/man.cgi?query=fail)
+
+    ```regexp
+    [<percent>%][<count>*]<type>[(args...)][-><more terms>]
+    ```
+
+    The <type> argument specifies which action to take; it can be one of:
+
+    - off: Take no action (does not trigger failpoint code)
+    - return: Trigger failpoint with specified argument
+    - sleep: Sleep the specified number of milliseconds
+    - panic: Panic
+    - break: Execute gdb and break into debugger
+    - print: Print failpoint path for inject variable
+    - pause: Pause will pause until the failpoint is disabled
+
 ## How to inject a failpoint to your program
 
 - You can call `failpoint.Inject` to inject a failpoint to the call site, where `failpoint-name` is
@@ -117,7 +135,7 @@ used to trigger the failpoint and `failpoint-closure` will be expanded as the bo
     The converted code looks like:
 
     ```go
-    if val, ok := failpoint.Eval(_curpkg_("failpoint-name")); ok {
+    if val, _err_ := failpoint.Eval(_curpkg_("failpoint-name")); _err_ == nil {
         return "unit-test", val
     }
     ```
@@ -142,7 +160,7 @@ which can be ignored.
     And the converted code looks like:
 
     ```go
-    if _, ok := failpoint.Eval(_curpkg_("failpoint-name")); ok {
+    if _, _err_ := failpoint.Eval(_curpkg_("failpoint-name")); _err_ == nil {
         fmt.Println("unit-test")
     }
     ```
@@ -160,7 +178,7 @@ active in parallel tests or other cases. For example,
     The converted code looks like:
 
     ```go
-    if val, ok := failpoint.EvalContext(ctx, _curpkg_("failpoint-name")); ok {
+    if val, _err_ := failpoint.EvalContext(ctx, _curpkg_("failpoint-name")); _err_ == nil {
         fmt.Println("unit-test", val)
     }
     ```
@@ -176,7 +194,7 @@ active in parallel tests or other cases. For example,
     Becomes
 
     ```go
-    if val, ok := failpoint.EvalContext(nil, _curpkg_("failpoint-name")); ok {
+    if val, _err_ := failpoint.EvalContext(nil, _curpkg_("failpoint-name")); _err_ == nil {
         fmt.Println("unit-test", val)
     }
     ```
@@ -259,7 +277,7 @@ active in parallel tests or other cases. For example,
                 case j / 10:
                     goto outer
                 default:
-                    if val, ok := failpoint.Eval(_curpkg_("failpoint-name")); ok {
+                    if val, _err_ := failpoint.Eval(_curpkg_("failpoint-name")); _err_ == nil {
                         fmt.Println("unit-test", val.(int))
                         if val == j/11 {
                             break inner
@@ -322,11 +340,11 @@ instead of using failpoint marker functions.
 
     ```go
     if a, b := func() {
-        if val, ok := failpoint.Eval(_curpkg_("failpoint-name")); ok {
+        if val, _err_ := failpoint.Eval(_curpkg_("failpoint-name")); _err_ == nil {
             fmt.Println("unit-test", val)
         }
     }, func() int { return rand.Intn(200) }(); b > func() int {
-        if val, ok := failpoint.Eval(_curpkg_("failpoint-name")); ok {
+        if val, _err_ := failpoint.Eval(_curpkg_("failpoint-name")); _err_ == nil {
             return val.(int)
         }
         return rand.Intn(3000)

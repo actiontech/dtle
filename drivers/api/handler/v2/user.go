@@ -3,10 +3,11 @@ package v2
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/dgrijalva/jwt-go"
 
@@ -218,8 +219,8 @@ func ResetPasswordV2(c echo.Context) error {
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	blackListKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "reset_pwd")
-	if leftMinute, exist := BL.blackListExist(blackListKey); exist {
+	blacklistKey := fmt.Sprintf("%s:%s:%s", reqParam.Tenant, reqParam.Username, "reset_pwd")
+	if leftMinute, exist := BL.blacklistExist(blacklistKey); exist {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("you cannot be login temporarily, please try again after %v minute", leftMinute)))
 	}
 
@@ -244,7 +245,7 @@ func ResetPasswordV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	if err := ValidatePassword(blackListKey, currentUser.Password, reqParam.CurrentUserPassword); err != nil {
+	if err := ValidatePassword(blacklistKey, currentUser.Password, reqParam.CurrentUserPassword); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 

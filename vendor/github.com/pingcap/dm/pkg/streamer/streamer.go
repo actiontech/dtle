@@ -14,26 +14,27 @@
 package streamer
 
 import (
+	"bytes"
 	"context"
-	"errors"
+	"time"
 
+	"github.com/pingcap/dm/pkg/binlog/common"
+	"github.com/pingcap/dm/pkg/binlog/event"
+	"github.com/pingcap/dm/pkg/binlog/reader"
 	"github.com/pingcap/dm/pkg/log"
-	"github.com/siddontang/go-mysql/replication"
+	"github.com/pingcap/dm/pkg/terror"
+
+	"github.com/go-mysql-org/go-mysql/replication"
+	"github.com/pingcap/failpoint"
+	"go.uber.org/zap"
 )
+
+var heartbeatInterval = common.MasterHeartbeatPeriod
 
 // TODO: maybe one day we can make a pull request to go-mysql to support LocalStreamer.
 
-// errors used by streamer
-var (
-	ErrNeedSyncAgain = errors.New("Last sync error or closed, try sync and get event again")
-	ErrSyncClosed    = errors.New("Sync was closed")
-)
-
 // Streamer provides the ability to get binlog event from remote server or local file.
-type Streamer interface {
-	// GetEvent returns binlog event
-	GetEvent(ctx context.Context) (*replication.BinlogEvent, error)
-}
+type Streamer reader.Streamer
 
 // LocalStreamer reads and parses binlog events from local binlog file.
 type LocalStreamer struct {
@@ -46,11 +47,32 @@ type LocalStreamer struct {
 // You can pass a context (like Cancel or Timeout) to break the block.
 func (s *LocalStreamer) GetEvent(ctx context.Context) (*replication.BinlogEvent, error) {
 	if s.err != nil {
-		return nil, ErrNeedSyncAgain
+		return nil, terror.ErrNeedSyncAgain.Generate()
 	}
 
+	failpoint.Inject("GetEventFromLocalFailed", func(_ failpoint.Value) {
+		log.L().Info("get event from local failed", zap.String("failpoint", "GetEventFromLocalFailed"))
+		failpoint.Return(nil, terror.ErrSyncClosed.Generate())
+	})
+
+	failpoint.Inject("SetHeartbeatInterval", func(v failpoint.Value) {
+		i := v.(int)
+		log.L().Info("will change heartbeat interval", zap.Int("new", i))
+		heartbeatInterval = time.Duration(i) * time.Second
+	})
+
 	select {
+	case <-time.After(heartbeatInterval):
+		// MySQL will send heartbeat event 30s by default
+		heartbeatHeader := &replication.EventHeader{}
+		return event.GenHeartbeatEvent(heartbeatHeader), nil
 	case c := <-s.ch:
+		// special check for maybe truncated relay log
+		if c.Header.EventType == replication.IGNORABLE_EVENT {
+			if bytes.Equal(c.RawData, []byte(ErrorMaybeDuplicateEvent.Error())) {
+				return nil, ErrorMaybeDuplicateEvent
+			}
+		}
 		return c, nil
 	case s.err = <-s.ech:
 		return nil, s.err
@@ -60,14 +82,14 @@ func (s *LocalStreamer) GetEvent(ctx context.Context) (*replication.BinlogEvent,
 }
 
 func (s *LocalStreamer) close() {
-	s.closeWithError(ErrSyncClosed)
+	s.closeWithError(terror.ErrSyncClosed.Generate())
 }
 
 func (s *LocalStreamer) closeWithError(err error) {
 	if err == nil {
-		err = ErrSyncClosed
+		err = terror.ErrSyncClosed.Generate()
 	}
-	log.Errorf("close sync with err: %v", err)
+	log.L().Error("close local streamer", log.ShortError(err))
 	select {
 	case s.ech <- err:
 	default:
