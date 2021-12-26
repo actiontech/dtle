@@ -54,5 +54,8 @@ replace github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211201045
 
 replace github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
 
+// fix tencentcloud-sdk-go version. Try remove this line after updating nomad.
+replace github.com/hashicorp/go-discover => github.com/hashicorp/go-discover v0.0.0-20211203145537-8b3ddf4349a8
+
 // from pingcap/tidb go.mod
 replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
