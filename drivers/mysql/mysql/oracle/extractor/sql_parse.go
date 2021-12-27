@@ -8,15 +8,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sjjian/oracle-sql-parser/ast/element"
-
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
-	"github.com/pingcap/parser/format"
+	"github.com/pingcap/tidb/parser/format"
 
-	"github.com/pingcap/parser/ast"
-	_ "github.com/pingcap/tidb/types/parser_driver"
+	"github.com/pingcap/tidb/parser/ast"
+	parser "github.com/pingcap/tidb/types/parser_driver"
 	oracle_ast "github.com/sjjian/oracle-sql-parser/ast"
+	"github.com/sjjian/oracle-sql-parser/ast/element"
 )
 
 type Stmt struct {
@@ -31,7 +30,6 @@ type Stmt struct {
 	NewColumnValues   []interface{}
 }
 
-// WARNING: sql parser Format() has be discrepancy ,be is instead of Restore()
 func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 	if node, ok := in.(*ast.TableName); ok {
 		v.Schema = node.Schema.String()
@@ -50,18 +48,16 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.InsertDML
 		v.Data = make(map[string]interface{}, 1)
 		for i, col := range node.Columns {
-			v.Columns = append(v.Columns, StringsBuilder("`", strings.ToUpper(col.String()), "`"))
+			v.Columns = append(v.Columns, StringsBuilder("`", col.String(), "`"))
 			for _, lists := range node.Lists {
-				var sb strings.Builder
-				flags := format.DefaultRestoreFlags
-				err := lists[i].Restore(format.NewRestoreCtx(flags, &sb))
-				if err != nil {
-					//service.Logger.Error("sql parser failed",
-					//	zap.String("stmt", v.Marshal()))
+				valueExpr, ok := lists[i].(*parser.ValueExpr)
+				if !ok {
+					continue
 				}
-				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(sb.String()))
+				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(valueExpr.GetString()))
 			}
 		}
+
 	}
 
 	if node, ok := in.(*ast.DeleteStmt); ok {
