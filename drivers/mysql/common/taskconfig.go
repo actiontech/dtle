@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
+
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 )
 
@@ -66,6 +68,8 @@ type DtleTaskConfig struct {
 	SkipIncrementalCopy bool                          `codec:"SkipIncrementalCopy"`
 	ConnectionConfig    *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
 	KafkaConfig         *KafkaConfig                  `codec:"KafkaConfig"`
+	// support oracle extractor/applier
+	OracleConfig *config.OracleConfig `codec:"OracleConfig"`
 }
 
 func (d *DtleTaskConfig) SetDefaultForEmpty() {

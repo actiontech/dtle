@@ -406,11 +406,11 @@ type parseQueryResult struct {
 	isRecognized bool
 	table        common.SchemaTable
 	// for multi-table DDL, i.e. drop table. Not really used yet.
-	extraTables  []common.SchemaTable
-	sql          string
-	ast          ast.StmtNode
-	isExpand     bool
-	isSkip       bool
+	extraTables []common.SchemaTable
+	sql         string
+	ast         ast.StmtNode
+	isExpand    bool
+	isSkip      bool
 }
 
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntryContext) error {
@@ -436,8 +436,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 
 		b.hasBeginQuery = false
 		b.entryContext = &common.BinlogEntryContext{
-			Entry:       entry,
-			TableItems:  nil,
+			Entry:        entry,
+			TableItems:   nil,
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
 		}
 	case replication.QUERY_EVENT:
@@ -792,7 +792,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 	renameTableFn := func(schemaName string, oldTableName *string) {
 		tableNameMap := oldSchemaNameToTablesRenameMap[schemaName]
 		newTableName := tableNameMap[*oldTableName]
-		if newTableName!=""{
+		if newTableName != "" {
 			logMapping(*oldTableName, newTableName, "table")
 			*oldTableName = newTableName
 		}
@@ -870,6 +870,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	for {
+
 		// Check for shutdown
 		if b.shutdown {
 			break
@@ -1100,11 +1101,12 @@ func (b *BinlogReader) skipQueryDDL(schema string, tableName string) bool {
 
 var (
 	// > A Regexp is safe for concurrent use by multiple goroutines...
-	regexCreateTrigger = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
-	regexCreateEvent = regexp.MustCompile(`(?is)CREATE\b.+?EVENT\b.+?ON\b.+?SCHEDULE\b.+?(?:AT|EVERY)\b.+?DO\b`)
-	regexAlterEvent = regexp.MustCompile(`(?is)ALTER\b.+?EVENT\b.+?(?:ON SCHEDULE|ON COMPLETION|RENAME TO|ENABLE|DISABLE|COMMENT|DO)\b`)
+	regexCreateTrigger   = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
+	regexCreateEvent     = regexp.MustCompile(`(?is)CREATE\b.+?EVENT\b.+?ON\b.+?SCHEDULE\b.+?(?:AT|EVERY)\b.+?DO\b`)
+	regexAlterEvent      = regexp.MustCompile(`(?is)ALTER\b.+?EVENT\b.+?(?:ON SCHEDULE|ON COMPLETION|RENAME TO|ENABLE|DISABLE|COMMENT|DO)\b`)
 	regexCreateProcedure = regexp.MustCompile(`(?is)CREATE DEFINER=\b.+?(?:PROCEDURE|FUNCTION)\b.+?`)
 )
+
 func isSkipQuery(sql string) bool {
 	if regexCreateTrigger.MatchString(sql) {
 		return true
@@ -1150,7 +1152,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 	tableLower := strings.ToLower(tableOrigin)
 	switch strings.ToLower(string(rowsEvent.Table.Schema)) {
 	case g.DtleSchemaName:
-		if  strings.HasPrefix(strings.ToLower(string(rowsEvent.Table.Table)), g.GtidExecutedTablePrefix) {
+		if strings.HasPrefix(strings.ToLower(string(rowsEvent.Table.Table)), g.GtidExecutedTablePrefix) {
 			// cases: 1. delete for compaction; 2. insert for compaction (gtid interval); 3. normal insert for tx (single gtid)
 			// We make no special treat for case 2. That tx has only one insert, which should be ignored.
 			if dml == common.InsertDML {
@@ -1616,7 +1618,7 @@ func (b *BinlogReader) generateRenameMaps() (oldSchemaToNewSchema map[string]str
 			}
 			tablesRenameMap[tb.Table.TableName] = tb.Table.TableRename
 		}
-		if len(tablesRenameMap)>0{
+		if len(tablesRenameMap) > 0 {
 			oldSchemaToTablesRenameMap[db.TableSchema] = tablesRenameMap
 		}
 	}

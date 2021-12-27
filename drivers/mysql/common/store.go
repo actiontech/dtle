@@ -3,11 +3,12 @@ package common
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/pkg/errors"
 	"github.com/go-mysql-org/go-mysql/mysql"
@@ -548,6 +549,37 @@ func (sm *StoreManager) DeleteRole(tenant, name string) error {
 	return nil
 }
 
+func (sm *StoreManager) SaveOracleSCNPos(jobName string, oldestUncommittedScn , committedSCN int64) error {
+	key := fmt.Sprintf("dtle/%v/OracleSCNPos", jobName)
+	s := fmt.Sprintf("%v%v%v", oldestUncommittedScn, binlogFilePosSeparator, committedSCN)
+	err := sm.consulStore.Put(key, []byte(s), nil)
+	return err
+}
+
+func (sm *StoreManager) GetOracleSCNPosForJob(jobName string) (oldestUncommittedScn int64, committedSCN int64, err error) {
+	key := fmt.Sprintf("dtle/%v/OracleSCNPos", jobName)
+	p, err := sm.consulStore.Get(key)
+	if err == store.ErrKeyNotFound {
+		return 0,0, nil
+	} else if err != nil {
+		return 0,0, err
+	}
+	s := string(p.Value)
+	ss := strings.Split(s, binlogFilePosSeparator)
+	if len(ss) != 2 {
+		return 0,0, fmt.Errorf("unexpected Oracle SCN pos format. value %v", s)
+	}
+	oldestUncommittedScn, err = strconv.ParseInt(ss[0], 10,64)
+	if err != nil {
+		return 0,0, errors.Wrap(err, "ParserInt")
+	}
+	committedSCN, err = strconv.ParseInt(ss[1], 10,64)
+	if err != nil {
+		return 0,0, errors.Wrap(err, "ParserInt")
+	}
+	return
+}
+
 // consul store item
 
 func NewDefaultRole(tenant string) *Role {
@@ -578,14 +610,16 @@ type User struct {
 }
 
 type JobListItemV2 struct {
-	JobId         string    `json:"job_id"`
-	JobStatus     string    `json:"job_status"`
-	Topic         string    `json:"topic"`
-	JobCreateTime string    `json:"job_create_time"`
-	SrcAddrList   []string  `json:"src_addr_list"`
-	DstAddrList   []string  `json:"dst_addr_list"`
-	User          string    `json:"user"`
-	JobSteps      []JobStep `json:"job_steps"`
+	JobId           string    `json:"job_id"`
+	JobStatus       string    `json:"job_status"`
+	Topic           string    `json:"topic"`
+	JobCreateTime   string    `json:"job_create_time"`
+	SrcDatabaseType string    `json:"src_database_type"`
+	DstDatabaseType string    `json:"dst_database_type"`
+	SrcAddrList     []string  `json:"src_addr_list"`
+	DstAddrList     []string  `json:"dst_addr_list"`
+	User            string    `json:"user"`
+	JobSteps        []JobStep `json:"job_steps"`
 }
 
 type JobStep struct {

@@ -3,9 +3,13 @@ package mysql
 import (
 	"context"
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"sync"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/applier"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/extractor"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/kafka"
@@ -163,17 +167,33 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 
 	switch common.TaskTypeFromString(h.taskConfig.Name) {
 	case common.TaskTypeSrc:
-		runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
-		if err != nil {
-			return nil, errors.Wrap(err, "NewExtractor")
+		if h.driverConfig.OracleConfig != nil {
+			h.logger.Debug("found oracle src", "OracleConfig", h.driverConfig.OracleConfig)
+			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
+			if err != nil {
+				return nil, errors.Wrap(err, "NewExtractor")
+			}
+		} else {
+			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
+			if err != nil {
+				return nil, errors.Wrap(err, "NewOracleExtractor")
+			}
 		}
 	case common.TaskTypeDest:
+		h.logger.Debug("found dest", "allConfig", h.driverConfig)
 		if h.driverConfig.KafkaConfig != nil {
 			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
 			runner, err = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
 				d.storeManager, d.config.NatsAdvertise, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
+			}
+		} else if h.driverConfig.OracleConfig != nil {
+			h.logger.Debug("found oracle dest", "OracleConfig", h.driverConfig.OracleConfig)
+			runner, err = applier.NewApplierOracle(ctx, h.driverConfig, h.logger, d.storeManager,
+				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
+			if err != nil {
+				return nil, errors.Wrap(err, "NewOracleRunner")
 			}
 		} else {
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,

@@ -107,25 +107,25 @@ var (
 				"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
 			})),
 		})),
-		"DropTableIfExists":    hclspec.NewAttr("DropTableIfExists", "bool", false),
-		"ExpandSyntaxSupport":  hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
-		"ReplChanBufferSize":   hclspec.NewAttr("ReplChanBufferSize", "number", false),
-		"TrafficAgainstLimits": hclspec.NewAttr("TrafficAgainstLimits", "number", false),
-		"MaxRetries":           hclspec.NewAttr("MaxRetries", "number", false),
-		"ChunkSize":            hclspec.NewAttr("ChunkSize", "number", false),
-		"SqlFilter":            hclspec.NewAttr("SqlFilter", "list(string)", false),
-		"GroupMaxSize":         hclspec.NewAttr("GroupMaxSize", "number", false),
-		"GroupTimeout":         hclspec.NewAttr("GroupTimeout", "number", false),
-		"Gtid":                 hclspec.NewAttr("Gtid", "string", false),
-		"BinlogFile":           hclspec.NewAttr("BinlogFile", "string", false),
-		"BinlogPos":            hclspec.NewAttr("BinlogPos", "number", false),
-		"GtidStart":            hclspec.NewAttr("GtidStart", "string", false),
-		"AutoGtid":             hclspec.NewAttr("AutoGtid", "bool", false),
-		"BinlogRelay":          hclspec.NewAttr("BinlogRelay", "bool", false),
-		"ParallelWorkers":      hclspec.NewAttr("ParallelWorkers", "number", false),
-		"SkipCreateDbTable":    hclspec.NewAttr("SkipCreateDbTable", "bool", false),
-		"SkipPrivilegeCheck":   hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
-		"SkipIncrementalCopy":  hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
+		"DropTableIfExists":                   hclspec.NewAttr("DropTableIfExists", "bool", false),
+		"ExpandSyntaxSupport":                 hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
+		"ReplChanBufferSize":                  hclspec.NewAttr("ReplChanBufferSize", "number", false),
+		"TrafficAgainstLimits":                hclspec.NewAttr("TrafficAgainstLimits", "number", false),
+		"MaxRetries":                          hclspec.NewAttr("MaxRetries", "number", false),
+		"ChunkSize":                           hclspec.NewAttr("ChunkSize", "number", false),
+		"SqlFilter":                           hclspec.NewAttr("SqlFilter", "list(string)", false),
+		"GroupMaxSize":                        hclspec.NewAttr("GroupMaxSize", "number", false),
+		"GroupTimeout":                        hclspec.NewAttr("GroupTimeout", "number", false),
+		"Gtid":                                hclspec.NewAttr("Gtid", "string", false),
+		"BinlogFile":                          hclspec.NewAttr("BinlogFile", "string", false),
+		"BinlogPos":                           hclspec.NewAttr("BinlogPos", "number", false),
+		"GtidStart":                           hclspec.NewAttr("GtidStart", "string", false),
+		"AutoGtid":                            hclspec.NewAttr("AutoGtid", "bool", false),
+		"BinlogRelay":                         hclspec.NewAttr("BinlogRelay", "bool", false),
+		"MysqlDestTaskConfig.ParallelWorkers": hclspec.NewAttr("ParallelWorkers", "number", false),
+		"SkipCreateDbTable":                   hclspec.NewAttr("SkipCreateDbTable", "bool", false),
+		"SkipPrivilegeCheck":                  hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
+		"SkipIncrementalCopy":                 hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host":     hclspec.NewAttr("Host", "string", true),
 			"Port":     hclspec.NewAttr("Port", "number", true),
@@ -154,6 +154,14 @@ var (
 			hclspec.NewLiteral(`true`)),
 		"ForeignKeyChecks": hclspec.NewDefault(hclspec.NewAttr("ForeignKeyChecks", "bool", false),
 			hclspec.NewLiteral(`true`)),
+		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
+			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
+			"Host":        hclspec.NewAttr("Host", "string", true),
+			"Port":        hclspec.NewAttr("Port", "number", true),
+			"User":        hclspec.NewAttr("User", "string", true),
+			"Password":    hclspec.NewAttr("Password", "string", true),
+			"Scn":         hclspec.NewAttr("Scn", "number", true),
+		})),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -465,12 +473,14 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 	var dtleTaskConfig common.DtleTaskConfig
 
 	if err := cfg.DecodeDriverConfig(&dtleTaskConfig); err != nil {
+		d.logger.Debug("start dtle task err")
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
 
-	if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
-		return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
-	}
+	// todo
+	//if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
+	//	return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
+	//}
 	dtleTaskConfig.SetDefaultForEmpty()
 
 	handle := drivers.NewTaskHandle(taskHandleVersion)

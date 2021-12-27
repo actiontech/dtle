@@ -121,9 +121,9 @@ func SetupApiServer(logger g.LoggerType, driverConfig *mysql.DriverConfig) (err 
 
 	v2Router.GET("/nodes", v2.NodeListV2)
 	v2Router.POST("/validation/job", v2.ValidateJobV2)
-	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
-	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
-	v2Router.GET("/mysql/instance_connection", v2.ConnectionV2)
+	v2Router.GET("/database/schemas", v2.ListDatabaseSchemasV2)
+	v2Router.GET("/database/columns", v2.ListDatabaseColumnsV2)
+	v2Router.GET("/database/instance_connection", v2.ConnectionV2)
 	v2Router.GET("/job/gtid", v2.GetJobGtidV2)
 	v2Router.GET("/user/list", v2.UserListV2)
 	v2Router.POST("/user/create", v2.CreateUserV2)
@@ -260,9 +260,9 @@ func AuthFilter() echo.MiddlewareFunc {
 var whiteList = []string{
 	"/v2/nodes",
 	"/v2/validation/job",
-	"/v2/mysql/schemas",
-	"/v2/mysql/columns",
-	"/v2/mysql/instance_connection",
+	"/v2/database/schemas",
+	"/v2/database/columns",
+	"/v2/database/instance_connection",
 	"/v2/job/gtid",
 	"/v2/user/list_action",
 	"/v2/user/current_user",
