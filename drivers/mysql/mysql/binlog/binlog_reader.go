@@ -402,12 +402,6 @@ func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinatesX 
 	return &returnCoordinates
 }
 
-func ToColumnValuesV2(abstractValues []interface{}) *common.ColumnValues {
-	return &common.ColumnValues{
-		AbstractValues: abstractValues,
-	}
-}
-
 type parseQueryResult struct {
 	isRecognized bool
 	table        common.SchemaTable
@@ -1765,36 +1759,33 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		switch dml {
 		case common.InsertDML:
 			{
-				dmlEvent.NewColumnValues = ToColumnValuesV2(row)
+				dmlEvent.Rows = [][]interface{}{row}
 			}
 		case common.UpdateDML:
 			{
-				dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
-				dmlEvent.NewColumnValues = ToColumnValuesV2(rowsEvent.Rows[i+1])
+				dmlEvent.Rows = [][]interface{}{row, rowsEvent.Rows[i+1]}
 			}
 		case common.DeleteDML:
 			{
-				dmlEvent.WhereColumnValues = ToColumnValuesV2(row)
+				dmlEvent.Rows = [][]interface{}{row}
 			}
 		}
 
-		//b.logger.Debug("event before row", "values", dmlEvent.WhereColumnValues)
-		//b.logger.Debug("event after row", "values", dmlEvent.NewColumnValues)
 		whereTrue := true
 		var err error
 		if table != nil && !table.WhereCtx.IsDefault {
 			switch dml {
 			case common.InsertDML:
-				whereTrue, err = table.WhereTrue(dmlEvent.NewColumnValues)
+				whereTrue, err = table.WhereTrue(dmlEvent.Rows[0])
 				if err != nil {
 					return err
 				}
 			case common.UpdateDML:
-				before, err := table.WhereTrue(dmlEvent.WhereColumnValues)
+				before, err := table.WhereTrue(dmlEvent.Rows[0])
 				if err != nil {
 					return err
 				}
-				after, err := table.WhereTrue(dmlEvent.NewColumnValues)
+				after, err := table.WhereTrue(dmlEvent.Rows[1])
 				if err != nil {
 					return err
 				}
@@ -1802,15 +1793,15 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 					whereTrue = false
 				} else if !before {
 					dmlEvent.DML = common.InsertDML
-					dmlEvent.WhereColumnValues = nil
+					dmlEvent.Rows = dmlEvent.Rows[1:]
 				} else if !after {
 					dmlEvent.DML = common.DeleteDML
-					dmlEvent.NewColumnValues = nil
+					dmlEvent.Rows = dmlEvent.Rows[0:1]
 				} else {
 					// before == after == true
 				}
 			case common.DeleteDML:
-				whereTrue, err = table.WhereTrue(dmlEvent.WhereColumnValues)
+				whereTrue, err = table.WhereTrue(dmlEvent.Rows[0])
 				if err != nil {
 					return err
 				}
@@ -1843,33 +1834,21 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		}
 
 		if whereTrue {
-			if dmlEvent.WhereColumnValues != nil {
-				b.entryContext.OriginalSize += avgRowSize
-			}
-			if dmlEvent.NewColumnValues != nil {
-				b.entryContext.OriginalSize += avgRowSize
-			}
+			// TODO review
+			b.entryContext.OriginalSize += avgRowSize * len(dmlEvent.Rows)
+
 			// The channel will do the throttling. Whoever is reding from the channel
 			// decides whether action is taken sycnhronously (meaning we wait before
 			// next iteration) or asynchronously (we keep pushing more events)
 			// In reality, reads will be synchronous
 			if table != nil && len(table.Table.ColumnMap) > 0 {
-				if dmlEvent.NewColumnValues != nil {
+				for iRow := range dmlEvent.Rows {
 					newRow := make([]interface{}, len(table.Table.ColumnMap))
-					for i := range table.Table.ColumnMap {
-						idx := table.Table.ColumnMap[i]
-						newRow[i] = dmlEvent.NewColumnValues.AbstractValues[idx]
+					for iCol := range table.Table.ColumnMap {
+						idx := table.Table.ColumnMap[iCol]
+						newRow[iCol] = dmlEvent.Rows[iRow][idx]
 					}
-					dmlEvent.NewColumnValues.AbstractValues = newRow
-				}
-
-				if dmlEvent.WhereColumnValues != nil {
-					newRow := make([]interface{}, len(table.Table.ColumnMap))
-					for i := range table.Table.ColumnMap {
-						idx := table.Table.ColumnMap[i]
-						newRow[i] = dmlEvent.WhereColumnValues.AbstractValues[idx]
-					}
-					dmlEvent.WhereColumnValues.AbstractValues = newRow
+					dmlEvent.Rows[iRow] = newRow
 				}
 			}
 			b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
