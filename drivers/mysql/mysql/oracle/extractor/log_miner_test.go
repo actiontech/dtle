@@ -187,6 +187,20 @@ func TestParseDMLSQL(t *testing.T) {
 			want_where_values: []interface{}{},
 			want_new_values:   []interface{}{"4", nil},
 		},
+		{
+			name:              "BINARY_FLOAT",
+			sql:               `UPDATE "TEST"."BINARY_FLOAT" SET "COL2" ='500'  WHERE "COL1" = '3' AND "COL2" = "NULL";`,
+			undo_sql:          `UPDATE "TEST"."BINARY_FLOAT" SET "COL2" = NULL  WHERE "COL1" = '3' AND "COL2" = '500';`,
+			want_where_values: []interface{}{"3", nil},
+			want_new_values:   []interface{}{"3", "500"},
+		},
+		{
+			name:              "BINARY_FLOAT",
+			sql:               `DELETE FROM "TEST"."BINARY_FLOAT" WHERE "COL1" = '4' AND "COL2" = "Nan";`,
+			undo_sql:          `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
+			want_where_values: []interface{}{"4", nil},
+			want_new_values:   []interface{}{},
+		},
 	}
 
 	logger := hclog.NewNullLogger()
@@ -212,13 +226,15 @@ func TestParseDMLSQL(t *testing.T) {
 			}
 
 			for i := 0; i < len(dataEvent.WhereColumnValues.AbstractValues); i++ {
-				if dataEvent.DML == common.UpdateDML {
+				if dataEvent.DML == common.UpdateDML || dataEvent.DML == common.DeleteDML {
 					if dataEvent.WhereColumnValues.AbstractValues[i] != tt.want_where_values[i] {
 						t.Errorf("parseDMLSQL() where index %v value = %v, want %v", i, dataEvent.WhereColumnValues.AbstractValues, tt.want_where_values)
 					}
 				}
-				if dataEvent.NewColumnValues.AbstractValues[i] != tt.want_new_values[i] {
-					t.Errorf("parseDMLSQL() new index %v value = %v, want %v", i, dataEvent.NewColumnValues.AbstractValues, tt.want_new_values)
+				if dataEvent.DML == common.UpdateDML || dataEvent.DML == common.InsertDML {
+					if dataEvent.NewColumnValues.AbstractValues[i] != tt.want_new_values[i] {
+						t.Errorf("parseDMLSQL() new index %v value = %v, want %v", i, dataEvent.NewColumnValues.AbstractValues, tt.want_new_values)
+					}
 				}
 			}
 
