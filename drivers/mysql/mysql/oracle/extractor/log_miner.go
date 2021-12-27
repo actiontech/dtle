@@ -920,7 +920,7 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 	if err != nil {
 		return dataEvent, err
 	}
-	visitor := &Stmt{}
+	visitor := &Stmt{logger: e.logger}
 	if len(stmt) <= 0 {
 		return dataEvent, fmt.Errorf("parse dml err,stmt lens %d", len(stmt))
 	}
@@ -962,7 +962,7 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		if err != nil {
 			return dataEvent, err
 		}
-		undoVisitor := &Stmt{}
+		undoVisitor := &Stmt{logger: e.logger}
 		if len(stmtP) <= 0 {
 			return dataEvent, nil
 		}

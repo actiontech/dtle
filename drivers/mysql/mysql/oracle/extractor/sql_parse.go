@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/g"
 
 	"github.com/pingcap/tidb/parser/format"
 
@@ -19,6 +20,7 @@ import (
 )
 
 type Stmt struct {
+	logger            g.LoggerType
 	Schema            string
 	Table             string
 	Columns           []string
@@ -41,7 +43,7 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.UpdateDML
 		v.Before = make(map[string]interface{}, 1)
 		if node.Where != nil {
-			beforeData(node.Where, v.Before)
+			beforeData(v.logger, node.Where, v.Before)
 		}
 	}
 
@@ -54,6 +56,7 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 			for _, lists := range node.Lists {
 				valueExpr, ok := lists[i].(*parser.ValueExpr)
 				if !ok {
+					v.logger.Error("Assertion failed")
 					continue
 				}
 				v.NewColumnValues.AbstractValues = append(v.NewColumnValues.AbstractValues, columnsValueConverter(valueExpr.GetString()))
@@ -65,7 +68,7 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.DeleteDML
 		v.Before = make(map[string]interface{}, 1)
 		if node.Where != nil {
-			beforeData(node.Where, v.Before)
+			beforeData(v.logger, node.Where, v.Before)
 		}
 	}
 	return in, false
@@ -78,25 +81,28 @@ func (v *Stmt) Leave(in ast.Node) (ast.Node, bool) {
 func (v *Stmt) Marshal() string {
 	b, err := json.Marshal(&v)
 	if err != nil {
+		v.logger.Error("stmt unmarshal fail")
 	}
 	return string(b)
 }
 
-func beforeData(where ast.ExprNode, before map[string]interface{}) {
+func beforeData(logger g.LoggerType, where ast.ExprNode, before map[string]interface{}) {
 	if binaryNode, ok := where.(*ast.BinaryOperationExpr); ok {
 		switch binaryNode.Op.String() {
 		case ast.LogicAnd:
-			beforeData(binaryNode.L, before)
-			beforeData(binaryNode.R, before)
+			beforeData(logger, binaryNode.L, before)
+			beforeData(logger, binaryNode.R, before)
 		case ast.EQ:
 			var value strings.Builder
 			var column strings.Builder
 			flags := format.DefaultRestoreFlags
 			err := binaryNode.R.Restore(format.NewRestoreCtx(flags, &value))
 			if err != nil {
+				logger.Error("restore column value failed")
 			}
 			err = binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
 			if err != nil {
+				logger.Error("restore column name failed")
 			}
 			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(value.String())
 		}
