@@ -139,11 +139,10 @@ func TestBuildFilterSchemaTable(t *testing.T) {
 }
 func TestParseDMLSQL(t *testing.T) {
 	tests := []struct {
-		name              string
-		sql               string
-		undo_sql          string
-		want_where_values []interface{}
-		want_new_values   []interface{}
+		name      string
+		sql       string
+		undo_sql  string
+		want_rows [][]interface{}
 	}{
 		// NUMBER(*)
 		// BFILE  no support
@@ -153,39 +152,34 @@ func TestParseDMLSQL(t *testing.T) {
 		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (3, -BINARY_FLOAT_INFINITY);
 		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (4, BINARY_FLOAT_NAN);
 		{
-			name:              "BINARY_FLOAT",
-			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('0', '1.17549E-38F');`,
-			undo_sql:          ``,
-			want_where_values: []interface{}{},
-			want_new_values:   []interface{}{"0", "1.17549E-38F"},
+			name:      "BINARY_FLOAT",
+			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('0', '1.17549E-38F');`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"0", "1.17549E-38F"}},
 		},
 		{
-			name:              "BINARY_FLOAT",
-			sql:               `INSERT INTO TEST.BINARY_FLOAT("COL1","COL2") VALUES ('1', '3.40282E+38F');`,
-			undo_sql:          ``,
-			want_where_values: []interface{}{},
-			want_new_values:   []interface{}{"1", "3.40282E+38F"},
+			name:      "BINARY_FLOAT",
+			sql:       `INSERT INTO TEST.BINARY_FLOAT("COL1","COL2") VALUES ('1', '3.40282E+38F');`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"1", "3.40282E+38F"}},
 		},
 		{
-			name:              "BINARY_FLOAT",
-			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('2', 'Inf');`,
-			undo_sql:          ``,
-			want_where_values: []interface{}{},
-			want_new_values:   []interface{}{"2", nil},
+			name:      "BINARY_FLOAT",
+			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('2', 'Inf');`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"2", nil}},
 		},
 		{
-			name:              "BINARY_FLOAT",
-			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('3', '-Inf');`,
-			undo_sql:          ``,
-			want_where_values: []interface{}{},
-			want_new_values:   []interface{}{"3", nil},
+			name:      "BINARY_FLOAT",
+			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('3', '-Inf');`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"3", nil}},
 		},
 		{
-			name:              "BINARY_FLOAT",
-			sql:               `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
-			undo_sql:          ``,
-			want_where_values: []interface{}{},
-			want_new_values:   []interface{}{"4", nil},
+			name:      "BINARY_FLOAT",
+			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"4", nil}},
 		},
 	}
 
@@ -211,17 +205,19 @@ func TestParseDMLSQL(t *testing.T) {
 				return
 			}
 
-			for i := 0; i < len(dataEvent.WhereColumnValues.AbstractValues); i++ {
-				if dataEvent.DML == common.UpdateDML {
-					if dataEvent.WhereColumnValues.AbstractValues[i] != tt.want_where_values[i] {
-						t.Errorf("parseDMLSQL() where index %v value = %v, want %v", i, dataEvent.WhereColumnValues.AbstractValues, tt.want_where_values)
+			if len(dataEvent.Rows) != len(tt.want_rows) {
+				t.Errorf("unexpected rows")
+			}
+			for i := range dataEvent.Rows {
+				if len(dataEvent.Rows[i]) != len(tt.want_rows[i]) {
+					t.Errorf("unexpected rows")
+				}
+				for j := range dataEvent.Rows[i] {
+					if dataEvent.Rows[i][j] != tt.want_rows[i][j] {
+						t.Errorf("unexpected rows")
 					}
 				}
-				if dataEvent.NewColumnValues.AbstractValues[i] != tt.want_new_values[i] {
-					t.Errorf("parseDMLSQL() new index %v value = %v, want %v", i, dataEvent.NewColumnValues.AbstractValues, tt.want_new_values)
-				}
 			}
-
 		})
 	}
 }

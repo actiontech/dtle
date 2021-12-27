@@ -936,13 +936,13 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 	tableConfig := findTableConfig(schemaConfig, visitor.Table)
 	ordinals := tableConfig.OriginalTableColumns.Ordinals
 	// e.logger.Debug("columns", "columns", ordinals, "visitorBefore", visitor.Before)
-	visitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
+	visitor.WhereColumnValues = make([]interface{}, len(ordinals))
 	for column, index := range ordinals {
 		data, ok := visitor.Before[column]
 		if !ok {
 			continue
 		}
-		visitor.WhereColumnValues.AbstractValues[index] = data
+		visitor.WhereColumnValues[index] = data
 	}
 	dataEvent = common.DataEvent{
 		CurrentSchema:     visitor.Schema,
@@ -950,11 +950,14 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		TableName:         visitor.Table,
 		DML:               visitor.Operation,
 		ColumnCount:       uint64(len(visitor.Columns)),
-		WhereColumnValues: visitor.WhereColumnValues,
-		NewColumnValues:   visitor.NewColumnValues,
 		Table:             nil,
 	}
-	if visitor.Operation == common.UpdateDML {
+	switch visitor.Operation {
+	case common.InsertDML:
+		dataEvent.Rows = [][]interface{}{visitor.NewColumnValues}
+	case common.DeleteDML:
+		dataEvent.Rows = [][]interface{}{visitor.WhereColumnValues}
+	case common.UpdateDML:
 		undoSQL = ReplaceQuotesString(undoSQL)
 		undoSQL = ReplaceSpecifiedString(undoSQL, ";", "")
 		undoP := parser.New()
@@ -967,16 +970,18 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 			return dataEvent, nil
 		}
 		(stmtP[0]).Accept(undoVisitor)
-		undoVisitor.WhereColumnValues.AbstractValues = make([]interface{}, len(ordinals))
+		undoVisitor.WhereColumnValues = make([]interface{}, len(ordinals))
 		for column, index := range ordinals {
 			data, ok := undoVisitor.Before[column]
 			if !ok {
 				continue
 			}
-			undoVisitor.WhereColumnValues.AbstractValues[index] = data
+			undoVisitor.WhereColumnValues[index] = data
 		}
-		dataEvent.NewColumnValues = undoVisitor.WhereColumnValues
-		dataEvent.Query = undoVisitor.WhereColumnValues.String()
+		dataEvent.Rows = [][]interface{}{
+			visitor.WhereColumnValues,
+			undoVisitor.WhereColumnValues,
+		}
 	}
 	// e.logger.Debug("============= dml stmt parse end =========")
 	return dataEvent, nil

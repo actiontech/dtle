@@ -27,13 +27,12 @@ type Stmt struct {
 	Data              map[string]interface{}
 	Before            map[string]interface{}
 	WhereExpr         string
-	WhereColumnValues *common.ColumnValues
-	NewColumnValues   *common.ColumnValues
+	WhereColumnValues []interface{}
+	NewColumnValues   []interface{}
 }
 
 // WARNING: sql parser Format() has be discrepancy ,be is instead of Restore()
 func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
-	v.WhereColumnValues = new(common.ColumnValues)
 	if node, ok := in.(*ast.TableName); ok {
 		v.Schema = node.Schema.String()
 		v.Table = node.Name.String()
@@ -48,7 +47,6 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 	}
 
 	if node, ok := in.(*ast.InsertStmt); ok {
-		v.NewColumnValues = new(common.ColumnValues)
 		v.Operation = common.InsertDML
 		v.Data = make(map[string]interface{}, 1)
 		for i, col := range node.Columns {
@@ -61,7 +59,7 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 					//service.Logger.Error("sql parser failed",
 					//	zap.String("stmt", v.Marshal()))
 				}
-				v.NewColumnValues.AbstractValues = append(v.NewColumnValues.AbstractValues, columnsValueConverter(sb.String()))
+				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(sb.String()))
 			}
 		}
 	}

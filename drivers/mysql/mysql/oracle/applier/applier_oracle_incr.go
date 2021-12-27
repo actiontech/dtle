@@ -201,7 +201,8 @@ func (a *ApplierOracleIncr) buildDMLEventQuery(dmlEvent common.DataEvent, worker
 	switch dmlEvent.DML {
 	case common.DeleteDML:
 		{
-			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName,
+				tableColumns, dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
@@ -218,7 +219,8 @@ func (a *ApplierOracleIncr) buildDMLEventQuery(dmlEvent common.DataEvent, worker
 	case common.InsertDML:
 		{
 			// TODO no need to generate query string every time
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues())
+			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns,
+				tableColumns, tableColumns, dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
@@ -230,7 +232,9 @@ func (a *ApplierOracleIncr) buildDMLEventQuery(dmlEvent common.DataEvent, worker
 		}
 	case common.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.NewColumnValues.GetAbstractValues(), dmlEvent.WhereColumnValues.GetAbstractValues())
+			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName,
+				dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns,
+				dmlEvent.Rows[1], dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
