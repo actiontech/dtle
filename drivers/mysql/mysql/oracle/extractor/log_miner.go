@@ -893,7 +893,7 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 	// parse ddl and dml
 	if row.Operation == OperationCodeDDL {
 		// 字符集问题
-		dataEvent, err := e.parseDDLSQL(row.SQLRedo)
+		dataEvent, err := e.parseDDLSQL(row.SQLRedo, row.SegOwner)
 		if err != nil {
 			return common.DataEvent{}, err
 		}
@@ -987,7 +987,7 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 	return dataEvent, nil
 }
 
-func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEvent, err error) {
+func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEvent common.DataEvent, err error) {
 	e.logger.Debug("============= ddl stmt parse start===============", "redoSQL", redoSQL)
 	stmt, err := oracleParser.Parser(redoSQL)
 	if err != nil {
@@ -996,10 +996,9 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string) (dataEvent common.DataEven
 	}
 	switch s := stmt[0].(type) {
 	case *ast.CreateTableStmt:
-		// todo when schema is nil
 		schemaName := ""
 		if s.TableName.Schema == nil {
-			schemaName = "SOE"
+			schemaName = segOwner
 		} else {
 			schemaName = IdentifierToString(s.TableName.Schema)
 		}

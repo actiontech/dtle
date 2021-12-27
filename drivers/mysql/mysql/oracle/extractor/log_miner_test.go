@@ -487,7 +487,7 @@ func TestParseDDLSQL(t *testing.T) {
 	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := extractor.parseDDLSQL(tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
 			if err != nil {
 				t.Error(err)
 				return
@@ -531,7 +531,7 @@ func TestParseDDLSQLAlter(t *testing.T) {
 	extractor := &ExtractorOracle{logger: logger}
 	for _, tt := range testAlter {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := extractor.parseDDLSQL(tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
 			if err != nil {
 				t.Error(err)
 				return
@@ -559,7 +559,7 @@ func TestParseDDLSQLDROP(t *testing.T) {
 	extractor := &ExtractorOracle{logger: logger}
 	for _, tt := range testAlter {
 		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := extractor.parseDDLSQL(tt.sql)
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
 			if err != nil {
 				t.Error(err)
 				return
