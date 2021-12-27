@@ -93,18 +93,20 @@ func beforeData(logger g.LoggerType, where ast.ExprNode, before map[string]inter
 			beforeData(logger, binaryNode.L, before)
 			beforeData(logger, binaryNode.R, before)
 		case ast.EQ:
-			var value strings.Builder
 			var column strings.Builder
 			flags := format.DefaultRestoreFlags
-			err := binaryNode.R.Restore(format.NewRestoreCtx(flags, &value))
+			err := binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
 			if err != nil {
-				logger.Error("restore column value failed")
+				logger.Error("restore column name failed", "err", err)
+				return
 			}
-			err = binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
-			if err != nil {
-				logger.Error("restore column name failed")
+			colValue, ok := binaryNode.R.(*parser.ValueExpr)
+			if !ok {
+				logger.Error("column value assertion failed")
+				return
 			}
-			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(value.String())
+			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(colValue.GetString())
+
 		}
 	}
 }
@@ -135,6 +137,8 @@ func columnsValueConverter(value string) interface{} {
 	value = strings.TrimLeft(strings.TrimRight(value, "'"), "'")
 	// value = value[1 : len(value)-1]
 	switch {
+	case value == "":
+		return nil
 	case value == NullValue:
 		return nil
 	case value == EmptyCLOBFunction:
