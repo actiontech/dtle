@@ -14,7 +14,6 @@ import (
 	"github.com/pingcap/tidb/parser/format"
 
 	"github.com/pingcap/tidb/parser/ast"
-	parser "github.com/pingcap/tidb/types/parser_driver"
 	oracle_ast "github.com/sjjian/oracle-sql-parser/ast"
 	oracle_element "github.com/sjjian/oracle-sql-parser/ast/element"
 )
@@ -52,12 +51,13 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		for i, col := range node.Columns {
 			v.Columns = append(v.Columns, StringsBuilder("`", col.String(), "`"))
 			for _, lists := range node.Lists {
-				valueExpr, ok := lists[i].(*parser.ValueExpr)
-				if !ok {
-					v.logger.Error("Assertion failed")
-					continue
+				var columnValue strings.Builder
+				flags := format.RestoreStringWithoutDefaultCharset
+				err := lists[i].Restore(format.NewRestoreCtx(flags, &columnValue))
+				if err != nil {
+					v.logger.Error("inserl sql restore column value failed", "err", err)
 				}
-				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(valueExpr.GetString()))
+				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(columnValue.String()))
 			}
 		}
 	}
@@ -92,19 +92,19 @@ func beforeData(logger g.LoggerType, where ast.ExprNode, before map[string]inter
 			beforeData(logger, binaryNode.R, before)
 		case ast.EQ:
 			var column strings.Builder
-			flags := format.DefaultRestoreFlags
+			var columnValue strings.Builder
+			flags := format.RestoreStringWithoutDefaultCharset
 			err := binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
 			if err != nil {
 				logger.Error("restore column name failed", "err", err)
 				return
 			}
-			colValue, ok := binaryNode.R.(*parser.ValueExpr)
-			if !ok {
-				logger.Error("column value assertion failed")
+			err = binaryNode.R.Restore(format.NewRestoreCtx(flags, &columnValue))
+			if err != nil {
+				logger.Error("restore column value failed", "err", err)
 				return
 			}
-			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(colValue.GetString())
-
+			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(columnValue.String())
 		}
 	}
 }
@@ -115,18 +115,18 @@ const (
 	NullValue              = "NULL"
 	EmptyCLOBFunction      = "EMPTY_CLOB()"
 	EmptyBLOBFunction      = "EMPTY_BLOB()"
-	FunctionHEXTORAWStart  = `HEXTORAW('`
-	CommonFunctionEnd      = `')`
+	FunctionHEXTORAWStart  = `HEXTORAW(`
+	CommonFunctionEnd      = `)`
 	InfValue               = `Inf`
 	NInfValue              = `-Inf`
 	NanValue               = `Nan`
-	ToDSintervalStart      = "TO_DSINTERVAL('"
-	ToYMintervalStart      = "TO_YMINTERVAL('"
-	FunctionUNITSTRStart   = "UNISTR('"
-	ToDateFuncStart        = "TO_DATE('"
-	ToDateFuncEnd          = "', 'YYYY-MM-DD HH24:MI:SS')"
-	ToTimestampFuncStart   = "TO_TIMESTAMP('"
-	ToTimestampTzFuncStart = "TO_TIMESTAMP_TZ('"
+	ToDSintervalStart      = "TO_DSINTERVAL("
+	ToYMintervalStart      = "TO_YMINTERVAL("
+	FunctionUNITSTRStart   = "UNISTR("
+	ToDateFuncStart        = "TO_DATE("
+	ToDateFuncEnd          = ", YYYY-MM-DD HH24:MI:SS)"
+	ToTimestampFuncStart   = "TO_TIMESTAMP("
+	ToTimestampTzFuncStart = "TO_TIMESTAMP_TZ("
 )
 
 var CONCATENATIONPATTERN = "\\|\\|"
@@ -144,23 +144,23 @@ func columnsValueConverter(value string) interface{} {
 	case value == EmptyBLOBFunction:
 		return ""
 	case strings.HasPrefix(value, FunctionHEXTORAWStart) && strings.HasSuffix(value, CommonFunctionEnd):
-		hexval, err := hex.DecodeString(value[10 : len(value)-2])
+		hexval, err := hex.DecodeString(value[9 : len(value)-1])
 		if err != nil {
 			return ""
 		}
 		return hexval
 	case strings.HasPrefix(value, ToDSintervalStart) && strings.HasSuffix(value, CommonFunctionEnd):
-		return value[15 : len(value)-2]
+		return value[14 : len(value)-1]
 	case strings.HasPrefix(value, ToYMintervalStart) && strings.HasSuffix(value, CommonFunctionEnd):
-		return value[15 : len(value)-2]
+		return value[14 : len(value)-1]
 	case isUnistrFunction(value):
 		return UnitstrConvert(value)
 	case strings.HasPrefix(value, ToDateFuncStart) && strings.HasSuffix(value, ToDateFuncEnd):
-		return value[9 : len(value)-27]
+		return value[8 : len(value)-24]
 	case strings.HasPrefix(value, ToTimestampFuncStart) && strings.HasSuffix(value, CommonFunctionEnd):
-		return value[14 : len(value)-2]
+		return value[13 : len(value)-1]
 	case strings.HasPrefix(value, ToTimestampTzFuncStart) && strings.HasSuffix(value, CommonFunctionEnd):
-		return value[17 : len(value)-2]
+		return value[16 : len(value)-2]
 	// mysql no support (inf -inf nan)
 	case value == InfValue:
 		return nil
