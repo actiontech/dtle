@@ -6,7 +6,7 @@ DOCKER        := $(shell which docker)
 DOCKER_IMAGE  := docker-registry:5000/actiontech/universe-compiler-udup:v6
 
 
-PROJECT_NAME  = dtle-oracle
+PROJECT_NAME  ?= dtle
 VERSION       = 9.9.9.9
 
 ifdef GOBIN
@@ -25,10 +25,6 @@ driver:
 -X github.com/actiontech/dtle/g.GitCommit=$(COMMIT) \
 -X github.com/actiontech/dtle/g.GitBranch=$(BRANCH)" \
 		./cmd/nomad-plugin/main.go
-
-docker_build:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE)  -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make driver"
-	scp ./dist/dtle root@10.186.63.15:~/dtle
 
 build_with_coverage_report: build-coverage-report-tool coverage-report-pre-build package coverage-report-post-build
 
