@@ -16,7 +16,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 	"github.com/actiontech/dtle/g"
-	"github.com/pingcap/parser"
+	"github.com/pingcap/tidb/parser"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/pkg/errors"
 	oracleParser "github.com/sjjian/oracle-sql-parser"
@@ -920,7 +920,7 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 	if err != nil {
 		return dataEvent, err
 	}
-	visitor := &Stmt{}
+	visitor := &Stmt{logger: e.logger}
 	if len(stmt) <= 0 {
 		return dataEvent, fmt.Errorf("parse dml err,stmt lens %d", len(stmt))
 	}
@@ -965,7 +965,7 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		if err != nil {
 			return dataEvent, err
 		}
-		undoVisitor := &Stmt{}
+		undoVisitor := &Stmt{logger: e.logger}
 		if len(stmtP) <= 0 {
 			return dataEvent, nil
 		}

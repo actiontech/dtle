@@ -8,18 +8,19 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sjjian/oracle-sql-parser/ast/element"
-
 	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/g"
 
-	"github.com/pingcap/parser/format"
+	"github.com/pingcap/tidb/parser/format"
 
-	"github.com/pingcap/parser/ast"
-	_ "github.com/pingcap/tidb/types/parser_driver"
+	"github.com/pingcap/tidb/parser/ast"
+	parser "github.com/pingcap/tidb/types/parser_driver"
 	oracle_ast "github.com/sjjian/oracle-sql-parser/ast"
+	oracle_element "github.com/sjjian/oracle-sql-parser/ast/element"
 )
 
 type Stmt struct {
+	logger            g.LoggerType
 	Schema            string
 	Table             string
 	Columns           []string
@@ -31,7 +32,6 @@ type Stmt struct {
 	NewColumnValues   []interface{}
 }
 
-// WARNING: sql parser Format() has be discrepancy ,be is instead of Restore()
 func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 	if node, ok := in.(*ast.TableName); ok {
 		v.Schema = node.Schema.String()
@@ -42,7 +42,7 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.UpdateDML
 		v.Before = make(map[string]interface{}, 1)
 		if node.Where != nil {
-			beforeData(node.Where, v.Before)
+			beforeData(v.logger, node.Where, v.Before)
 		}
 	}
 
@@ -50,16 +50,14 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.InsertDML
 		v.Data = make(map[string]interface{}, 1)
 		for i, col := range node.Columns {
-			v.Columns = append(v.Columns, StringsBuilder("`", strings.ToUpper(col.String()), "`"))
+			v.Columns = append(v.Columns, StringsBuilder("`", col.String(), "`"))
 			for _, lists := range node.Lists {
-				var sb strings.Builder
-				flags := format.DefaultRestoreFlags
-				err := lists[i].Restore(format.NewRestoreCtx(flags, &sb))
-				if err != nil {
-					//service.Logger.Error("sql parser failed",
-					//	zap.String("stmt", v.Marshal()))
+				valueExpr, ok := lists[i].(*parser.ValueExpr)
+				if !ok {
+					v.logger.Error("Assertion failed")
+					continue
 				}
-				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(sb.String()))
+				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(valueExpr.GetString()))
 			}
 		}
 	}
@@ -68,7 +66,7 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.DeleteDML
 		v.Before = make(map[string]interface{}, 1)
 		if node.Where != nil {
-			beforeData(node.Where, v.Before)
+			beforeData(v.logger, node.Where, v.Before)
 		}
 	}
 	return in, false
@@ -81,27 +79,32 @@ func (v *Stmt) Leave(in ast.Node) (ast.Node, bool) {
 func (v *Stmt) Marshal() string {
 	b, err := json.Marshal(&v)
 	if err != nil {
+		v.logger.Error("stmt unmarshal fail")
 	}
 	return string(b)
 }
 
-func beforeData(where ast.ExprNode, before map[string]interface{}) {
+func beforeData(logger g.LoggerType, where ast.ExprNode, before map[string]interface{}) {
 	if binaryNode, ok := where.(*ast.BinaryOperationExpr); ok {
 		switch binaryNode.Op.String() {
 		case ast.LogicAnd:
-			beforeData(binaryNode.L, before)
-			beforeData(binaryNode.R, before)
+			beforeData(logger, binaryNode.L, before)
+			beforeData(logger, binaryNode.R, before)
 		case ast.EQ:
-			var value strings.Builder
 			var column strings.Builder
 			flags := format.DefaultRestoreFlags
-			err := binaryNode.R.Restore(format.NewRestoreCtx(flags, &value))
+			err := binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
 			if err != nil {
+				logger.Error("restore column name failed", "err", err)
+				return
 			}
-			err = binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
-			if err != nil {
+			colValue, ok := binaryNode.R.(*parser.ValueExpr)
+			if !ok {
+				logger.Error("column value assertion failed")
+				return
 			}
-			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(value.String())
+			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(colValue.GetString())
+
 		}
 	}
 }
@@ -132,6 +135,8 @@ func columnsValueConverter(value string) interface{} {
 	value = strings.TrimLeft(strings.TrimRight(value, "'"), "'")
 	// value = value[1 : len(value)-1]
 	switch {
+	case value == "":
+		return nil
 	case value == NullValue:
 		return nil
 	case value == EmptyCLOBFunction:
@@ -253,65 +258,65 @@ const (
 func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 	var colDefinition string
 	switch td.Datatype.DataDef() {
-	case element.DataDefBFile:
+	case oracle_element.DataDefBFile:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, 255, colDefaultString(td.Default))
-	case element.DataDefBinaryFloat:
+	case oracle_element.DataDefBinaryFloat:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeFLOAT, colDefaultString(td.Default))
-	case element.DataDefBinaryDouble:
+	case oracle_element.DataDefBinaryDouble:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDOUBLE, colDefaultString(td.Default))
-	case element.DataDefBlob:
+	case oracle_element.DataDefBlob:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeLONGBLOB, colDefaultString(td.Default))
-	case element.DataDefChar:
-		if *td.Datatype.(*element.Char).Size >= 1 && *td.Datatype.(*element.Char).Size <= 255 {
-			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeCHAR, *td.Datatype.(*element.Char).Size, colDefaultString(td.Default))
-		} else if *td.Datatype.(*element.Char).Size >= 256 && *td.Datatype.(*element.Char).Size <= 2000 {
-			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Char).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefChar:
+		if *td.Datatype.(*oracle_element.Char).Size >= 1 && *td.Datatype.(*oracle_element.Char).Size <= 255 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeCHAR, *td.Datatype.(*oracle_element.Char).Size, colDefaultString(td.Default))
+		} else if *td.Datatype.(*oracle_element.Char).Size >= 256 && *td.Datatype.(*oracle_element.Char).Size <= 2000 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*oracle_element.Char).Size, colDefaultString(td.Default))
 		}
-	case element.DataDefCharacter:
-		if *td.Datatype.(*element.Char).Size >= 1 && *td.Datatype.(*element.Char).Size <= 255 {
-			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeCHAR, *td.Datatype.(*element.Char).Size, colDefaultString(td.Default))
-		} else if *td.Datatype.(*element.Char).Size >= 256 && *td.Datatype.(*element.Char).Size <= 2000 {
-			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Char).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefCharacter:
+		if *td.Datatype.(*oracle_element.Char).Size >= 1 && *td.Datatype.(*oracle_element.Char).Size <= 255 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeCHAR, *td.Datatype.(*oracle_element.Char).Size, colDefaultString(td.Default))
+		} else if *td.Datatype.(*oracle_element.Char).Size >= 256 && *td.Datatype.(*oracle_element.Char).Size <= 2000 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*oracle_element.Char).Size, colDefaultString(td.Default))
 		}
-	case element.DataDefClob:
+	case oracle_element.DataDefClob:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeLONGTEXT, colDefaultString(td.Default))
-	case element.DataDefDate:
+	case oracle_element.DataDefDate:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDATETIME, colDefaultString(td.Default))
-	case element.DataDefDecimal:
+	case oracle_element.DataDefDecimal:
 		colDefinition = fmt.Sprintf("%s %s(%d,%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDECIMAL,
-			td.Datatype.(*element.Number).Precision.Number, LimitSize(*td.Datatype.(*element.Number).Scale), colDefaultString(td.Default))
-	case element.DataDefDec:
+			td.Datatype.(*oracle_element.Number).Precision.Number, LimitSize(*td.Datatype.(*oracle_element.Number).Scale), colDefaultString(td.Default))
+	case oracle_element.DataDefDec:
 		colDefinition = fmt.Sprintf("%s %s(%d,%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDEC,
-			td.Datatype.(*element.Number).Precision.Number, LimitSize(*td.Datatype.(*element.Number).Scale), colDefaultString(td.Default))
-	case element.DataDefDoublePrecision:
+			td.Datatype.(*oracle_element.Number).Precision.Number, LimitSize(*td.Datatype.(*oracle_element.Number).Scale), colDefaultString(td.Default))
+	case oracle_element.DataDefDoublePrecision:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDOUBLE, colDefaultString(td.Default))
-	case element.DataDefFloat:
+	case oracle_element.DataDefFloat:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDOUBLE, colDefaultString(td.Default))
-	case element.DataDefInteger:
+	case oracle_element.DataDefInteger:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeINT, colDefaultString(td.Default))
-	case element.DataDefInt:
+	case oracle_element.DataDefInt:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeINT, colDefaultString(td.Default))
-	case element.DataDefIntervalYear:
+	case oracle_element.DataDefIntervalYear:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, 30, colDefaultString(td.Default))
-	case element.DataDefIntervalDay:
+	case oracle_element.DataDefIntervalDay:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, 30, colDefaultString(td.Default))
-	case element.DataDefLong:
+	case oracle_element.DataDefLong:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeLONGTEXT, colDefaultString(td.Default))
-	case element.DataDefLongRaw:
+	case oracle_element.DataDefLongRaw:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeLONGBLOB, colDefaultString(td.Default))
-	case element.DataDefNChar:
-		if *td.Datatype.(*element.NChar).Size >= 1 && *td.Datatype.(*element.NChar).Size <= 255 {
-			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNCHAR, *td.Datatype.(*element.NChar).Size, colDefaultString(td.Default))
-		} else if *td.Datatype.(*element.NChar).Size >= 256 && *td.Datatype.(*element.NChar).Size <= 2000 {
-			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*element.NChar).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefNChar:
+		if *td.Datatype.(*oracle_element.NChar).Size >= 1 && *td.Datatype.(*oracle_element.NChar).Size <= 255 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNCHAR, *td.Datatype.(*oracle_element.NChar).Size, colDefaultString(td.Default))
+		} else if *td.Datatype.(*oracle_element.NChar).Size >= 256 && *td.Datatype.(*oracle_element.NChar).Size <= 2000 {
+			colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*oracle_element.NChar).Size, colDefaultString(td.Default))
 		}
-	case element.DataDefNCharVarying:
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*element.NVarchar2).Size, colDefaultString(td.Default))
-	case element.DataDefNClob:
+	case oracle_element.DataDefNCharVarying:
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*oracle_element.NVarchar2).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefNClob:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeTEXT, colDefaultString(td.Default))
-	case element.DataDefNumber:
+	case oracle_element.DataDefNumber:
 		var mysqlNumberType string
-		num := td.Datatype.(*element.Number)
+		num := td.Datatype.(*oracle_element.Number)
 		if num.Precision == nil { // p == nil s == nil
 			mysqlNumberType = MySQLColTypeDOUBLE
 		} else {
@@ -336,33 +341,33 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 			}
 		}
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), mysqlNumberType, colDefaultString(td.Default))
-	case element.DataDefNumeric:
+	case oracle_element.DataDefNumeric:
 		colDefinition = fmt.Sprintf("%s %s(%d,%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNUMERIC,
-			td.Datatype.(*element.Number).Precision.Number, LimitSize(*td.Datatype.(*element.Number).Scale), colDefaultString(td.Default))
-	case element.DataDefNVarChar2:
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*element.NVarchar2).Size, colDefaultString(td.Default))
-	case element.DataDefRaw:
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARBINARY, *td.Datatype.(*element.Raw).Size, colDefaultString(td.Default))
-	case element.DataDefReal:
+			td.Datatype.(*oracle_element.Number).Precision.Number, LimitSize(*td.Datatype.(*oracle_element.Number).Scale), colDefaultString(td.Default))
+	case oracle_element.DataDefNVarChar2:
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeNVARCHAR, *td.Datatype.(*oracle_element.NVarchar2).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefRaw:
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARBINARY, *td.Datatype.(*oracle_element.Raw).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefReal:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDOUBLE, colDefaultString(td.Default))
-	case element.DataDefRowId:
+	case oracle_element.DataDefRowId:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeCHAR, 100, colDefaultString(td.Default))
-	case element.DataDefSmallInt:
+	case oracle_element.DataDefSmallInt:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDECIMAL, 38, colDefaultString(td.Default))
-	case element.DataDefTimestamp:
+	case oracle_element.DataDefTimestamp:
 		// todo with time zone
-		fractionalSecondsPrecision := *td.Datatype.(*element.Timestamp).FractionalSecondsPrecision
+		fractionalSecondsPrecision := *td.Datatype.(*oracle_element.Timestamp).FractionalSecondsPrecision
 		if fractionalSecondsPrecision > 6 {
 			fractionalSecondsPrecision = 6
 		}
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeDATETIME, fractionalSecondsPrecision, colDefaultString(td.Default))
-	case element.DataDefURowId:
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.URowId).Size, colDefaultString(td.Default))
-	case element.DataDefVarchar:
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Varchar2).Size, colDefaultString(td.Default))
-	case element.DataDefVarchar2:
-		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*element.Varchar2).Size, colDefaultString(td.Default))
-	case element.DataDefXMLType:
+	case oracle_element.DataDefURowId:
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*oracle_element.URowId).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefVarchar:
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*oracle_element.Varchar2).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefVarchar2:
+		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, *td.Datatype.(*oracle_element.Varchar2).Size, colDefaultString(td.Default))
+	case oracle_element.DataDefXMLType:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeLONGTEXT, colDefaultString(td.Default))
 	}
 	return colDefinition
@@ -376,16 +381,16 @@ func LimitSize(dec int) int {
 	return dec
 }
 
-func IdentifierToString(i *element.Identifier) string {
-	if i.Typ == element.IdentifierTypeNonQuoted {
+func IdentifierToString(i *oracle_element.Identifier) string {
+	if i.Typ == oracle_element.IdentifierTypeNonQuoted {
 		return strings.ToUpper(i.Value)
-	} else if i.Typ == element.IdentifierTypeQuoted {
+	} else if i.Typ == oracle_element.IdentifierTypeQuoted {
 		return strings.TrimLeft(strings.TrimRight(i.Value, `"`), `"`)
 	}
 	return ""
 }
 
-func HandlingForSpecialCharacters(i *element.Identifier) string {
+func HandlingForSpecialCharacters(i *oracle_element.Identifier) string {
 	return fmt.Sprintf("`%s`", IdentifierToString(i))
 }
 

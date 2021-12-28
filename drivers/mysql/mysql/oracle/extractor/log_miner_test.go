@@ -181,6 +181,18 @@ func TestParseDMLSQL(t *testing.T) {
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"4", nil}},
 		},
+		{
+			name:      "BINARY_FLOAT",
+			sql:       `UPDATE "TEST"."BINARY_FLOAT" SET "COL2" ='500'  WHERE "COL1" = '3' AND "COL2" = "NULL";`,
+			undo_sql:  `UPDATE "TEST"."BINARY_FLOAT" SET "COL2" = NULL  WHERE "COL1" = '3' AND "COL2" = '500';`,
+			want_rows: [][]interface{}{{"3", nil}, {"3", "500"}},
+		},
+		{
+			name:      "BINARY_FLOAT",
+			sql:       `DELETE FROM "TEST"."BINARY_FLOAT" WHERE "COL1" = '4' AND "COL2" = "Nan";`,
+			undo_sql:  `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
+			want_rows: [][]interface{}{{"4", nil}},
+		},
 	}
 
 	logger := hclog.NewNullLogger()
