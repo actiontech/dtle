@@ -2,13 +2,14 @@
 package g
 
 import (
-	hclog "github.com/hashicorp/go-hclog"
-	"github.com/shirou/gopsutil/v3/mem"
 	"os"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	hclog "github.com/hashicorp/go-hclog"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 var (
@@ -23,7 +24,7 @@ var Logger LoggerType
 var RsaPrivateKey string
 
 const (
-	DtleSchemaName string = "dtle"
+	DtleSchemaName              string = "dtle"
 	GtidExecutedTempTable2To3   string = "gtid_executed_temp_v2_v3"
 	GtidExecutedTempTablePrefix string = "gtid_executed_temp_"
 	GtidExecutedTablePrefix     string = "gtid_executed_"
@@ -34,16 +35,16 @@ const (
 
 	JobNameLenLimit = 64
 
-	ENV_PRINT_TPS         = "UDUP_PRINT_TPS"
-	ENV_DUMP_CHECKSUM     = "DTLE_DUMP_CHECKSUM"
-	ENV_DUMP_OLDWAY       = "DTLE_DUMP_OLDWAY"
-	ENV_TESTSTUB1_DELAY   = "UDUP_TESTSTUB1_DELAY"
-	ENV_FULL_APPLY_DELAY  = "DTLE_FULL_APPLY_DELAY"
-	ENV_COUNT_INFO_SCHEMA = "DTLE_COUNT_INFO_SCHEMA"
-	ENV_BIG_MSG_100K      = "DTLE_BIG_MSG_100K"
+	ENV_PRINT_TPS                = "UDUP_PRINT_TPS"
+	ENV_DUMP_CHECKSUM            = "DTLE_DUMP_CHECKSUM"
+	ENV_DUMP_OLDWAY              = "DTLE_DUMP_OLDWAY"
+	ENV_TESTSTUB1_DELAY          = "UDUP_TESTSTUB1_DELAY"
+	ENV_FULL_APPLY_DELAY         = "DTLE_FULL_APPLY_DELAY"
+	ENV_COUNT_INFO_SCHEMA        = "DTLE_COUNT_INFO_SCHEMA"
+	ENV_BIG_MSG_100K             = "DTLE_BIG_MSG_100K"
 	ENV_SKIP_GTID_EXECUTED_TABLE = "DTLE_SKIP_GTID_EXECUTED_TABLE"
-	ENV_FORCE_MTS         = "DTLE_FORCE_MTS"
-	NatsMaxPayload        = 64 * 1024 * 1024
+	ENV_FORCE_MTS                = "DTLE_FORCE_MTS"
+	NatsMaxPayload               = 64 * 1024 * 1024
 
 	LONG_LOG_LIMIT = 256
 
@@ -52,7 +53,7 @@ const (
 
 var (
 	// slightly smaller than NatsMaxPayload
-	NatsMaxMsg = 64 * 1024 * 1024 - 4096
+	NatsMaxMsg                  = 64*1024*1024 - 4096
 	HASH_STRING_SEPARATOR_BYTES = []byte{'½'} // from mysql-server rpl_write_set_handler.cc
 )
 
@@ -74,13 +75,13 @@ func StringPtrEmpty(p *string) bool {
 }
 
 var (
-	freeMemoryCh = make(chan struct{})
+	freeMemoryCh          = make(chan struct{})
 	freeMemoryWorkerCount = int32(0)
-	lowMemory = false
-	memoryMonitorCount = int32(0)
-	MemAvailable = uint64(0)
-	bigTxJobs    = int32(0)
-	BigTxMaxJobs = int32(1)
+	lowMemory             = false
+	memoryMonitorCount    = int32(0)
+	MemAvailable          = uint64(0)
+	bigTxJobs             = int32(0)
+	BigTxMaxJobs          = int32(1)
 )
 
 func FreeMemoryWorker() {
@@ -111,14 +112,14 @@ func IsLowMemory() bool {
 	}
 	if ((memory.Available * 10) < (memory.Total * 2)) && (memory.Available < 1*1024*1024*1024) {
 		if !lowMemory {
-			Logger.Warn("memory is less than 20% and 1GB. pause parsing binlog",
+			Logger.Warn("memory is less than 20% and 1GB. pause extractor parsing",
 				"available", memory.Available, "total", memory.Total)
 		}
 		lowMemory = true
 		return true
 	} else {
 		if lowMemory {
-			Logger.Info("memory is greater than 20% or 1GB. continue parsing binlog",
+			Logger.Info("memory is greater than 20% or 1GB. extractor continue parsing",
 				"available", memory.Available, "total", memory.Total)
 		}
 		lowMemory = false
@@ -159,7 +160,7 @@ func AddBigTxJob() {
 }
 func SubBigTxJob() {
 	nv := atomic.AddInt32(&bigTxJobs, -1)
-	if nv == BigTxMaxJobs - 1 {
+	if nv == BigTxMaxJobs-1 {
 		Logger.Debug("big tx job number decreased", "jobs", nv, "max", BigTxMaxJobs)
 	}
 }
