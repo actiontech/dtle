@@ -193,6 +193,34 @@ func TestParseDMLSQL(t *testing.T) {
 			undo_sql:  `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
 			want_rows: [][]interface{}{{"4", nil}},
 		},
+		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('1',NULL)
+		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('2',TO_DATE('-4712-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS'))
+		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('3',TO_DATE(' 9999-12-31 00:00:00', 'SYYYY-MM-DD HH24:MI:SS'))
+		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('4',TO_DATE(' 2003-05-03 21:02:44', 'SYYYY-MM-DD HH24:MI:SS'))
+		{
+			name:      "DATE_COLUMNS",
+			sql:       `insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('1',NULL)`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"1", nil}},
+		},
+		{
+			name:      "DATE_COLUMNS",
+			sql:       `insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('2',TO_DATE('-4712-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS'))`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"2", "-4712-01-01 00:00:00"}},
+		},
+		{
+			name:      "DATE_COLUMNS",
+			sql:       `insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('3',TO_DATE(' 9999-12-31 00:00:00', 'SYYYY-MM-DD HH24:MI:SS'))`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"3", " 9999-12-31 00:00:00"}},
+		},
+		{
+			name:      "DATE_COLUMNS",
+			sql:       `insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('4',TO_DATE(' 2003-05-03 21:02:44', 'SYYYY-MM-DD HH24:MI:SS'))`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"4", " 2003-05-03 21:02:44"}},
+		},
 	}
 
 	logger := hclog.NewNullLogger()
