@@ -293,6 +293,9 @@ WHERE
 	recordsNum := 0
 	// var lrs []*LogMinerRecord
 	for rows.Next() {
+		for g.IsLowMemory() {
+			time.Sleep(900 * time.Millisecond)
+		}
 		lr, err := scan(rows)
 		if err != nil {
 			return err
@@ -945,12 +948,12 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		visitor.WhereColumnValues[index] = data
 	}
 	dataEvent = common.DataEvent{
-		CurrentSchema:     visitor.Schema,
-		DatabaseName:      visitor.Schema,
-		TableName:         visitor.Table,
-		DML:               visitor.Operation,
-		ColumnCount:       uint64(len(visitor.Columns)),
-		Table:             nil,
+		CurrentSchema: visitor.Schema,
+		DatabaseName:  visitor.Schema,
+		TableName:     visitor.Table,
+		DML:           visitor.Operation,
+		ColumnCount:   uint64(len(visitor.Columns)),
+		Table:         nil,
 	}
 	switch visitor.Operation {
 	case common.InsertDML:
