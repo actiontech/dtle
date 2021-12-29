@@ -124,7 +124,7 @@ const (
 	ToYMintervalStart      = "TO_YMINTERVAL("
 	FunctionUNITSTRStart   = "UNISTR("
 	ToDateFuncStart        = "TO_DATE("
-	ToDateFuncEnd          = ", YYYY-MM-DD HH24:MI:SS)"
+	ToDateFuncEnd          = ", SYYYY-MM-DD HH24:MI:SS)"
 	ToTimestampFuncStart   = "TO_TIMESTAMP("
 	ToTimestampTzFuncStart = "TO_TIMESTAMP_TZ("
 )
@@ -156,7 +156,7 @@ func columnsValueConverter(value string) interface{} {
 	case isUnistrFunction(value):
 		return UnitstrConvert(value)
 	case strings.HasPrefix(value, ToDateFuncStart) && strings.HasSuffix(value, ToDateFuncEnd):
-		return value[8 : len(value)-24]
+		return value[8 : len(value)-25]
 	case strings.HasPrefix(value, ToTimestampFuncStart) && strings.HasSuffix(value, CommonFunctionEnd):
 		return value[13 : len(value)-1]
 	case strings.HasPrefix(value, ToTimestampTzFuncStart) && strings.HasSuffix(value, CommonFunctionEnd):
