@@ -24,6 +24,245 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v2/database/columns": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "list columns of database source instance.",
+                "tags": [
+                    "database"
+                ],
+                "operationId": "ListDatabaseColumnsV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "database host",
+                        "name": "host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "database port",
+                        "name": "port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database user",
+                        "name": "user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database password",
+                        "name": "password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database_type",
+                        "name": "database_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database service_name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "database schema",
+                        "name": "schema",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database table",
+                        "name": "table",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database character set",
+                        "name": "character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that database password is encrypted or not",
+                        "name": "is_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListColumnsRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/database/instance_connection": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "connect to  database instance.",
+                "tags": [
+                    "database"
+                ],
+                "operationId": "ConnectionV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "database host",
+                        "name": "host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "database port",
+                        "name": "port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database user",
+                        "name": "user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database password",
+                        "name": "password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database_type",
+                        "name": "database_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database service_name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that database password is encrypted or not",
+                        "name": "is_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConnectionRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/database/schemas": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "list schemas of database source instance.",
+                "tags": [
+                    "database"
+                ],
+                "operationId": "ListDatabaseSchemasV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "database_type",
+                        "name": "database_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database host",
+                        "name": "host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "database port",
+                        "name": "port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database user",
+                        "name": "user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database password",
+                        "name": "password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "database service_name",
+                        "name": "service_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "database character set",
+                        "name": "character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that database password is encrypted or not",
+                        "name": "is_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListSchemasRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/job/gtid": {
             "get": {
                 "security": [
@@ -1231,206 +1470,6 @@ var doc = `{
                 }
             }
         },
-        "/v2/mysql/columns": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "list columns of mysql source instance.",
-                "tags": [
-                    "mysql"
-                ],
-                "operationId": "ListMysqlColumnsV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "mysql host",
-                        "name": "mysql_host",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql port",
-                        "name": "mysql_port",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql user",
-                        "name": "mysql_user",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql password",
-                        "name": "mysql_password",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql schema",
-                        "name": "mysql_schema",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql table",
-                        "name": "mysql_table",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql character set",
-                        "name": "mysql_character_set",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "indecate that mysql password is encrypted or not",
-                        "name": "is_mysql_password_encrypted",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ListColumnsRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/mysql/instance_connection": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "connect to  mysql instance.",
-                "tags": [
-                    "mysql"
-                ],
-                "operationId": "ConnectionV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "mysql host",
-                        "name": "mysql_host",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql port",
-                        "name": "mysql_port",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql user",
-                        "name": "mysql_user",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql password",
-                        "name": "mysql_password",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "indecate that mysql password is encrypted or not",
-                        "name": "is_mysql_password_encrypted",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ConnectionRespV2"
-                        }
-                    }
-                }
-            }
-        },
-        "/v2/mysql/schemas": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "list schemas of mysql source instance.",
-                "tags": [
-                    "mysql"
-                ],
-                "operationId": "ListMysqlSchemasV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "mysql host",
-                        "name": "mysql_host",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql port",
-                        "name": "mysql_port",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql user",
-                        "name": "mysql_user",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql password",
-                        "name": "mysql_password",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "mysql character set",
-                        "name": "mysql_character_set",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "indecate that mysql password is encrypted or not",
-                        "name": "is_mysql_password_encrypted",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ListMysqlSchemasRespV2"
-                        }
-                    }
-                }
-            }
-        },
         "/v2/nodes": {
             "get": {
                 "security": [
@@ -1894,6 +1933,9 @@ var doc = `{
                         "type": "string"
                     }
                 },
+                "dst_database_type": {
+                    "type": "string"
+                },
                 "job_create_time": {
                     "type": "string"
                 },
@@ -1914,6 +1956,9 @@ var doc = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "src_database_type": {
+                    "type": "string"
                 },
                 "topic": {
                     "type": "string"
@@ -2007,13 +2052,13 @@ var doc = `{
                 "replicate_do_db": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
+                        "$ref": "#/definitions/models.DataSourceConfig"
                     }
                 },
                 "replicate_ignore_db": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
+                        "$ref": "#/definitions/models.DataSourceConfig"
                     }
                 }
             }
@@ -2084,44 +2129,17 @@ var doc = `{
         "models.Configuration": {
             "type": "object",
             "properties": {
-                "binlog_relay": {
-                    "type": "boolean"
-                },
-                "chunk_size": {
-                    "type": "integer"
-                },
-                "dependency_history_size": {
-                    "type": "integer"
-                },
-                "drop_table_if_exists": {
-                    "type": "boolean"
-                },
-                "expand_syntax_support": {
-                    "type": "boolean"
+                "dst_config": {
+                    "$ref": "#/definitions/models.DstConfig"
                 },
                 "fail_over": {
                     "type": "boolean"
                 },
-                "group_max_size": {
-                    "type": "integer"
-                },
-                "group_timeout": {
-                    "type": "integer"
-                },
-                "parallel_workers": {
-                    "type": "integer"
-                },
-                "repl_chan_buffer_size": {
-                    "type": "integer"
-                },
                 "retry_times": {
                     "type": "integer"
                 },
-                "skip_create_db_table": {
-                    "type": "boolean"
-                },
-                "use_my_sql_dependency": {
-                    "type": "boolean"
+                "src_config": {
+                    "$ref": "#/definitions/models.SrcConfig"
                 }
             }
         },
@@ -2129,13 +2147,13 @@ var doc = `{
             "type": "object",
             "properties": {
                 "dst_data_base": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 },
                 "dst_kafka": {
                     "$ref": "#/definitions/models.KafkaDestTaskConfig"
                 },
                 "src_data_base": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
                 }
             }
         },
@@ -2175,7 +2193,7 @@ var doc = `{
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2185,7 +2203,7 @@ var doc = `{
                     "type": "integer"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2211,7 +2229,7 @@ var doc = `{
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2227,7 +2245,7 @@ var doc = `{
                     "type": "integer"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2243,13 +2261,13 @@ var doc = `{
             ],
             "properties": {
                 "dest_task": {
-                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                    "$ref": "#/definitions/models.DestTaskConfig"
                 },
                 "failover": {
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2262,7 +2280,7 @@ var doc = `{
                     "type": "boolean"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2278,7 +2296,7 @@ var doc = `{
             ],
             "properties": {
                 "dest_task": {
-                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                    "$ref": "#/definitions/models.DestTaskConfig"
                 },
                 "eval_create_index": {
                     "type": "integer"
@@ -2287,7 +2305,7 @@ var doc = `{
                     "type": "boolean",
                     "example": true
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
@@ -2306,7 +2324,7 @@ var doc = `{
                     "type": "boolean"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 },
                 "task_step_name": {
                     "type": "string"
@@ -2412,6 +2430,56 @@ var doc = `{
                 }
             }
         },
+        "models.DataSourceConfig": {
+            "type": "object",
+            "properties": {
+                "table_schema": {
+                    "type": "string"
+                },
+                "table_schema_regex": {
+                    "type": "string"
+                },
+                "table_schema_rename": {
+                    "type": "string"
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TableConfig"
+                    }
+                }
+            }
+        },
+        "models.DatabaseConnectionConfig": {
+            "type": "object",
+            "required": [
+                "database_type",
+                "host",
+                "password",
+                "port",
+                "user"
+            ],
+            "properties": {
+                "database_type": {
+                    "type": "string"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "service_name": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "models.DelayCount": {
             "type": "object",
             "properties": {
@@ -2444,6 +2512,38 @@ var doc = `{
             "properties": {
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "models.DestTaskConfig": {
+            "type": "object",
+            "required": [
+                "connection_config",
+                "task_name"
+            ],
+            "properties": {
+                "connection_config": {
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
+                },
+                "database_type": {
+                    "type": "string"
+                },
+                "mysql_dest_task_config": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "task_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.DstConfig": {
+            "type": "object",
+            "properties": {
+                "mysql_dest_task_config": {
+                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
                 }
             }
         },
@@ -2611,7 +2711,7 @@ var doc = `{
                 }
             }
         },
-        "models.ListMysqlSchemasRespV2": {
+        "models.ListSchemasRespV2": {
             "type": "object",
             "properties": {
                 "message": {
@@ -2682,70 +2782,14 @@ var doc = `{
                 }
             }
         },
-        "models.MysqlConnectionConfig": {
-            "type": "object",
-            "required": [
-                "mysql_host",
-                "mysql_password",
-                "mysql_port",
-                "mysql_user"
-            ],
-            "properties": {
-                "mysql_host": {
-                    "type": "string"
-                },
-                "mysql_password": {
-                    "type": "string"
-                },
-                "mysql_port": {
-                    "type": "integer"
-                },
-                "mysql_user": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.MysqlDataSourceConfig": {
-            "type": "object",
-            "properties": {
-                "table_schema": {
-                    "type": "string"
-                },
-                "table_schema_regex": {
-                    "type": "string"
-                },
-                "table_schema_rename": {
-                    "type": "string"
-                },
-                "tables": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlTableConfig"
-                    }
-                }
-            }
-        },
         "models.MysqlDestTaskConfig": {
             "type": "object",
-            "required": [
-                "mysql_connection_config",
-                "task_name"
-            ],
             "properties": {
                 "dependency_history_size": {
                     "type": "integer"
                 },
-                "mysql_connection_config": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
-                },
-                "node_id": {
-                    "type": "string"
-                },
                 "parallel_workers": {
                     "type": "integer"
-                },
-                "task_name": {
-                    "type": "string"
                 },
                 "use_my_sql_dependency": {
                     "type": "boolean"
@@ -2754,10 +2798,6 @@ var doc = `{
         },
         "models.MysqlSrcTaskConfig": {
             "type": "object",
-            "required": [
-                "mysql_connection_config",
-                "task_name"
-            ],
             "properties": {
                 "auto_gtid": {
                     "type": "boolean"
@@ -2765,75 +2805,13 @@ var doc = `{
                 "binlog_relay": {
                     "type": "boolean"
                 },
-                "chunk_size": {
-                    "type": "integer"
-                },
-                "drop_table_if_exists": {
-                    "type": "boolean"
-                },
                 "expand_syntax_support": {
                     "type": "boolean"
-                },
-                "group_max_size": {
-                    "type": "integer"
-                },
-                "group_timeout": {
-                    "type": "integer"
                 },
                 "gtid": {
                     "type": "string"
                 },
-                "mysql_connection_config": {
-                    "$ref": "#/definitions/models.MysqlConnectionConfig"
-                },
-                "node_id": {
-                    "type": "string"
-                },
-                "repl_chan_buffer_size": {
-                    "type": "integer"
-                },
-                "replicate_do_db": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
-                    }
-                },
-                "replicate_ignore_db": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.MysqlDataSourceConfig"
-                    }
-                },
-                "skip_create_db_table": {
-                    "type": "boolean"
-                },
-                "task_name": {
-                    "type": "string"
-                },
                 "wait_on_job": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.MysqlTableConfig": {
-            "type": "object",
-            "properties": {
-                "column_map_from": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "table_name": {
-                    "type": "string"
-                },
-                "table_regex": {
-                    "type": "string"
-                },
-                "table_rename": {
-                    "type": "string"
-                },
-                "where": {
                     "type": "string"
                 }
             }
@@ -2961,6 +2939,14 @@ var doc = `{
                     "items": {
                         "$ref": "#/definitions/models.NodeListItemV2"
                     }
+                }
+            }
+        },
+        "models.OracleSrcTaskConfig": {
+            "type": "object",
+            "properties": {
+                "scn": {
+                    "type": "integer"
                 }
             }
         },
@@ -3110,6 +3096,112 @@ var doc = `{
                 },
                 "validated": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.SrcConfig": {
+            "type": "object",
+            "properties": {
+                "chunk_size": {
+                    "type": "integer"
+                },
+                "drop_table_if_exists": {
+                    "type": "boolean"
+                },
+                "group_max_size": {
+                    "type": "integer"
+                },
+                "group_timeout": {
+                    "type": "integer"
+                },
+                "mysql_src_task_config": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "oracle_src_task_config": {
+                    "$ref": "#/definitions/models.OracleSrcTaskConfig"
+                },
+                "repl_chan_buffer_size": {
+                    "type": "integer"
+                },
+                "skip_create_db_table": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.SrcTaskConfig": {
+            "type": "object",
+            "required": [
+                "connection_config",
+                "task_name"
+            ],
+            "properties": {
+                "chunk_size": {
+                    "type": "integer"
+                },
+                "connection_config": {
+                    "$ref": "#/definitions/models.DatabaseConnectionConfig"
+                },
+                "drop_table_if_exists": {
+                    "type": "boolean"
+                },
+                "group_max_size": {
+                    "type": "integer"
+                },
+                "group_timeout": {
+                    "type": "integer"
+                },
+                "mysql_src_task_config": {
+                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "oracle_src_task_config": {
+                    "$ref": "#/definitions/models.OracleSrcTaskConfig"
+                },
+                "repl_chan_buffer_size": {
+                    "type": "integer"
+                },
+                "replicate_do_db": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DataSourceConfig"
+                    }
+                },
+                "replicate_ignore_db": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DataSourceConfig"
+                    }
+                },
+                "skip_create_db_table": {
+                    "type": "boolean"
+                },
+                "task_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.TableConfig": {
+            "type": "object",
+            "properties": {
+                "column_map_from": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "table_name": {
+                    "type": "string"
+                },
+                "table_regex": {
+                    "type": "string"
+                },
+                "table_rename": {
+                    "type": "string"
+                },
+                "where": {
+                    "type": "string"
                 }
             }
         },
@@ -3369,16 +3461,16 @@ var doc = `{
             ],
             "properties": {
                 "dest_task": {
-                    "$ref": "#/definitions/models.MysqlDestTaskConfig"
+                    "$ref": "#/definitions/models.DestTaskConfig"
                 },
-                "is_mysql_password_encrypted": {
+                "is_password_encrypted": {
                     "type": "boolean"
                 },
                 "job_id": {
                     "type": "string"
                 },
                 "src_task": {
-                    "$ref": "#/definitions/models.MysqlSrcTaskConfig"
+                    "$ref": "#/definitions/models.SrcTaskConfig"
                 }
             }
         },
