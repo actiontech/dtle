@@ -193,14 +193,6 @@ func (e *Extractor) Run() {
 		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", firstWait)
 	}
 
-	e.logger.Debug("consul put ReplChanBufferSize")
-	err = e.storeManager.PutKey(e.subject, "ReplChanBufferSize",
-		[]byte(strconv.Itoa(int(e.mysqlContext.ReplChanBufferSize))))
-	if err != nil {
-		e.onError(common.TaskStateDead, errors.Wrap(err, "PutKey ReplChanBufferSize"))
-		return
-	}
-
 	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
 		e.onError(common.TaskStateDead, err)
 	})

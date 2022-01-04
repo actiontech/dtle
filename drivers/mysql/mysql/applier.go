@@ -244,24 +244,6 @@ func (a *Applier) Run() {
 	a.checkJobFinish()
 	go a.watchTargetGtid()
 
-	{
-		v, err := a.storeManager.WaitKv(a.subject, "ReplChanBufferSize", a.shutdownCh)
-		if err != nil {
-			a.onError(common.TaskStateDead, errors.Wrap(err, "WaitKv ReplChanBufferSize"))
-			return
-		}
-		i, err := strconv.Atoi(string(v))
-		if err != nil {
-			a.onError(common.TaskStateDead, errors.Wrap(err, "Atoi ReplChanBufferSize"))
-			return
-		}
-		a.logger.Debug("got ReplChanBufferSize from consul", "i", i)
-		if i > 0 {
-			a.logger.Debug("use ReplChanBufferSize from consul", "i", i)
-			a.mysqlContext.ReplChanBufferSize = int64(i)
-		}
-	}
-
 	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.mysqlContext)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
