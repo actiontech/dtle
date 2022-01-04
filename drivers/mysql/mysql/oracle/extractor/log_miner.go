@@ -908,13 +908,82 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 	}
 	return dataEvent, fmt.Errorf("parese dateEvent fail , operation Code %v", row.Operation)
 }
-func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common.DataEvent, err error) {
+func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (dataEvent common.DataEvent, err error) {
 	// e.logger.Debug("============= dml stmt parse start===============", "redoSQL", redoSQL, "undoSQL", undoSQL)
-	// dml
-	// redoSQL parse
 	// todo 大小写问题
-	redoSQL = ReplaceQuotesString(redoSQL)
-	redoSQL = ReplaceSpecifiedString(redoSQL, ";", "")
+	OracleToMySQL := func(oracleSQL string) string {
+		if strings.HasPrefix(oracleSQL, "insert into") {
+			insertSqlSlice := strings.Split(oracleSQL, ") values (")
+			if len(insertSqlSlice) == 2 {
+				oracleSQL = strings.Replace(oracleSQL, insertSqlSlice[0], ReplaceSpecifiedString(insertSqlSlice[0], `"`, "`"), 1)
+				oracleSQL = strings.Replace(oracleSQL, insertSqlSlice[1], strings.ReplaceAll(insertSqlSlice[1], `\`, `\\`), 1)
+			} else {
+				e.logger.Warn("schema/table/column names contain unexpected characters ) values (")
+			}
+
+		} else if strings.HasPrefix(oracleSQL, "delete") {
+			delSqlSlice := strings.Split(oracleSQL, " where ")
+			if len(delSqlSlice) == 2 {
+				oracleSQL = strings.Replace(oracleSQL, delSqlSlice[0], ReplaceSpecifiedString(delSqlSlice[0], `"`, "`"), 1)
+				wereExper := delSqlSlice[1]
+				wereExperSli := strings.Split(wereExper, " and ")
+				for i := range wereExperSli {
+					colAndVal := strings.Split(wereExperSli[i], " = ")
+					if len(colAndVal) == 2 {
+						wereExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
+							ReplaceSpecifiedString(colAndVal[1], `\`, `\\`))
+					}
+				}
+				wereExper = strings.Join(wereExperSli, " and ")
+				oracleSQL = strings.Replace(oracleSQL, delSqlSlice[1], wereExper, 1)
+			}
+		} else if strings.HasPrefix(oracleSQL, "update") {
+			// update "TEST"."BINARY_FLOAT6" set "COL2" ='500'  where "COL1" = '3' and "COL2" = 'NULL';
+			updateSqlSlice := strings.Split(oracleSQL, " where ")
+			if len(updateSqlSlice) == 2 {
+				// "COL1" = '3' and "COL2" = 'NULL';
+				wereExper := updateSqlSlice[1]
+				wereExperSli := strings.Split(wereExper, " and ")
+				for i := range wereExperSli {
+					colAndVal := strings.Split(wereExperSli[i], " = ")
+					if len(colAndVal) == 2 {
+						wereExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
+							ReplaceSpecifiedString(colAndVal[1], `\`, `\\`))
+					}
+				}
+				wereExper = strings.Join(wereExperSli, " and ")
+				updateSqlSlice[1] = wereExper
+
+				// update "TEST"."BINARY_FLOAT6" set "COL2" ='500' and "COL1" = 'ss'
+				headerExper := updateSqlSlice[0]
+				headExperSli := strings.Split(headerExper, " set ")
+				if len(headExperSli) == 2 {
+					// update "TEST"."BINARY_FLOAT6"
+					headExperSli[0] = ReplaceSpecifiedString(headExperSli[0], `"`, "`")
+					// "COL2" ='500' and "COL1" = 'ss'
+					setExperSli := strings.Split(headExperSli[1], " and ")
+					for i := range setExperSli {
+						colAndVal := strings.Split(wereExperSli[i], " = ")
+						setExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
+							ReplaceSpecifiedString(colAndVal[1], `\`, `\\`))
+					}
+					headExperSli[1] = strings.Join(setExperSli, " and ")
+
+					updateSqlSlice[0] = strings.Join(headExperSli, " set ")
+					oracleSQL = strings.Join(updateSqlSlice, " where ")
+				}
+			}
+			oracleSQL = ReplaceSpecifiedString(oracleSQL, `"`, "`")
+		} else {
+			e.logger.Warn("Special grammar, not as expected, sql %v", oracleSQL)
+			oracleSQL = ReplaceSpecifiedString(oracleSQL, `"`, "`")
+		}
+		if strings.HasSuffix(oracleSQL, ";") {
+			oracleSQL = ReplaceSpecifiedString(oracleSQL, ";", "")
+		}
+		return oracleSQL
+	}
+	redoSQL := OracleToMySQL(oracleRedoSQL)
 	p := parser.New()
 	stmt, _, err := p.Parse(redoSQL, "", "")
 	if err != nil {
@@ -945,12 +1014,12 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 		visitor.WhereColumnValues[index] = data
 	}
 	dataEvent = common.DataEvent{
-		CurrentSchema:     visitor.Schema,
-		DatabaseName:      visitor.Schema,
-		TableName:         visitor.Table,
-		DML:               visitor.Operation,
-		ColumnCount:       uint64(len(visitor.Columns)),
-		Table:             nil,
+		CurrentSchema: visitor.Schema,
+		DatabaseName:  visitor.Schema,
+		TableName:     visitor.Table,
+		DML:           visitor.Operation,
+		ColumnCount:   uint64(len(visitor.Columns)),
+		Table:         nil,
 	}
 	switch visitor.Operation {
 	case common.InsertDML:
@@ -958,18 +1027,17 @@ func (e *ExtractorOracle) parseDMLSQL(redoSQL, undoSQL string) (dataEvent common
 	case common.DeleteDML:
 		dataEvent.Rows = [][]interface{}{visitor.WhereColumnValues}
 	case common.UpdateDML:
-		undoSQL = ReplaceQuotesString(undoSQL)
-		undoSQL = ReplaceSpecifiedString(undoSQL, ";", "")
+		undoSQL := OracleToMySQL(oracleUndoSQL)
 		undoP := parser.New()
-		stmtP, _, err := undoP.Parse(undoSQL, "", "")
+		untoStmt, _, err := undoP.Parse(undoSQL, "", "")
 		if err != nil {
 			return dataEvent, err
 		}
 		undoVisitor := &Stmt{logger: e.logger}
-		if len(stmtP) <= 0 {
+		if len(untoStmt) <= 0 {
 			return dataEvent, nil
 		}
-		(stmtP[0]).Accept(undoVisitor)
+		(untoStmt[0]).Accept(undoVisitor)
 		undoVisitor.WhereColumnValues = make([]interface{}, len(ordinals))
 		for column, index := range ordinals {
 			data, ok := undoVisitor.Before[column]
@@ -1195,7 +1263,7 @@ func Query(db *gosql.DB, querySQL string, args ...interface{}) ([]map[string]str
 
 // 替换字符串引号字符
 func ReplaceQuotesString(s string) string {
-	return string(exbytes.Replace([]byte(s), []byte("\""), []byte(""), -1))
+	return string(exbytes.Replace([]byte(s), []byte("\""), []byte("`"), -1))
 }
 
 // 替换指定字符

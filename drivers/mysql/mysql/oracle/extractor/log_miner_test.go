@@ -144,53 +144,58 @@ func TestParseDMLSQL(t *testing.T) {
 		undo_sql  string
 		want_rows [][]interface{}
 	}{
+		{
+			name:      "NCHAR_255_COLUMNS",
+			sql:       `insert into "TEST"."NCHAR_255_COLUMNS"("COL1","COL2") values ('11',UNISTR('\6570\636E\5E93sql\6D4B\8BD5\6570\636E\5E93sql\6D4B\8BD5                                                                                                                                                                                                                                               '))`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"11", "数据库sql测试数据库sql测试                                                                                                                                                                                                                                               "}}},
 		// NUMBER(*)
 		// BFILE  no support
 		// BINARY_FLOAT
-		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (1, 3.40282E+38F);
-		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (2, BINARY_FLOAT_INFINITY);
-		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (3, -BINARY_FLOAT_INFINITY);
-		// INSERT INTO TEST.TEST("COL1","COL2") VALUES (4, BINARY_FLOAT_NAN);
+		// insert into TEST.TEST("COL1","COL2") values (1, 3.40282E+38F);
+		// insert into TEST.TEST("COL1","COL2") values (2, BINARY_FLOAT_INFINITY);
+		// insert into TEST.TEST("COL1","COL2") values (3, -BINARY_FLOAT_INFINITY);
+		// insert into TEST.TEST("COL1","COL2") values (4, BINARY_FLOAT_NAN);
 		{
-			name:      "BINARY_FLOAT",
-			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('0', '1.17549E-38F');`,
+			name:      "BINARY_FLOAT1",
+			sql:       `insert into "TEST"."BINARY_FLOAT1"("COL1","COL2") values ('0', '1.17549E-38F');`,
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"0", "1.17549E-38F"}},
 		},
 		{
-			name:      "BINARY_FLOAT",
-			sql:       `INSERT INTO TEST.BINARY_FLOAT("COL1","COL2") VALUES ('1', '3.40282E+38F');`,
+			name:      "BINARY_FLOAT2",
+			sql:       `insert into TEST.BINARY_FLOAT2("COL1","COL2") values ('1', '3.40282E+38F');`,
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"1", "3.40282E+38F"}},
 		},
 		{
-			name:      "BINARY_FLOAT",
-			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('2', 'Inf');`,
+			name:      "BINARY_FLOAT3",
+			sql:       `insert into "TEST"."BINARY_FLOAT3"("COL1","COL2") values ('2', 'Inf');`,
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"2", nil}},
 		},
 		{
-			name:      "BINARY_FLOAT",
-			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('3', '-Inf');`,
+			name:      "BINARY_FLOAT4",
+			sql:       `insert into "TEST"."BINARY_FLOAT4"("COL1","COL2") values ('3', '-Inf');`,
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"3", nil}},
 		},
 		{
-			name:      "BINARY_FLOAT",
-			sql:       `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
+			name:      "BINARY_FLOAT5",
+			sql:       `insert into "TEST"."BINARY_FLOAT5"("COL1","COL2") values ('4', 'Nan');`,
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"4", nil}},
 		},
 		{
-			name:      "BINARY_FLOAT",
-			sql:       `UPDATE "TEST"."BINARY_FLOAT" SET "COL2" ='500'  WHERE "COL1" = '3' AND "COL2" = "NULL";`,
-			undo_sql:  `UPDATE "TEST"."BINARY_FLOAT" SET "COL2" = NULL  WHERE "COL1" = '3' AND "COL2" = '500';`,
-			want_rows: [][]interface{}{{"3", nil}, {"3", "500"}},
+			name:      "BINARY_FLOAT6",
+			sql:       `update "TEST"."BINARY_FLOAT6" set "COL2" ='500'  where "COL1" = '3' and "COL2" = 'NULL';`,
+			undo_sql:  `update "TEST"."BINARY_FLOAT6" set "COL2" = NULL  where "COL1" = '3' and "COL2" = '50\0';`,
+			want_rows: [][]interface{}{{"3", nil}, {"3", "50\\0"}},
 		},
 		{
-			name:      "BINARY_FLOAT",
-			sql:       `DELETE FROM "TEST"."BINARY_FLOAT" WHERE "COL1" = '4' AND "COL2" = "Nan";`,
-			undo_sql:  `INSERT INTO "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('4', 'Nan');`,
+			name:      "BINARY_FLOAT7",
+			sql:       `delete from "TEST"."BINARY_FLOAT7" where "COL1" = '4' and "COL2" = 'Nan';`,
+			undo_sql:  `insert into "TEST"."BINARY_FLOAT7"("COL1","COL2") VALUES ('4', 'Nan');`,
 			want_rows: [][]interface{}{{"4", nil}},
 		},
 		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('1',NULL)
@@ -221,6 +226,40 @@ func TestParseDMLSQL(t *testing.T) {
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"4", " 2003-05-03 21:02:44"}},
 		},
+		// CREATE TABLE TEST."te\shu"(COL1 INT, col2 CHAR(256))
+		{
+			name:      `te\shu`,
+			sql:       `insert into "TEST"."te\shu"("COL1","COL2") values ('5','x\x44')`,
+			undo_sql:  `insert into "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('5', 'Nan');`,
+			want_rows: [][]interface{}{{"5", `x\x44`}},
+		},
+		{
+			name:      `te\shu`,
+			sql:       `delete from "TEST"."te\shu"  where "COL1" = '4' and "COL2" = '\';`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"4", `\`}},
+		},
+		{
+			name:      `te\shu`,
+			sql:       `delete from "TEST"."te\shu" where "COL1" = '5' and "COL2" = '"';`,
+			undo_sql:  `insert into "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('5', 'Nan');`,
+			want_rows: [][]interface{}{{"5", `"`}},
+		},
+		// {
+		// 	name:      "NCHAR_255_COLUMNS",
+		// 	sql:       `insert into "TEST"."NCHAR_255_COLUMNS"("COL1","COL2") values ('9',UNISTR('\6570\636E\5E93sql\6D4B\8BD5'))`,
+		// 	undo_sql:  ``,
+		// 	want_rows: [][]interface{}{{"9", "数据库sql测试"}}},
+		{
+			name:      "CHAR_255_COLUMNS2",
+			sql:       `insert into "TEST"."CHAR_255_COLUMNS2"("COL1","COL2") values ('16','"')`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"16", `"`}}},
+		{
+			name:      "CHAR_255_COLUMNS3",
+			sql:       `insert into "TEST"."CHAR_255_COLUMNS3"("COL1","COL2") values ('18','\')`,
+			undo_sql:  ``,
+			want_rows: [][]interface{}{{"18", `\`}}},
 	}
 
 	logger := hclog.NewNullLogger()
@@ -254,7 +293,7 @@ func TestParseDMLSQL(t *testing.T) {
 				}
 				for j := range dataEvent.Rows[i] {
 					if dataEvent.Rows[i][j] != tt.want_rows[i][j] {
-						t.Errorf("unexpected rows")
+						t.Errorf("unexpected rows real %v ,want %v ", dataEvent.Rows[i][j], tt.want_rows[i][j])
 					}
 				}
 			}

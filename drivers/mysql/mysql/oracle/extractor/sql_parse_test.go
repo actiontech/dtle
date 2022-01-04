@@ -21,12 +21,12 @@ func TestColumnsValueConverter(t *testing.T) {
 		// assertThat(UnistrHelper.convert("UNISTR('\\0412\\044B')  ||  UNISTR('\\0431\\0443')")).isEqualTo("Выбу");
 		{
 			name:          "UNISTR",
-			coverageValue: "UNISTR('0412044B')",
-			expect:        `Вы`,
+			coverageValue: `UNISTR(\\0412\\044B) ||UNISTR(\\0431\\0443)`,
+			expect:        `Выбу`,
 		},
 		{
 			name:          "UNISTR",
-			coverageValue: `UNISTR('6570636E5E936D4B8BD5')`,
+			coverageValue: `UNISTR(\\6570\\636E\\5E93\\6D4B\\8BD5)`,
 			expect:        `数据库测试`,
 		},
 	}

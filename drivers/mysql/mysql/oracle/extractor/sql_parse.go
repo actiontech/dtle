@@ -133,6 +133,7 @@ var CONCATENATIONPATTERN = "\\|\\|"
 
 func columnsValueConverter(value string) interface{} {
 	value = strings.TrimLeft(strings.TrimRight(value, "'"), "'")
+	value = strings.ReplaceAll(value, `\\`, `\`)
 	// value = value[1 : len(value)-1]
 	switch {
 	case value == "":
@@ -183,6 +184,7 @@ func UnitstrConvert(data string) string {
 	if data == "" {
 		return data
 	}
+	// no unit case
 	// Multiple UNISTR function calls maybe concatenated together using "||".
 	// We split the values into their respective parts before parsing each one separately.
 	regex, err := regexp.Compile(CONCATENATIONPATTERN)
@@ -194,7 +196,7 @@ func UnitstrConvert(data string) string {
 	for i := range parts {
 		trimPart := strings.TrimSpace(parts[i])
 		if isUnistrFunction(trimPart) {
-			results = append(results, UnitstrDecode(trimPart[8:len(trimPart)-2]))
+			results = append(results, UnitstrDecode(trimPart[7:len(trimPart)-1]))
 		} else {
 			results = append(results, data)
 		}
@@ -208,20 +210,19 @@ func UnitstrDecode(value string) string {
 	lens := len(value)
 
 	for i := 0; i < lens; {
-		// if c == '\\' {
-		if value[i] == ' ' {
+		if value[i] != '\\' {
 			results = append(results, string(value[i]))
-			i++
+			i += 1
 		} else {
 			if lens >= (i + 4) {
 				// Read next 4 character hex and convert to character.
-				temp, err := strconv.ParseInt(string(value[i:i+4]), 16, 0)
+				temp, err := strconv.ParseInt(string(value[i+1:i+5]), 16, 0)
 				if err != nil {
 					return ""
 				}
 
 				results = append(results, fmt.Sprintf("%c", temp))
-				i += 4
+				i += 5
 				continue
 			}
 		}
