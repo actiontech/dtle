@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/applier"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/extractor"
 
 	"github.com/actiontech/dtle/g"
@@ -187,13 +186,6 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 				d.storeManager, d.config.NatsAdvertise, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
-			}
-		} else if h.driverConfig.OracleConfig != nil {
-			h.logger.Debug("found oracle dest", "OracleConfig", h.driverConfig.OracleConfig)
-			runner, err = applier.NewApplierOracle(ctx, h.driverConfig, h.logger, d.storeManager,
-				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig)
-			if err != nil {
-				return nil, errors.Wrap(err, "NewOracleRunner")
 			}
 		} else {
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,

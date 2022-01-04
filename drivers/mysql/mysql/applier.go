@@ -288,6 +288,12 @@ func (a *Applier) Run() {
 		return
 	}
 	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
+		err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.LogPos, entry.Coordinates.LastCommitted)
+		if err != nil {
+			a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))
+			return
+		}
+
 		if entry.Final {
 			a.gtidCh <- &entry.Coordinates
 		}

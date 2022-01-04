@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -253,6 +254,10 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 		"gno", binlogEntry.Coordinates.GNO, "lc", binlogEntry.Coordinates.LastCommitted,
 		"seq", binlogEntry.Coordinates.SeqenceNumber)
 
+	if binlogEntry.Coordinates.SID == [16]byte{0} {
+		return a.handleEntryOracle(entryCtx)
+	}
+
 	if binlogEntry.Coordinates.OSID == a.MySQLServerUuid {
 		a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.OSID)
 		a.EntryExecutedHook(binlogEntry) // make gtid continuous
@@ -264,6 +269,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 	// whether to skip for each parts.
 
 	// region TestIfExecuted
+
 	gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.SID)
 	txExecuted := func() bool {
 		a.gtidSetLock.RLock()
@@ -611,8 +617,13 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 					return err
 				}
 			}
-		default:
-			flag := binary.LittleEndian.Uint16(event.Flags)
+		default: // is DML
+			flag := uint16(0)
+			if len(event.Flags) > 0 {
+				flag = binary.LittleEndian.Uint16(event.Flags)
+			} else {
+				// Oracle
+			}
 			noFKCheckFlag := flag & RowsEventFlagNoForeignKeyChecks != 0
 			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
@@ -747,6 +758,21 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 			}
 			binlogEntry.TableItems[i] = tableItem
 		}
+	}
+	return nil
+}
+
+func (a *ApplierIncr) handleEntryOracle(entryCtx *common.BinlogEntryContext) (err error) {
+	err = a.setTableItemForBinlogEntry(entryCtx)
+	if err != nil {
+		return err
+	}
+	if err := a.ApplyBinlogEvent(0, entryCtx); err != nil {
+		if os.Getenv("SkipErr") == "true" {
+			a.logger.Error("skip : apply binlog event err", "err", err, "entryCtx", entryCtx)
+			return nil
+		}
+		return err
 	}
 	return nil
 }
