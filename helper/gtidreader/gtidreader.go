@@ -6,20 +6,21 @@ import (
 	"encoding/binary"
 	"fmt"
 	//. "github.com/actiontech/dtle/helper/u"
-	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
+	//"github.com/actiontech/dtle/internal/client/driver/mysql2/base"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 )
 
 const (
 	GTID_SUMMARY byte = 1
-	GTID_SINGLE byte = 2
+	GTID_SINGLE  byte = 2
 )
+
 func main() {
 	var err error
 	intervals := gomysql.IntervalSlice{}
 	var i2 []int64
-	for i := int64(123456789); i <= 123456789 + 100000; i += 2 {
-		intervals = append(intervals, gomysql.Interval{Start:i, Stop: i + 1})
+	for i := int64(123456789); i <= 123456789+100000; i += 2 {
+		intervals = append(intervals, gomysql.Interval{Start: i, Stop: i + 1})
 		i2 = append(i2, i)
 	}
 	intervals = intervals.Normalize()

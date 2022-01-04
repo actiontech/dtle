@@ -18,8 +18,8 @@ import (
 func main() {
 	var err error
 	err = dmlog.InitLogger(&dmlog.Config{
-		Level:          "Debug",
-		Format:         "text",
+		Level:  "Debug",
+		Format: "text",
 	})
 	u.PanicIfErr(err)
 	relayDir := "./binlog"
@@ -28,16 +28,16 @@ func main() {
 		AutoFixGTID: false,
 		RelayDir:    relayDir,
 		ServerID:    666,
-		Flavor:      "mysql",
+		Flavor:      "mysql2",
 		Charset:     "utf8mb4",
-		From:        dmconfig.DBConfig{
-			Host:             "10.186.62.40",
-			Port:             3307,
-			User:             "root",
-			Password:         "password",
+		From: dmconfig.DBConfig{
+			Host:     "10.186.62.40",
+			Port:     3307,
+			User:     "root",
+			Password: "password",
 		},
-		BinLogName:  "",
-		BinlogGTID:  "acd7d195-06cd-11e9-928f-02000aba3e28:1-105",
+		BinLogName: "",
+		BinlogGTID: "acd7d195-06cd-11e9-928f-02000aba3e28:1-105",
 		ReaderRetry: retry.ReaderRetryConfig{
 			BackoffRollback: 200 * time.Millisecond,
 			BackoffMax:      1 * time.Second,
@@ -49,7 +49,6 @@ func main() {
 
 	err = relay.Init(context.Background())
 	u.PanicIfErr(err)
-
 
 	end := make(chan struct{})
 	go func() {

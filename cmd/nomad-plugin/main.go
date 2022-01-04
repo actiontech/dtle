@@ -3,14 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/actiontech/dtle/drivers"
 	"github.com/shirou/gopsutil/v3/mem"
 	_ "net/http/pprof"
 	"os"
 	"runtime"
 
-	"github.com/actiontech/dtle/drivers/api"
+	"github.com/actiontech/dtle/api"
 
-	dtle "github.com/actiontech/dtle/drivers/mysql"
 	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins"
@@ -49,7 +49,7 @@ func main() {
 		logger.Debug("plugins.Serve Factory called.")
 		go g.DumpLoop(logger)
 
-		dtle.RegisterSetupApiServerFn(api.SetupApiServer)
-		return dtle.NewDriver(logger)
+		drivers.RegisterSetupApiServerFn(api.SetupApiServer)
+		return drivers.NewDriver(logger)
 	})
 }

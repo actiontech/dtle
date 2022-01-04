@@ -70,7 +70,7 @@ plugin "dtle" {
     # By default, API compatibility layer is disabled.
     api_addr = "127.0.0.1:8190"   # for compatibility API
     nomad_addr = "127.0.0.1:4646" # compatibility API need to access a nomad server
-    # rsa_private_key_path indicate the file containing the private key for decrypting mysql password that got through http api
+    # rsa_private_key_path indicate the file containing the private key for decrypting mysql2 password that got through http api
     # rsa_private_key_path = "xxx"
     # cert_file_path = "PATH_TO_CERT_FILE"
     # key_file_path = "PATH_TO_KEY_FILE"

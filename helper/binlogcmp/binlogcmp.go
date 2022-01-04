@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	MYSQL_USER = "root"
+	MYSQL_USER     = "root"
 	MYSQL_PASSWORD = "password"
 )
 
@@ -21,10 +21,14 @@ type State int
 
 func (s State) String() string {
 	switch s {
-	case WAIT_TX1: return "WAIT_TX1"
-	case READ_TX1: return "READ_TX1"
-	case WAIT_TX2: return "WAIT_TX2"
-	case READ_TX2: return "READ_TX2"
+	case WAIT_TX1:
+		return "WAIT_TX1"
+	case READ_TX1:
+		return "READ_TX1"
+	case WAIT_TX2:
+		return "WAIT_TX2"
+	case READ_TX2:
+		return "READ_TX2"
 	default:
 		return "<invalid state>"
 	}
@@ -223,7 +227,7 @@ func stream(host string, port uint16, gtidStr string) (*rep.BinlogSyncer, *rep.B
 	var err error
 	syncConf := rep.BinlogSyncerConfig{
 		ServerID: rand.Uint32(),
-		Flavor:   "mysql",
+		Flavor:   "mysql2",
 		Host:     host,
 		Port:     port,
 		User:     MYSQL_USER,

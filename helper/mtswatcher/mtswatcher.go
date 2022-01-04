@@ -18,9 +18,9 @@ import (
 	"math/rand"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
@@ -39,14 +39,14 @@ func main() {
 	rand.Seed(time.Now().Unix())
 	syncerConf := replication.BinlogSyncerConfig{
 		ServerID: rand.Uint32(),
-		Flavor:   "mysql",
+		Flavor:   "mysql2",
 		Host:     *host,
 		Port:     uint16(*port),
 		User:     *user,
 		Password: *password,
 	}
 
-	db, err := sql.Open("mysql", fmt.Sprintf("%v:%v@tcp(%v:%v)/", *user, *password, *host, *port))
+	db, err := sql.Open("mysql2", fmt.Sprintf("%v:%v@tcp(%v:%v)/", *user, *password, *host, *port))
 	PanicIfErr(err)
 
 	if *gtidSet == "" {

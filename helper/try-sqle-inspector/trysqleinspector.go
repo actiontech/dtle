@@ -1,25 +1,24 @@
 package main
 
 import (
-	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
-	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
-	//"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"
+	"github.com/actiontech/dtle/drivers/mysql/base"
+	"github.com/actiontech/dtle/drivers/mysql/sqle/inspector"
+	//"github.com/actiontech/dtle/internal/client/driver/mysql2/base"
+	//"github.com/actiontech/dtle/internal/client/driver/mysql2/sqle/inspector"
 	"github.com/pingcap/tidb/parser"
 	"github.com/pingcap/tidb/parser/ast"
 	"log"
 )
 
-
 var (
 	ctx = inspector.NewContext(nil)
-	p = parser.New()
+	p   = parser.New()
 )
 
 func do(sql string) {
-	ast, err := p.ParseOneStmt(sql, "", "");
+	ast, err := p.ParseOneStmt(sql, "", "")
 	panicIfErr(err)
-	ctx.UpdateContext(ast, "mysql")
+	ctx.UpdateContext(ast, "mysql2")
 }
 
 func main() {
@@ -50,9 +49,9 @@ func case7() {
 
 	do("create table fk.a (id int primary key)")
 	do("create table fk.a1 (id int primary key)")
-//	do(`create table fk.b (id int primary key, val int,
-//constraint b_ibfk_1 foreign key b_ibfk_1 (val) references fk.a (id) on update cascade,
-//constraint b_ibfk_2 foreign key b_ibfk_2 (val) references fk.a1 (id) on update cascade)`)
+	//	do(`create table fk.b (id int primary key, val int,
+	//constraint b_ibfk_1 foreign key b_ibfk_1 (val) references fk.a (id) on update cascade,
+	//constraint b_ibfk_2 foreign key b_ibfk_2 (val) references fk.a1 (id) on update cascade)`)
 	do(`create table fk.b (id int primary key)`)
 	do(`alter table fk.b add column val int`)
 	//do(`alter table fk.b add constraint foreign key (val) references fk.a (id)`)
