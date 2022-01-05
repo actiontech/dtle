@@ -59,6 +59,7 @@ struct DataEvent {
         float64
         bool
     }
+    DtleFlags uint32
 }
 
 struct BinlogEntry {

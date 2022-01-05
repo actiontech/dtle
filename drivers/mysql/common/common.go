@@ -31,6 +31,10 @@ const (
 )
 
 const (
+	DtleFlagCreateSchemaIfNotExists = 0x1
+)
+
+const (
 	// TODO: Using configuration to set jwt secret
 	JWTSecret              = "secret"
 	DefaultAdminTenant     = "platform"

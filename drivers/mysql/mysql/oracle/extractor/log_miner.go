@@ -1032,6 +1032,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 			TableName:     tableName,
 			DML:           common.NotDML,
 		}
+		dataEvent.DtleFlags |= common.DtleFlagCreateSchemaIfNotExists
 	case *ast.AlterTableStmt:
 		// todo when schema is nil
 		if s.TableName.Schema == nil {

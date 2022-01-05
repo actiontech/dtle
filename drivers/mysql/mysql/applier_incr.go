@@ -565,6 +565,15 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				return nil
 			}
 
+			if event.DtleFlags & common.DtleFlagCreateSchemaIfNotExists != 0 {
+				// TODO CHARACTER SET & COLLATE
+				query := fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", mysqlconfig.EscapeName(event.DatabaseName))
+				err := execQuery(query)
+				if err != nil {
+					return err
+				}
+			}
+
 			if event.CurrentSchema != "" {
 				query := fmt.Sprintf("USE %s", mysqlconfig.EscapeName(event.CurrentSchema))
 				err := execQuery(query)

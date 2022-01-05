@@ -1321,6 +1321,7 @@ type DataEvent struct {
 	Flags         []byte
 	FKParent      bool
 	Rows          [][]interface{}
+	DtleFlags     uint32
 }
 
 func (d *DataEvent) Size() (s uint64) {
@@ -1594,7 +1595,7 @@ func (d *DataEvent) Size() (s uint64) {
 		}
 
 	}
-	s += 22
+	s += 26
 	return
 }
 func (d *DataEvent) Marshal(buf []byte) ([]byte, error) {
@@ -2111,7 +2112,18 @@ func (d *DataEvent) Marshal(buf []byte) ([]byte, error) {
 
 		}
 	}
-	return buf[:i+22], nil
+	{
+
+		buf[i+0+22] = byte(d.DtleFlags >> 0)
+
+		buf[i+1+22] = byte(d.DtleFlags >> 8)
+
+		buf[i+2+22] = byte(d.DtleFlags >> 16)
+
+		buf[i+3+22] = byte(d.DtleFlags >> 24)
+
+	}
+	return buf[:i+26], nil
 }
 
 func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
@@ -2547,7 +2559,12 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 
 		}
 	}
-	return i + 22, nil
+	{
+
+		d.DtleFlags = 0 | (uint32(buf[i+0+22]) << 0) | (uint32(buf[i+1+22]) << 8) | (uint32(buf[i+2+22]) << 16) | (uint32(buf[i+3+22]) << 24)
+
+	}
+	return i + 26, nil
 }
 
 type BinlogEntry struct {
