@@ -736,10 +736,10 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 	defer l.stopLogMiner()
 
 	records := make(chan *LogMinerRecord, 100)
+	defer close(records)
 	go func() {
 		t := time.NewTicker(time.Second * 5)
 		defer func() {
-			close(records)
 			t.Stop()
 			e.logger.Info("Handler Records goroutine exited")
 		}()
