@@ -569,8 +569,8 @@ func (e *Extractor) readTableColumns() (err error) {
 
 			childST := common.SchemaTable{doTb.TableSchema, doTb.TableName}
 			for _, fkpt := range fkParentTables {
-				schema := g.StringElse(fkpt.Schema.O, doTb.TableSchema)
-				parentST := common.SchemaTable{schema, fkpt.Name.O}
+				schema := g.StringElse(fkpt.Schema.String(), doTb.TableSchema)
+				parentST := common.SchemaTable{schema, fkpt.Name.String()}
 				if m, ok := fkParentMap[parentST]; ok {
 					m[childST] = struct{}{}
 				} else {

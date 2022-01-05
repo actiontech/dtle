@@ -6,6 +6,7 @@ import (
 	tparser "github.com/pingcap/tidb/parser"
 	tast "github.com/pingcap/tidb/parser/ast"
 	"github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
 
 	"fmt"
 	_ "github.com/pingcap/tidb/types/parser_driver"
@@ -38,18 +39,19 @@ name varchar(35) DEFAULT NULL
 	}
 	switch v := ast.(type) {
 	case *tast.CreateTableStmt:
-		v.Table.Schema.O = "hello"
+		v.Table.Schema = model.NewCIStr("hello")
+		println(v.Table.Name.L)
 	case *tast.DropTableStmt:
 		for i := range v.Tables {
-			if v.Tables[i].Schema.O == "b" {
-				v.Tables[i].Schema.O = "hello"
+			if v.Tables[i].Schema.String() == "b" {
+				v.Tables[i].Schema = model.NewCIStr("hello")
 			}
 		}
 	case *tast.RenameTableStmt:
 		println("---")
 		for i := range v.TableToTables {
-			println(v.TableToTables[i].OldTable.Name.O)
-			println(v.TableToTables[i].NewTable.Name.O)
+			println(v.TableToTables[i].OldTable.Name.String())
+			println(v.TableToTables[i].NewTable.Name.String())
 		}
 	case *tast.GrantStmt:
 		println("is grant")

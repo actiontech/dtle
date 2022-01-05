@@ -587,8 +587,8 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 						// do nothing
 					} else {
 						for _, t := range realAst.Tables {
-							dropTableSchema := g.StringElse(t.Schema.O, currentSchema)
-							b.removeFKChild(dropTableSchema, t.Name.O)
+							dropTableSchema := g.StringElse(t.Schema.String(), currentSchema)
+							b.removeFKChild(dropTableSchema, t.Name.String())
 						}
 					}
 				case *ast.DropIndexStmt:
@@ -607,8 +607,8 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 						switch spec.Tp {
 						case ast.AlterTableRenameTable:
 							fromTable = nil
-							newSchemaName = g.StringElse(spec.NewTable.Schema.O, currentSchema)
-							newTableName = spec.NewTable.Name.O
+							newSchemaName = g.StringElse(spec.NewTable.Schema.String(), currentSchema)
+							newTableName = spec.NewTable.Name.String()
 						case ast.AlterTableAddConstraint, ast.AlterTableDropForeignKey:
 							b.removeFKChild(realSchema, fromTable.TableName)
 						default:
@@ -624,8 +624,8 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					}
 				case *ast.RenameTableStmt:
 					for _, tt := range realAst.TableToTables {
-						newSchemaName := g.StringElse(tt.NewTable.Schema.O, currentSchema)
-						newTableName := tt.NewTable.Name.O
+						newSchemaName := g.StringElse(tt.NewTable.Schema.String(), currentSchema)
+						newTableName := tt.NewTable.Name.String()
 						b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
 							"newTable", newTableName)
 						if !b.skipQueryDDL(newSchemaName, newTableName) {
@@ -770,21 +770,19 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 	}
 
 	renameAstTableFn := func(table *ast.TableName) {
-		table.Schema.O = g.StringElse(table.Schema.O, currentSchema)
-		newSchemaName := schemasRenameMap[table.Schema.O]
-		tableNameMap := oldSchemaNameToTablesRenameMap[table.Schema.O]
-		newTableName := tableNameMap[table.Name.O]
+		table.Schema = model.NewCIStr(g.StringElse(table.Schema.String(), currentSchema))
+		newSchemaName := schemasRenameMap[table.Schema.String()]
+		tableNameMap := oldSchemaNameToTablesRenameMap[table.Schema.String()]
+		newTableName := tableNameMap[table.Name.String()]
 
 		if newSchemaName != "" {
-			logMapping(table.Schema.O, newSchemaName, "schema")
-			table.Schema.O = newSchemaName
-			table.Schema.L = strings.ToLower(table.Schema.O)
+			logMapping(table.Schema.String(), newSchemaName, "schema")
+			table.Schema = model.NewCIStr(newSchemaName)
 		}
 
 		if newTableName != "" {
-			logMapping(table.Name.O, newTableName, "table")
-			table.Name.O = newTableName
-			table.Name.L = strings.ToLower(newTableName)
+			logMapping(table.Name.String(), newTableName, "table")
+			table.Name = model.NewCIStr(newTableName)
 		}
 
 	}
@@ -965,13 +963,13 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 	}
 	mayLowerTable := func(tn *ast.TableName) {
 		if b.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
-			g.LowerString(&tn.Schema.O)
-			g.LowerString(&tn.Name.O)
+			tn.Schema = model.NewCIStr(tn.Schema.L)
+			tn.Name = model.NewCIStr(tn.Name.L)
 		}
 	}
 	setTable := func(tn *ast.TableName, extra bool) {
 		mayLowerTable(tn)
-		item := common.SchemaTable{Schema: tn.Schema.O, Table: tn.Name.O}
+		item := common.SchemaTable{Schema: tn.Schema.String(), Table: tn.Name.String()}
 		if extra {
 			result.extraTables = append(result.extraTables, item)
 		} else {
@@ -1013,13 +1011,13 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		var newTables []*ast.TableName
 		for _, t := range v.Tables {
 			mayLowerTable(t)
-			schema := g.StringElse(t.Schema.O, currentSchema)
-			if !skipFunc(schema, t.Name.O) {
+			schema := g.StringElse(t.Schema.String(), currentSchema)
+			if !skipFunc(schema, t.Name.String()) {
 				isExtraTable := len(newTables) > 0
 				setTable(t, isExtraTable)
 				newTables = append(newTables, t)
-				b.logger.Debug("resolveQuery. DropTableStmt. include", "schema", t.Schema.O, "table", t.Name.O,
-					"use", currentSchema)
+				b.logger.Debug("resolveQuery. DropTableStmt. include",
+					"schema", t.Schema, "table", t.Name, "use", currentSchema)
 			}
 		}
 
@@ -1905,8 +1903,8 @@ func (b *BinlogReader) addFKChildren(currentSchema string, fkParents []*ast.Tabl
 
 	childST := common.SchemaTable{childSchema, childTable}
 	for _, fkp := range fkParents {
-		parentSchema := g.StringElse(fkp.Schema.O, currentSchema)
-		parentTable := fkp.Name.O
+		parentSchema := g.StringElse(fkp.Schema.String(), currentSchema)
+		parentTable := fkp.Name.String()
 		schemaContext := b.findCurrentSchema(parentSchema)
 		if schemaContext == nil {
 			b.logger.Warn("FK parent not found 1", "schema", parentSchema, "table", parentTable)
