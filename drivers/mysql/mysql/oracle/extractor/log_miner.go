@@ -994,6 +994,9 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 		return dataEvent, fmt.Errorf("parse dml err,stmt lens %d", len(stmt))
 	}
 	(stmt[0]).Accept(visitor)
+	if visitor.Error != nil {
+		return dataEvent, visitor.Error
+	}
 	dataEvent = common.DataEvent{
 		CurrentSchema: visitor.Schema,
 		DatabaseName:  visitor.Schema,
@@ -1038,6 +1041,9 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 			return dataEvent, nil
 		}
 		(untoStmt[0]).Accept(undoVisitor)
+		if undoVisitor.Error != nil {
+			return dataEvent, undoVisitor.Error
+		}
 		undoVisitor.WhereColumnValues = make([]interface{}, len(ordinals))
 		for column, index := range ordinals {
 			data, ok := undoVisitor.Before[column]

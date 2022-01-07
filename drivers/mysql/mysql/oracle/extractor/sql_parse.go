@@ -10,6 +10,7 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/g"
+	"github.com/pkg/errors"
 
 	"github.com/pingcap/tidb/parser/format"
 
@@ -29,6 +30,7 @@ type Stmt struct {
 	WhereExpr         string
 	WhereColumnValues []interface{}
 	NewColumnValues   []interface{}
+	Error             error
 }
 
 func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
@@ -41,7 +43,10 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.UpdateDML
 		v.Before = make(map[string]interface{}, 1)
 		if node.Where != nil {
-			beforeData(v.logger, node.Where, v.Before)
+			if err := beforeData(v.logger, node.Where, v.Before); err != nil {
+				v.Error = errors.Wrap(err, "update sql restore column failed")
+				return node, true
+			}
 		}
 	}
 
@@ -55,7 +60,8 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 				flags := format.RestoreStringWithoutDefaultCharset
 				err := lists[i].Restore(format.NewRestoreCtx(flags, &columnValue))
 				if err != nil {
-					v.logger.Error("inserl sql restore column value failed", "err", err)
+					v.Error = errors.Wrap(err, "inserl sql restore column value failed")
+					return in, true
 				}
 				v.NewColumnValues = append(v.NewColumnValues, columnsValueConverter(columnValue.String()))
 			}
@@ -66,7 +72,10 @@ func (v *Stmt) Enter(in ast.Node) (ast.Node, bool) {
 		v.Operation = common.DeleteDML
 		v.Before = make(map[string]interface{}, 1)
 		if node.Where != nil {
-			beforeData(v.logger, node.Where, v.Before)
+			if err := beforeData(v.logger, node.Where, v.Before); err != nil {
+				v.Error = errors.Wrap(err, "delete sql restore column failed")
+				return in, true
+			}
 		}
 	}
 	return in, false
@@ -84,29 +93,32 @@ func (v *Stmt) Marshal() string {
 	return string(b)
 }
 
-func beforeData(logger g.LoggerType, where ast.ExprNode, before map[string]interface{}) {
+func beforeData(logger g.LoggerType, where ast.ExprNode, before map[string]interface{}) (err error) {
 	if binaryNode, ok := where.(*ast.BinaryOperationExpr); ok {
 		switch binaryNode.Op.String() {
 		case ast.LogicAnd:
-			beforeData(logger, binaryNode.L, before)
-			beforeData(logger, binaryNode.R, before)
+			if err = beforeData(logger, binaryNode.L, before); err != nil {
+				return
+			}
+			if err = beforeData(logger, binaryNode.R, before); err != nil {
+				return
+			}
 		case ast.EQ:
 			var column strings.Builder
 			var columnValue strings.Builder
 			flags := format.RestoreStringWithoutDefaultCharset
-			err := binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
+			err = binaryNode.L.Restore(format.NewRestoreCtx(flags, &column))
 			if err != nil {
-				logger.Error("restore column name failed", "err", err)
-				return
+				return errors.Wrap(err, "restore column name failed")
 			}
 			err = binaryNode.R.Restore(format.NewRestoreCtx(flags, &columnValue))
 			if err != nil {
-				logger.Error("restore column value failed", "err", err)
-				return
+				return errors.Wrap(err, "restore column value failed")
 			}
 			before[strings.TrimLeft(strings.TrimRight(column.String(), "`"), "`")] = columnsValueConverter(columnValue.String())
 		}
 	}
+	return
 }
 
 // type OracleFuncName string
