@@ -258,6 +258,9 @@ func (i *Inspector) ValidateGrants() error {
 }
 
 func (i *Inspector) ValidateGTIDMode() error {
+	if g.TestMaridb{
+		return nil
+	}
 	query := `SELECT @@GTID_MODE`
 	var gtidMode string
 	if err := i.db.QueryRow(query).Scan(&gtidMode); err != nil {

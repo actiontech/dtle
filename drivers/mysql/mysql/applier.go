@@ -21,8 +21,9 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 
-	gonats "github.com/nats-io/go-nats"
+	"github.com/go-mysql-org/go-mysql/mysql"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
+	gonats "github.com/nats-io/go-nats"
 
 	"context"
 	"os"
@@ -80,8 +81,9 @@ type Applier struct {
 
 	stubFullApplyDelay time.Duration
 
-	gtidSet     *gomysql.MysqlGTIDSet
-	gtidSetLock *sync.RWMutex
+	gtidSet       *gomysql.MysqlGTIDSet
+	maridbGtidSet *gomysql.MariadbGTIDSet
+	gtidSetLock   *sync.RWMutex
 
 	storeManager *common.StoreManager
 	gtidCh       chan *common.BinlogCoordinateTx
@@ -92,7 +94,7 @@ type Applier struct {
 	event      *eventer.Eventer
 	taskConfig *drivers.TaskConfig
 
-	targetGtid       gomysql.GTIDSet
+	targetGtid gomysql.GTIDSet
 }
 
 func (a *Applier) Finish1() error {
@@ -225,7 +227,7 @@ func (a *Applier) updateGtidLoop() {
 				}
 			} else {
 				a.gtidSetLock.Lock()
-				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				// common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
 				if a.targetGtid != nil {
 					testTargetGtid()
 				}
@@ -251,6 +253,7 @@ func (a *Applier) Run() {
 	}
 
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+	a.maridbGtidSet = new(mysql.MariadbGTIDSet)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 		return
@@ -306,7 +309,7 @@ func (a *Applier) Run() {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Marshal"))
 			}
 			_, err = a.natsConn.Request(fmt.Sprintf("%s_bigtx_ack", a.subject),
-				bs, 1 * time.Minute)
+				bs, 1*time.Minute)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Request"))
 			}
@@ -521,19 +524,19 @@ func (a *Applier) subscribeNats() (err error) {
 
 		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GtidSet)
 		// Do not re-assign a.gtidSet (#538). Update it.
-		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
+		_, err := gomysql.ParseMariadbGTIDSet(dumpData.Coord.GtidSet)
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
 			return
 		}
-		gs := gs0.(*gomysql.MysqlGTIDSet)
-		for _, uuidSet := range gs.Sets {
-			a.gtidSet.AddSet(uuidSet)
-		}
+		// gs := gs0.(*gomysql.MysqlGTIDSet)
+		// for _, uuidSet := range gs.Sets {
+		// 	a.gtidSet.AddSet(uuidSet)
+		// }
 		a.mysqlContext.Gtid = dumpData.Coord.GtidSet
 		a.mysqlContext.BinlogFile = dumpData.Coord.LogFile
 		a.mysqlContext.BinlogPos = dumpData.Coord.LogPos
-		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
+		// a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 		if a.stage != JobIncrCopy {
@@ -1040,7 +1043,7 @@ func (a *Applier) watchTargetGtid() {
 	}
 	a.logger.Info("got target GTIDSet", "gs", target)
 
-	gs, err := gomysql.ParseMysqlGTIDSet(target)
+	gs, err := gomysql.ParseMariadbGTIDSet(target)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "CommandTypeJobFinish. ParseMysqlGTIDSet"))
 	}

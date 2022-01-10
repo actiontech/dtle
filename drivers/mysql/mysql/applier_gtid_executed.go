@@ -4,13 +4,14 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
-	"github.com/satori/go.uuid"
 	mysql "github.com/go-mysql-org/go-mysql/mysql"
-	"strconv"
-	"strings"
+	uuid "github.com/satori/go.uuid"
 )
 
 var createTableGtidExecutedV4Query = fmt.Sprintf(`
@@ -177,8 +178,9 @@ func (a *GtidExecutedCreater) migrateGtidExecutedV3atoV4() (err error) {
 
 	return nil
 }
+
 type GtidExecutedCreater struct {
-	db *gosql.DB
+	db     *gosql.DB
 	logger g.LoggerType
 }
 
@@ -344,7 +346,7 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string, gtidSet *mysql.MysqlGTI
 		item, ok := itemMap[sidUUID]
 		if !ok {
 			item = &base.GtidItem{
-				NRow:      0,
+				NRow: 0,
 			}
 			itemMap[sidUUID] = item
 		}
@@ -375,4 +377,3 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string, gtidSet *mysql.MysqlGTI
 
 	return itemMap, err
 }
-

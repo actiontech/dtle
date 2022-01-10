@@ -60,7 +60,7 @@ type Extractor struct {
 	natsAddr        string
 
 	mysqlVersionDigit int
-	NetWriteTimeout int
+	NetWriteTimeout   int
 	db                *gosql.DB
 	singletonDB       *gosql.DB
 	dumpers           []*dumper
@@ -105,8 +105,8 @@ type Extractor struct {
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg              sync.WaitGroup
-	targetGtid      string
+	wg         sync.WaitGroup
+	targetGtid string
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
@@ -707,7 +707,12 @@ func (e *Extractor) initDBConnections() (err error) {
 	e.MySQLVersion = someSysVars.Version
 	e.NetWriteTimeout = someSysVars.NetWriteTimeout
 	e.lowerCaseTableNames = someSysVars.LowerCaseTableNames
-	e.mysqlVersionDigit, err = common.MysqlVersionInDigit(e.MySQLVersion)
+
+	if g.TestMaridb {
+		e.mysqlVersionDigit = 50719
+	} else {
+		e.mysqlVersionDigit, err = common.MysqlVersionInDigit(e.MySQLVersion)
+	}
 	if err != nil {
 		return err
 	}
@@ -812,7 +817,7 @@ func (e *Extractor) selectSqlMode() error {
 
 func (e *Extractor) setInitialBinlogCoordinates() error {
 	if e.mysqlContext.Gtid != "" {
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
+		gtidSet, err := gomysql.ParseMariadbGTIDSet(e.mysqlContext.Gtid)
 		if err != nil {
 			return err
 		}
@@ -1230,12 +1235,15 @@ func (e *Extractor) mysqlDump() error {
 			}
 			e.logger.Debug("binlog coordinates 1", "coordinate", hclog.Fmt("%+v", binlogCoordinates1))
 			e.logger.Debug("binlog coordinates 2", "coordinate", hclog.Fmt("%+v", binlogCoordinates2))
-
-			gs1, err := gomysql.ParseMysqlGTIDSet(binlogCoordinates1.GtidSet)
+			parseGtidFunc := gomysql.ParseMariadbGTIDSet
+			if g.TestMaridb {
+				parseGtidFunc = gomysql.ParseMariadbGTIDSet
+			}
+			gs1, err := parseGtidFunc(binlogCoordinates1.GtidSet)
 			if err != nil {
 				return err
 			}
-			gs2, err := gomysql.ParseMysqlGTIDSet(binlogCoordinates2.GtidSet)
+			gs2, err := parseGtidFunc(binlogCoordinates2.GtidSet)
 			if err != nil {
 				return err
 			}

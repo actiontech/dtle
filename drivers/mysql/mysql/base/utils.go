@@ -10,13 +10,15 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/g"
-	parserformat "github.com/pingcap/tidb/parser/format"
-	"github.com/pingcap/tidb/parser/model"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/actiontech/dtle/g"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	parserformat "github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
 
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 
@@ -70,9 +72,17 @@ func GetSelfBinlogCoordinates(db usql.QueryAble) (selfBinlogCoordinates *common.
 func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *common.BinlogCoordinatesX, err error) {
 	r = &common.BinlogCoordinatesX{}
 	var dummy interface{}
+	if g.TestMaridb {
+		err = row.Scan(&r.GtidSet)
+		if err != nil {
+			return nil, err
+		}
+	}else{
+
 	err = row.Scan(&r.LogFile, &r.LogPos, &dummy, &dummy, &r.GtidSet)
 	if err != nil {
 		return nil, err
+	}
 	}
 	return r, nil
 }

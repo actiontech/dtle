@@ -253,7 +253,12 @@ func GetServerUUID(db QueryAble) (result string, err error) {
 }
 
 func ShowMasterStatus(db QueryAble) *gosql.Row {
-	return db.QueryRow("show master status /*dtle*/")
+	// for maria db
+	sql := `show master status /*dtle*/`
+	if g.TestMaridb {
+		sql = `select  @@global.gtid_current_pos as Executed_Gtid_Set /*dtle*/;`
+	}
+	return db.QueryRow(sql)
 }
 
 // queryResultData returns a raw array of rows for a given query, optionally reading and returning column names

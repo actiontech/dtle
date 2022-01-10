@@ -10,25 +10,26 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"encoding/binary"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	parserformat "github.com/pingcap/tidb/parser/format"
-	"github.com/pingcap/tidb/parser/model"
-	"github.com/pkg/errors"
 	"os"
 	"path"
 	"path/filepath"
 	"sync/atomic"
 	"time"
 
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	parserformat "github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
+	"github.com/pkg/errors"
+
 	"github.com/cznic/mathutil"
 
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/pingcap/tidb/parser"
 	"github.com/pingcap/tidb/parser/ast"
@@ -40,16 +41,16 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	hclog "github.com/hashicorp/go-hclog"
 
-	dmrelay "github.com/pingcap/dm/relay"
 	dmconfig "github.com/pingcap/dm/dm/config"
-	dmlog "github.com/pingcap/dm/pkg/log"
 	dmpb "github.com/pingcap/dm/dm/pb"
-	dmretry "github.com/pingcap/dm/relay/retry"
+	dmlog "github.com/pingcap/dm/pkg/log"
 	dmstreamer "github.com/pingcap/dm/pkg/streamer"
+	dmrelay "github.com/pingcap/dm/relay"
+	dmretry "github.com/pingcap/dm/relay/retry"
 
-	uuid "github.com/satori/go.uuid"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
+	uuid "github.com/satori/go.uuid"
 	"golang.org/x/net/context"
 )
 
@@ -180,31 +181,31 @@ func NewBinlogReader(
 	}
 
 	binlogReader = &BinlogReader{
-		ctx:                  ctx,
-		execCtx:              execCtx,
-		logger:               logger,
-		currentCoord:         common.BinlogCoordinatesX{},
-		currentCoordMutex:    &sync.Mutex{},
-		mysqlContext:         cfg,
-		ReMap:                make(map[string]*regexp.Regexp),
-		shutdownCh:           make(chan struct{}),
-		tables:               make(map[string]*common.SchemaContext),
-		sqlFilter:            sqlFilter,
-		maybeSqleContext:     sqleContext,
-		memory:               memory,
-		db:                   db,
-		lowerCaseTableNames:  lctn,
-		netWriteTimeout:      nwTimeout,
+		ctx:                 ctx,
+		execCtx:             execCtx,
+		logger:              logger,
+		currentCoord:        common.BinlogCoordinatesX{},
+		currentCoordMutex:   &sync.Mutex{},
+		mysqlContext:        cfg,
+		ReMap:               make(map[string]*regexp.Regexp),
+		shutdownCh:          make(chan struct{}),
+		tables:              make(map[string]*common.SchemaContext),
+		sqlFilter:           sqlFilter,
+		maybeSqleContext:    sqleContext,
+		memory:              memory,
+		db:                  db,
+		lowerCaseTableNames: lctn,
+		netWriteTimeout:     nwTimeout,
 	}
 
-	binlogReader.serverUUID, err = sql.GetServerUUID(db)
-	if err != nil {
-		return nil, err
-	}
+	// binlogReader.serverUUID, err = sql.GetServerUUID(db)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	binlogReader.currentGtidSet, _ = gomysql.ParseMysqlGTIDSet("")
+	binlogReader.currentGtidSet, _ = gomysql.ParseMariadbGTIDSet("")
 	if targetGtid != "" {
-		binlogReader.targetGtid, err = gomysql.ParseMysqlGTIDSet(targetGtid)
+		binlogReader.targetGtid, err = gomysql.ParseMariadbGTIDSet(targetGtid)
 		if err != nil {
 			return nil, errors.Wrap(err, "ParseMysqlGTIDSet")
 		}
@@ -232,7 +233,7 @@ func NewBinlogReader(
 	} else {
 		binlogSyncerConfig := replication.BinlogSyncerConfig{
 			ServerID:       uint32(binlogReader.serverId),
-			Flavor:         "mysql",
+			Flavor:         "mariadb",
 			Host:           cfg.ConnectionConfig.Host,
 			Port:           uint16(cfg.ConnectionConfig.Port),
 			User:           cfg.ConnectionConfig.User,
@@ -246,7 +247,7 @@ func NewBinlogReader(
 
 			ParseTime: false, // must be false, or gencode will complain.
 
-			MemLimitSize: int64(g.MemAvailable * 10 / 2),
+			MemLimitSize:    int64(g.MemAvailable * 10 / 2),
 			MemLimitSeconds: binlogReader.netWriteTimeout / 2,
 		}
 		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
@@ -279,12 +280,12 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 		}
 
 		relayConfig := &dmrelay.Config{
-			EnableGTID:  true,
-			RelayDir:    b.getBinlogDir(),
-			ServerID:    uint32(b.serverId),
-			Flavor:      "mysql",
-			From:        dbConfig,
-			BinLogName:  "",
+			EnableGTID: true,
+			RelayDir:   b.getBinlogDir(),
+			ServerID:   uint32(b.serverId),
+			Flavor:     "mysql",
+			From:       dbConfig,
+			BinLogName: "",
 			BinlogGTID: coordinates.GtidSet,
 			ReaderRetry: dmretry.ReaderRetryConfig{
 				// value from dm/relay/relay_test.go
@@ -324,7 +325,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 			b.relay.Close()
 		}()
 
-		targetGtid, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
+		targetGtid, err := gomysql.ParseMariadbGTIDSet(coordinates.GtidSet)
 		if err != nil {
 			return err
 		}
@@ -341,7 +342,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 			gsStr := s.GetRelayBinlogGtid()
 			p := s.GetRelayBinlog()
 
-			gs, err := gomysql.ParseMysqlGTIDSet(gsStr)
+			gs, err := gomysql.ParseMariadbGTIDSet(gsStr)
 			if err != nil {
 				b.logger.Error("waiting relay. err at ParseMysqlGTIDSet", "err", err)
 				b.relay.Close()
@@ -375,7 +376,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 				gomysql.Position{Name: coordinates.LogFile, Pos: uint32(coordinates.LogPos)})
 			b.binlogStreamer = b.binlogStreamer0
 		} else {
-			gtidSet, err := gomysql.ParseMysqlGTIDSet(coordinates.GtidSet)
+			gtidSet, err := gomysql.ParseMariadbGTIDSet(coordinates.GtidSet)
 			if err != nil {
 				err = errors.Wrapf(err, "ParseMysqlGTIDSet. %v", coordinates.GtidSet)
 				b.logger.Error(err.Error())
@@ -879,7 +880,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 			if b.shutdown {
 				break
 			}
-			if i >= b.netWriteTimeout * 1000 / 10 / 2 {
+			if i >= b.netWriteTimeout*1000/10/2 {
 				b.logger.Info("reach netWriteTimeout limit. allow reading one event")
 				break
 			}
@@ -908,14 +909,14 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntr
 		b.currentCoordMutex.Unlock()
 
 		if ev.Header.EventType == replication.ROTATE_EVENT {
-			serverUUID, err := sql.GetServerUUID(b.db)
-			if err != nil {
-				return errors.Wrap(err, "on rotate_event. GetServerUUID")
-			}
-			if serverUUID != b.serverUUID {
-				return fmt.Errorf("serverUUID changed from %v to %v. job should restart",
-					b.serverUUID, serverUUID)
-			}
+			// serverUUID, err := sql.GetServerUUID(b.db)
+			// if err != nil {
+			// 	return errors.Wrap(err, "on rotate_event. GetServerUUID")
+			// }
+			// if serverUUID != b.serverUUID {
+			// 	return fmt.Errorf("serverUUID changed from %v to %v. job should restart",
+			// 		b.serverUUID, serverUUID)
+			// }
 
 			rotateEvent := ev.Event.(*replication.RotateEvent)
 			nextLogName := string(rotateEvent.NextLogName)
@@ -1054,8 +1055,8 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 	if rewrite {
 		bs := bytes.NewBuffer(nil)
 		r := &parserformat.RestoreCtx{
-			Flags:     parserformat.DefaultRestoreFlags,
-			In:        bs,
+			Flags: parserformat.DefaultRestoreFlags,
+			In:    bs,
 		}
 		err = stmt.Restore(r)
 		if err != nil {
@@ -1674,7 +1675,7 @@ func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
 }
 
 func (b *BinlogReader) SetTargetGtid(gtid string) (err error) {
-	b.targetGtid, err = gomysql.ParseMysqlGTIDSet(gtid)
+	b.targetGtid, err = gomysql.ParseMariadbGTIDSet(gtid)
 	if err != nil {
 		return errors.Wrap(err, "ParseMysqlGTIDSet")
 	}
@@ -1697,9 +1698,9 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 
 	schemaName := string(rowsEvent.Table.Schema)
 	tableName := string(rowsEvent.Table.Table)
-	b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
-		"gno", b.entryContext.Entry.Coordinates.GNO,
-		"flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags)
+	// b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
+	// 	"gno", b.entryContext.Entry.Coordinates.GNO,
+	// 	"flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags)
 
 	dml := common.ToEventDML(ev.Header.EventType)
 	skip, table := b.skipRowEvent(rowsEvent, dml)
@@ -1742,7 +1743,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 	dmlEvent.OriginalTableColumns = originalTableColumns*/
 
 	// It is hard to calculate exact row size. We use estimation.
-	avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
+	// avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
 	for i, row := range rowsEvent.Rows {
 		//for _, col := range row {
@@ -1833,7 +1834,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 
 		if whereTrue {
 			// TODO review
-			b.entryContext.OriginalSize += avgRowSize * len(dmlEvent.Rows)
+			// b.entryContext.OriginalSize += avgRowSize * len(dmlEvent.Rows)
 
 			// The channel will do the throttling. Whoever is reding from the channel
 			// decides whether action is taken sycnhronously (meaning we wait before
@@ -1849,29 +1850,37 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 					dmlEvent.Rows[iRow] = newRow
 				}
 			}
+			if b.entryContext == nil {
+				entry := common.NewBinlogEntry()
+				entry.Final = true
+				b.entryContext = &common.BinlogEntryContext{
+					Entry:        entry,
+					TableItems:   nil,
+					OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
+				}
+			}
 			b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
 		} else {
 			b.logger.Debug("event has not passed 'where'")
 		}
 
-		if b.entryContext.OriginalSize >= bigTxSplittingSize {
-			b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
-			b.entryContext.Entry.Final = false
-			b.sendEntry(entriesChannel)
-			entry := common.NewBinlogEntry()
-			entry.Coordinates = b.entryContext.Entry.Coordinates
-			entry.Index = b.entryContext.Entry.Index + 1
-			entry.Final = true
-			b.entryContext = &common.BinlogEntryContext{
-				Entry:        entry,
-				TableItems:   nil,
-				OriginalSize: 1,
-			}
-		}
+		// if b.entryContext.OriginalSize >= bigTxSplittingSize {
+		// b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
+		// b.entryContext.Entry.Final = false
+		// b.sendEntry(entriesChannel)
+		// entry := common.NewBinlogEntry()
+		// entry.Coordinates = b.entryContext.Entry.Coordinates
+		// entry.Index = b.entryContext.Entry.Index + 1
+		// entry.Final = true
+		// b.entryContext = &common.BinlogEntryContext{
+		// 	Entry:        entry,
+		// 	TableItems:   nil,
+		// 	OriginalSize: 1,
+		// }
+		// }
 	}
 	return nil
 }
-
 
 func (b *BinlogReader) removeFKChildSchema(schema string) {
 	for _, schemaContext := range b.tables {

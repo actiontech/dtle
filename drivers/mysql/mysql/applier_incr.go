@@ -6,19 +6,20 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	sql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
-	"github.com/satori/go.uuid"
-	gomysql "github.com/go-mysql-org/go-mysql/mysql"
-	"os"
-	"sync"
-	"sync/atomic"
-	"time"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -51,7 +52,6 @@ const (
 	RowsEventFlagNoForeignKeyChecks uint16 = 2
 	RowsEventFlagNoUniqueKeyChecks  uint16 = 4
 	RowsEventFlagRowHasAColumns     uint16 = 8
-
 
 	OPTION_AUTO_IS_NULL          uint32 = 0x00004000
 	OPTION_NOT_AUTOCOMMIT        uint32 = 0x00080000
@@ -116,8 +116,8 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.My
 		subject:               subject,
 		mysqlContext:          mysqlContext,
 		incrBytesQueue:        make(chan []byte, mysqlContext.ReplChanBufferSize),
-		binlogEntryQueue:      make(chan *common.BinlogEntry, mysqlContext.ReplChanBufferSize * 2),
-		applyBinlogMtsTxQueue: make(chan *common.BinlogEntryContext, mysqlContext.ReplChanBufferSize * 2),
+		binlogEntryQueue:      make(chan *common.BinlogEntry, mysqlContext.ReplChanBufferSize*2),
+		applyBinlogMtsTxQueue: make(chan *common.BinlogEntryContext, mysqlContext.ReplChanBufferSize*2),
 		db:                    db,
 		dbs:                   dbs,
 		shutdownCh:            shutdownCh,
@@ -402,8 +402,8 @@ func (a *ApplierIncr) heterogeneousReplay() {
 				return
 			case entry := <-a.binlogEntryQueue:
 				err := a.handleEntry(&common.BinlogEntryContext{
-					Entry:       entry,
-					TableItems:  nil,
+					Entry:      entry,
+					TableItems: nil,
 				})
 				if err != nil {
 					a.OnError(common.TaskStateDead, err)
@@ -565,7 +565,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				return nil
 			}
 
-			if event.DtleFlags & common.DtleFlagCreateSchemaIfNotExists != 0 {
+			if event.DtleFlags&common.DtleFlagCreateSchemaIfNotExists != 0 {
 				// TODO CHARACTER SET & COLLATE
 				query := fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", mysqlconfig.EscapeName(event.DatabaseName))
 				err := execQuery(query)
@@ -633,7 +633,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			} else {
 				// Oracle
 			}
-			noFKCheckFlag := flag & RowsEventFlagNoForeignKeyChecks != 0
+			noFKCheckFlag := flag&RowsEventFlagNoForeignKeyChecks != 0
 			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
 				if err != nil {
@@ -685,7 +685,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 		if !a.SkipGtidExecutedTable {
 			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GNO)
 			_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
-			a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
+				a.subject, uuid.UUID(binlogEntry.Coordinates.SID).Bytes(), binlogEntry.Coordinates.GNO)
 			if err != nil {
 				return errors.Wrap(err, "insert gno")
 			}
@@ -803,22 +803,22 @@ func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, er
 		i += 1
 		switch flag {
 		case Q_FLAGS2_CODE: // Q_FLAGS2_CODE
-			v := binary.LittleEndian.Uint32(bs[i:i+4])
+			v := binary.LittleEndian.Uint32(bs[i : i+4])
 			i += 4
-			if v & OPTION_AUTO_IS_NULL != 0 {
+			if v&OPTION_AUTO_IS_NULL != 0 {
 				//log.Printf("OPTION_AUTO_IS_NULL")
 			}
-			if v & OPTION_NOT_AUTOCOMMIT != 0 {
+			if v&OPTION_NOT_AUTOCOMMIT != 0 {
 				//log.Printf("OPTION_NOT_AUTOCOMMIT")
 			}
-			if v & OPTION_NO_FOREIGN_KEY_CHECKS != 0 {
+			if v&OPTION_NO_FOREIGN_KEY_CHECKS != 0 {
 				r.NoForeignKeyChecks = true
 			}
-			if v & OPTION_RELAXED_UNIQUE_CHECKS != 0 {
+			if v&OPTION_RELAXED_UNIQUE_CHECKS != 0 {
 				//log.Printf("OPTION_RELAXED_UNIQUE_CHECKS")
 			}
 		case Q_SQL_MODE_CODE:
-			_ = binary.LittleEndian.Uint64(bs[i:i+8])
+			_ = binary.LittleEndian.Uint64(bs[i : i+8])
 			i += 8
 		case Q_CATALOG:
 			n := int(bs[i])
@@ -836,7 +836,7 @@ func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, er
 		case Q_CATALOG_NZ_CODE:
 			length := int(bs[i])
 			i += 1
-			_ = string(bs[i:i+length])
+			_ = string(bs[i : i+length])
 			i += length
 		case Q_LC_TIME_NAMES_CODE:
 			i += 2
@@ -849,11 +849,11 @@ func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, er
 		case Q_INVOKERS:
 			n := int(bs[i])
 			i += 1
-			username := string(bs[i:i+n])
+			username := string(bs[i : i+n])
 			i += n
 			n = int(bs[i])
 			i += 1
-			hostname := string(bs[i:i+n])
+			hostname := string(bs[i : i+n])
 			i += n
 			logger.Debug("Q_INVOKERS", "username", username, "hostname", hostname)
 		case Q_UPDATED_DB_NAMES:

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/actiontech/dtle/g"
-	uuid "github.com/satori/go.uuid"
 	"github.com/go-mysql-org/go-mysql/mysql"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
