@@ -320,7 +320,7 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 }
 
 func ShowCreateSchema(ctx context.Context, db *gosql.DB, dbName string) (r string, err error) {
-	query := fmt.Sprintf("SHOW CREATE SCHEMA %s", mysqlconfig.EscapeName(dbName))
+	query := fmt.Sprintf("SHOW CREATE SCHEMA IF NOT EXISTS %s", mysqlconfig.EscapeName(dbName))
 	row := db.QueryRowContext(ctx, query)
 	var dummy interface{}
 	// | Database | Create Database |
