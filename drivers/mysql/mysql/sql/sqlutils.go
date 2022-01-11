@@ -223,7 +223,7 @@ func QueryRowsMap(db QueryAble, query string, on_row func(RowMap) error, args ..
 	var err error
 	defer func() {
 		if derr := recover(); derr != nil {
-			err = errors.New(fmt.Sprintf("QueryRowsMap unexpected error: %+v", derr))
+			err = fmt.Errorf("QueryRowsMap unexpected error: %+v", derr)
 		}
 	}()
 
@@ -371,8 +371,7 @@ func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*common.Ta
 
 func ListColumns(db *gosql.DB, dbName, tableName string) (columns []string, err error) {
 	// Get table columns name
-	var query string
-	query = fmt.Sprintf("use %s;select COLUMN_NAME from information_schema.columns where table_name='%s';", dbName, tableName)
+	query := fmt.Sprintf("use %s;select COLUMN_NAME from information_schema.columns where table_name='%s';", mysqlconfig.EscapeName(dbName), tableName)
 	rows, err := db.Query(query)
 	if err != nil {
 		return columns, err
