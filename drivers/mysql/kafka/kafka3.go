@@ -100,6 +100,10 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		}
 	}
 
+	if cfg.SchemaChangeTopic == "" {
+		cfg.SchemaChangeTopic = fmt.Sprintf("schema-changes.%s", cfg.Topic)
+	}
+
 	kr = &KafkaRunner{
 		ctx:          ctx,
 		subject:      execCtx.Subject,
@@ -336,10 +340,53 @@ func (kr *KafkaRunner) handleFullCopy() {
 		case dumpData = <-kr.chDumpEntry:
 		}
 
+		sendDDLPayload := func(ddl string) error {
+			p := &DDLPayload{
+				Source:       DDLSource{},
+				Position:     DDLPosition{
+					// TODO
+					Snapshot: true,
+				},
+				DatabaseName: dumpData.TableSchema,
+				DDL:          ddl,
+				TableChanges: nil,
+			}
+			vBs, err := json.Marshal(p)
+			if err != nil {
+				return errors.Wrap(err, "json.Marshal DDLPayload")
+			}
+			err = kr.kafkaMgr.SendMessages(kr.logger, []string{kr.kafkaConfig.SchemaChangeTopic},
+				[][]byte{jsonNullBs}, [][]byte{vBs})
+			if err != nil {
+				return errors.Wrap(err, "kafkaMgr.SendMessages DDLPayload")
+			}
+			return nil
+		}
+
+		kr.logger.Debug("a sql dumpEntry")
 		if dumpData.DbSQL != "" || len(dumpData.TbSQL) > 0 {
-			kr.logger.Debug("a sql dumpEntry")
+			if dumpData.DbSQL != "" {
+				err := sendDDLPayload(dumpData.DbSQL)
+				if err != nil {
+					kr.onError(common.TaskStateDead, err)
+					return
+				}
+			}
+			for _, s := range dumpData.TbSQL {
+				err := sendDDLPayload(s)
+				if err != nil {
+					kr.onError(common.TaskStateDead, err)
+					return
+				}
+			}
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
-			kr.logger.Debug("skip apply sqlMode and SystemVariablesStatement")
+			if dumpData.SystemVariablesStatement != "" {
+				err := sendDDLPayload(dumpData.SystemVariablesStatement)
+				if err != nil {
+					kr.onError(common.TaskStateDead, err)
+					return
+				}
+			}
 		} else {
 			tableFromDumpData, err := common.DecodeMaybeTable(dumpData.Table)
 			if err != nil {
@@ -830,9 +877,26 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.Binlog
 					"query", dataEvent.Query, "type", dataEvent.DML)
 			}
 
-			// skipping DDL
 			if dataEvent.DML == common.NotDML {
-				continue
+				p := DDLPayload{
+					Source:       DDLSource{},
+					Position:     DDLPosition{
+						TsSec:    int64(dataEvent.Timestamp),
+						File:     dmlEvent.Coordinates.LogFile,
+						Pos:      dmlEvent.Coordinates.LogPos,
+						Gtids:    kr.Gtid,
+					},
+					DatabaseName: dataEvent.DatabaseName,
+					DDL:          dataEvent.Query,
+					TableChanges: nil,
+				}
+				vBs, err := json.Marshal(p)
+				if err != nil {
+					return err
+				}
+				realTopics = append(realTopics, kr.kafkaConfig.SchemaChangeTopic)
+				keysBs = append(keysBs, jsonNullBs)
+				valuesBs = append(valuesBs, vBs)
 			} else {
 				if tableItem == nil {
 					err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v gno %v", realSchema, dataEvent.TableName, dmlEvent.Coordinates.GNO)

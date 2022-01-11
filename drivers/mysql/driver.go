@@ -146,6 +146,7 @@ var (
 			"MessageGroupTimeout": hclspec.NewAttr("MessageGroupTimeout", "number", false),
 			"TopicWithSchemaTable": hclspec.NewDefault(hclspec.NewAttr("TopicWithSchemaTable", "bool", false),
 				hclspec.NewLiteral(`true`)),
+			"SchemaChangeTopic": hclspec.NewAttr("SchemaChangeTopic", "string", false),
 		})),
 		// Since each job has its own history, this should be smaller than MySQL default (25000).
 		"DependencyHistorySize": hclspec.NewDefault(hclspec.NewAttr("DependencyHistorySize", "number", false),
