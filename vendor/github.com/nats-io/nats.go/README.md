@@ -3,7 +3,8 @@ A [Go](http://golang.org) client for the [NATS messaging system](https://nats.io
 
 [![License Apache 2](https://img.shields.io/badge/License-Apache2-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fnats-io%2Fgo-nats.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fnats-io%2Fgo-nats?ref=badge_shield)
-[![Go Report Card](https://goreportcard.com/badge/github.com/nats-io/nats.go)](https://goreportcard.com/report/github.com/nats-io/nats.go) [![Build Status](https://travis-ci.org/nats-io/nats.go.svg?branch=master)](http://travis-ci.org/nats-io/nats.go) [![GoDoc](https://godoc.org/github.com/nats-io/nats.go?status.svg)](http://godoc.org/github.com/nats-io/nats.go) [![Coverage Status](https://coveralls.io/repos/nats-io/nats.go/badge.svg?branch=master)](https://coveralls.io/r/nats-io/nats.go?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nats-io/nats.go)](https://goreportcard.com/report/github.com/nats-io/nats.go) [![Build Status](https://travis-ci.com/nats-io/nats.go.svg?branch=master)](http://travis-ci.com/nats-io/nats.go) [![GoDoc](https://img.shields.io/badge/GoDoc-reference-007d9c)](https://pkg.go.dev/github.com/nats-io/nats.go)
+ [![Coverage Status](https://coveralls.io/repos/nats-io/nats.go/badge.svg?branch=master)](https://coveralls.io/r/nats-io/nats.go?branch=master)
 
 ## Installation
 
@@ -20,7 +21,7 @@ When using or transitioning to Go modules support:
 ```bash
 # Go client latest or explicit version
 go get github.com/nats-io/nats.go/@latest
-go get github.com/nats-io/nats.go/@v1.9.2
+go get github.com/nats-io/nats.go/@v1.10.0
 
 # For latest NATS Server, add /v2 at the end
 go get github.com/nats-io/nats-server/v2
@@ -284,6 +285,21 @@ nc.QueueSubscribe("foo", "job_workers", func(_ *Msg) {
 
 ```go
 
+// Normally, the library will return an error when trying to connect and
+// there is no server running. The RetryOnFailedConnect option will set
+// the connection in reconnecting state if it failed to connect right away.
+nc, err := nats.Connect(nats.DefaultURL,
+    nats.RetryOnFailedConnect(true),
+    nats.MaxReconnects(10),
+    nats.ReconnectWait(time.Second),
+    nats.ReconnectHandler(func(_ *nats.Conn) {
+        // Note that this will be invoked for the first asynchronous connect.
+    }))
+if err != nil {
+    // Should not return an error even if it can't connect, but you still
+    // need to check in case there are some configuration errors.
+}
+
 // Flush connection to server, returns when all messages have been processed.
 nc.Flush()
 fmt.Println("All clear!")
@@ -324,6 +340,18 @@ nc, err := nats.Connect(servers)
 // Optionally set ReconnectWait and MaxReconnect attempts.
 // This example means 10 seconds total per backend.
 nc, err = nats.Connect(servers, nats.MaxReconnects(5), nats.ReconnectWait(2 * time.Second))
+
+// You can also add some jitter for the reconnection.
+// This call will add up to 500 milliseconds for non TLS connections and 2 seconds for TLS connections.
+// If not specified, the library defaults to 100 milliseconds and 1 second, respectively.
+nc, err = nats.Connect(servers, nats.ReconnectJitter(500*time.Millisecond, 2*time.Second))
+
+// You can also specify a custom reconnect delay handler. If set, the library will invoke it when it has tried
+// all URLs in its list. The value returned will be used as the total sleep time, so add your own jitter.
+// The library will pass the number of times it went through the whole list.
+nc, err = nats.Connect(servers, nats.CustomReconnectDelay(func(attempts int) time.Duration {
+    return someBackoffFunction(attempts)
+}))
 
 // Optionally disable randomization of the server pool
 nc, err = nats.Connect(servers, nats.DontRandomize())

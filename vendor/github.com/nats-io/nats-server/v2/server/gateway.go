@@ -1,4 +1,4 @@
-// Copyright 2018-2019 The NATS Authors
+// Copyright 2018-2020 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -49,6 +48,10 @@ const (
 	gwClusterOffset  = gwReplyPrefixLen
 	gwServerOffset   = gwClusterOffset + gwHashLen + 1
 	gwSubjectOffset  = gwServerOffset + gwHashLen + 1
+
+	// Gateway connections send PINGs regardless of traffic. The interval is
+	// either Options.PingInterval or this value, whichever is the smallest.
+	gwMaxPingInterval = 15 * time.Second
 )
 
 var (
@@ -56,6 +59,7 @@ var (
 	gatewayReconnectDelay        = defaultGatewayReconnectDelay
 	gatewayMaxRUnsubBeforeSwitch = defaultGatewayMaxRUnsubBeforeSwitch
 	gatewaySolicitDelay          = int64(defaultSolicitGatewaysDelay)
+	gatewayMaxPingInterval       = gwMaxPingInterval
 )
 
 // Warning when user configures gateway TLS insecure
@@ -123,7 +127,7 @@ type srvGateway struct {
 	outo     []*client              // outbound gateways maintained in an order suitable for sending msgs (currently based on RTT)
 	in       map[uint64]*client     // inbound gateways
 	remotes  map[string]*gatewayCfg // Config of remote gateways
-	URLs     map[string]struct{}    // Set of all Gateway URLs in the cluster
+	URLs     refCountedUrlSet       // Set of all Gateway URLs in the cluster
 	URL      string                 // This server gateway URL (after possible random port is resolved)
 	info     *Info                  // Gateway Info protocol
 	infoJSON []byte                 // Marshal'ed Info protocol
@@ -156,6 +160,10 @@ type srvGateway struct {
 	resolver  netResolver   // Used to resolve host name before calling net.Dial()
 	sqbsz     int           // Max buffer size to send queue subs protocol. Used for testing.
 	recSubExp time.Duration // For how long do we check if there is a subscription match for a message with reply
+
+	// These are used for routing of mapped replies.
+	sIDHash        []byte   // Server ID hash (6 bytes)
+	routesIDByHash sync.Map // Route's server ID is hashed (6 bytes) and stored in this map.
 }
 
 // Subject interest tally. Also indicates if the key in the map is a
@@ -183,7 +191,6 @@ type gateway struct {
 	outbound   bool
 	cfg        *gatewayCfg
 	connectURL *url.URL          // Needed when sending CONNECT after receiving INFO from remote
-	infoJSON   []byte            // Needed when sending INFO after receiving INFO from remote
 	outsim     *sync.Map         // Per-account subject interest (or no-interest) (outbound conn)
 	insim      map[string]*insie // Per-account subject no-interest sent or modeInterestOnly mode (inbound conn)
 
@@ -269,16 +276,21 @@ func validateGatewayOptions(o *Options) error {
 	return nil
 }
 
-// Computes a hash of 8 characters for the name.
-// This will be used for routing of replies.
-func getHash(name string) []byte {
+// Computes a hash for the given `name`. The result will be `size` characters long.
+func getHashSize(name string, size int) []byte {
 	sha := sha256.New()
 	sha.Write([]byte(name))
 	b := sha.Sum(nil)
-	for i := 0; i < gwHashLen; i++ {
+	for i := 0; i < size; i++ {
 		b[i] = digits[int(b[i]%base)]
 	}
-	return b[:gwHashLen]
+	return b[:size]
+}
+
+// Computes a hash of 6 characters for the name.
+// This will be used for routing of replies.
+func getGWHash(name string) []byte {
+	return getHashSize(name, gwHashLen)
 }
 
 func getOldHash(name string) []byte {
@@ -299,7 +311,7 @@ func (s *Server) newGateway(opts *Options) error {
 		outo:     make([]*client, 0, 4),
 		in:       make(map[uint64]*client),
 		remotes:  make(map[string]*gatewayCfg),
-		URLs:     make(map[string]struct{}),
+		URLs:     make(refCountedUrlSet),
 		resolver: opts.Gateway.resolver,
 		runknown: opts.Gateway.RejectUnknown,
 		oldHash:  getOldHash(opts.Gateway.Name),
@@ -307,13 +319,13 @@ func (s *Server) newGateway(opts *Options) error {
 	gateway.Lock()
 	defer gateway.Unlock()
 
-	s.hash = getHash(s.info.ID)
-	clusterHash := getHash(opts.Gateway.Name)
+	gateway.sIDHash = getGWHash(s.info.ID)
+	clusterHash := getGWHash(opts.Gateway.Name)
 	prefix := make([]byte, 0, gwSubjectOffset)
 	prefix = append(prefix, gwReplyPrefix...)
 	prefix = append(prefix, clusterHash...)
 	prefix = append(prefix, '.')
-	prefix = append(prefix, s.hash...)
+	prefix = append(prefix, gateway.sIDHash...)
 	prefix = append(prefix, '.')
 	gateway.replyPfx = prefix
 
@@ -337,7 +349,7 @@ func (s *Server) newGateway(opts *Options) error {
 		}
 		cfg := &gatewayCfg{
 			RemoteGatewayOpts: rgo.clone(),
-			hash:              getHash(rgo.Name),
+			hash:              getGWHash(rgo.Name),
 			oldHash:           getOldHash(rgo.Name),
 			urls:              make(map[string]*url.URL, len(rgo.URLs)),
 		}
@@ -366,23 +378,27 @@ func (s *Server) newGateway(opts *Options) error {
 	return nil
 }
 
-// Returns the Gateway's name of this server.
-func (g *srvGateway) getName() string {
-	g.RLock()
-	n := g.name
-	g.RUnlock()
-	return n
-}
+// Update remote gateways TLS configurations after a config reload.
+func (g *srvGateway) updateRemotesTLSConfig(opts *Options) {
+	g.Lock()
+	defer g.Unlock()
 
-// Returns the Gateway URLs of all servers in the local cluster.
-// This is used to send to other cluster this server connects to.
-// The gateway read-lock is held on entry
-func (g *srvGateway) getURLs() []string {
-	a := make([]string, 0, len(g.URLs))
-	for u := range g.URLs {
-		a = append(a, u)
+	for _, ro := range opts.Gateway.Gateways {
+		if ro.Name == g.name {
+			continue
+		}
+		if cfg, ok := g.remotes[ro.Name]; ok {
+			cfg.Lock()
+			// If TLS config is in remote, use that one, otherwise,
+			// use the TLS config from the main block.
+			if ro.TLSConfig != nil {
+				cfg.TLSConfig = ro.TLSConfig.Clone()
+			} else if opts.Gateway.TLSConfig != nil {
+				cfg.TLSConfig = opts.Gateway.TLSConfig.Clone()
+			}
+			cfg.Unlock()
+		}
 	}
-	return a
 }
 
 // Returns if this server rejects connections from gateways that are not
@@ -399,10 +415,7 @@ func (g *srvGateway) rejectUnknown() bool {
 // the cluster to form and this server gathers gateway URLs for this
 // cluster in order to send that as part of the connect/info process.
 func (s *Server) startGateways() {
-	// Spin up the accept loop
-	ch := make(chan struct{})
-	go s.gatewayAcceptLoop(ch)
-	<-ch
+	s.startGatewayAcceptLoop()
 
 	// Delay start of creation of gateways to give a chance
 	// to the local cluster to form.
@@ -423,18 +436,9 @@ func (s *Server) startGateways() {
 	})
 }
 
-// This is the gateways accept loop. This runs as a go-routine.
-// The listen specification is resolved (if use of random port),
-// then a listener is started. After that, this routine enters
-// a loop (until the server is shutdown) accepting incoming
-// gateway connections.
-func (s *Server) gatewayAcceptLoop(ch chan struct{}) {
-	defer func() {
-		if ch != nil {
-			close(ch)
-		}
-	}()
-
+// This starts the gateway accept loop in a go routine, unless it
+// is detected that the server has already been shutdown.
+func (s *Server) startGatewayAcceptLoop() {
 	// Snapshot server options.
 	opts := s.getOpts()
 
@@ -443,9 +447,15 @@ func (s *Server) gatewayAcceptLoop(ch chan struct{}) {
 		port = 0
 	}
 
+	s.mu.Lock()
+	if s.shutdown {
+		s.mu.Unlock()
+		return
+	}
 	hp := net.JoinHostPort(opts.Gateway.Host, strconv.Itoa(port))
-	l, e := net.Listen("tcp", hp)
+	l, e := natsListen("tcp", hp)
 	if e != nil {
+		s.mu.Unlock()
 		s.Fatalf("Error listening on gateway port: %d - %v", opts.Gateway.Port, e)
 		return
 	}
@@ -453,11 +463,11 @@ func (s *Server) gatewayAcceptLoop(ch chan struct{}) {
 	s.Noticef("Listening for gateways connections on %s",
 		net.JoinHostPort(opts.Gateway.Host, strconv.Itoa(l.Addr().(*net.TCPAddr).Port)))
 
-	s.mu.Lock()
 	tlsReq := opts.Gateway.TLSConfig != nil
 	authRequired := opts.Gateway.Username != ""
 	info := &Info{
 		ID:           s.info.ID,
+		Name:         opts.ServerName,
 		Version:      s.info.Version,
 		AuthRequired: authRequired,
 		TLSRequired:  tlsReq,
@@ -465,6 +475,7 @@ func (s *Server) gatewayAcceptLoop(ch chan struct{}) {
 		MaxPayload:   s.info.MaxPayload,
 		Gateway:      opts.Gateway.Name,
 		GatewayNRP:   true,
+		Headers:      s.supportsHeaders(),
 	}
 	// If we have selected a random port...
 	if port == 0 {
@@ -496,28 +507,8 @@ func (s *Server) gatewayAcceptLoop(ch chan struct{}) {
 	if warn {
 		s.Warnf(gatewayTLSInsecureWarning)
 	}
+	go s.acceptConnections(l, "Gateway", func(conn net.Conn) { s.createGateway(nil, nil, conn) }, nil)
 	s.mu.Unlock()
-
-	// Let them know we are up
-	close(ch)
-	ch = nil
-
-	tmpDelay := ACCEPT_MIN_SLEEP
-
-	for s.isRunning() {
-		conn, err := l.Accept()
-		if err != nil {
-			tmpDelay = s.acceptError("Gateway", err, tmpDelay)
-			continue
-		}
-		tmpDelay = ACCEPT_MIN_SLEEP
-		s.startGoRoutine(func() {
-			s.createGateway(nil, nil, conn)
-			s.grWG.Done()
-		})
-	}
-	s.Debugf("Gateway accept loop exiting..")
-	s.done <- true
 }
 
 // Similar to setInfoHostPortAndGenerateJSON, but for gatewayInfo.
@@ -525,7 +516,7 @@ func (s *Server) setGatewayInfoHostPort(info *Info, o *Options) error {
 	gw := s.gateway
 	gw.Lock()
 	defer gw.Unlock()
-	delete(gw.URLs, gw.URL)
+	gw.URLs.removeUrl(gw.URL)
 	if o.Gateway.Advertise != "" {
 		advHost, advPort, err := parseHostPort(o.Gateway.Advertise, o.Gateway.Port)
 		if err != nil {
@@ -565,7 +556,7 @@ func (s *Server) setGatewayInfoHostPort(info *Info, o *Options) error {
 	} else {
 		s.Noticef("Address for gateway %q is %s", gw.name, gw.URL)
 	}
-	gw.URLs[gw.URL] = struct{}{}
+	gw.URLs[gw.URL]++
 	gw.info = info
 	info.GatewayURL = gw.URL
 	// (re)generate the gatewayInfoJSON byte array
@@ -576,6 +567,13 @@ func (s *Server) setGatewayInfoHostPort(info *Info, o *Options) error {
 // Generates the Gateway INFO protocol.
 // The gateway lock is held on entry
 func (g *srvGateway) generateInfoJSON() {
+	// We could be here when processing a route INFO that has a gateway URL,
+	// but this server is not configured for gateways, so simply ignore here.
+	// The configuration mismatch is reported somewhere else.
+	if !g.enabled {
+		return
+	}
+	g.info.GatewayURLs = g.URLs.getAsStringSlice()
 	b, err := json.Marshal(g.info)
 	if err != nil {
 		panic(err)
@@ -650,7 +648,7 @@ func (s *Server) solicitGateway(cfg *gatewayCfg, firstConnect bool) {
 		report := s.shouldReportConnectErr(firstConnect, attempts)
 		// Iteration is random
 		for _, u := range urls {
-			address, err := s.getRandomIP(s.gateway.resolver, u.Host)
+			address, err := s.getRandomIP(s.gateway.resolver, u.Host, nil)
 			if err != nil {
 				s.Errorf("Error getting IP for %s gateway %q (%s): %v", typeStr, cfg.Name, u.Host, err)
 				continue
@@ -660,7 +658,7 @@ func (s *Server) solicitGateway(cfg *gatewayCfg, firstConnect bool) {
 			} else {
 				s.Debugf(connFmt, typeStr, cfg.Name, u.Host, address, attempts)
 			}
-			conn, err := net.DialTimeout("tcp", address, DEFAULT_ROUTE_DIAL)
+			conn, err := natsDialTimeout("tcp", address, DEFAULT_ROUTE_DIAL)
 			if err == nil {
 				// We could connect, create the gateway connection and return.
 				s.createGateway(cfg, u, conn)
@@ -679,6 +677,12 @@ func (s *Server) solicitGateway(cfg *gatewayCfg, firstConnect bool) {
 		if isImplicit {
 			if opts.Gateway.ConnectRetries == 0 || attempts > opts.Gateway.ConnectRetries {
 				s.gateway.Lock()
+				// We could have just accepted an inbound for this remote gateway.
+				// So if there is an inbound, let's try again to connect.
+				if s.gateway.hasInbound(cfg.Name) {
+					s.gateway.Unlock()
+					continue
+				}
 				delete(s.gateway.remotes, cfg.Name)
 				s.gateway.Unlock()
 				return
@@ -693,6 +697,20 @@ func (s *Server) solicitGateway(cfg *gatewayCfg, firstConnect bool) {
 	}
 }
 
+// Returns true if there is an inbound for the given `name`.
+// Lock held on entry.
+func (g *srvGateway) hasInbound(name string) bool {
+	for _, ig := range g.in {
+		ig.mu.Lock()
+		igname := ig.gw.name
+		ig.mu.Unlock()
+		if igname == name {
+			return true
+		}
+	}
+	return false
+}
+
 // Called when a gateway connection is either accepted or solicited.
 // If accepted, the gateway is marked as inbound.
 // If solicited, the gateway is marked as outbound.
@@ -700,26 +718,16 @@ func (s *Server) createGateway(cfg *gatewayCfg, url *url.URL, conn net.Conn) {
 	// Snapshot server options.
 	opts := s.getOpts()
 
-	now := time.Now()
+	now := time.Now().UTC()
 	c := &client{srv: s, nc: conn, start: now, last: now, kind: GATEWAY}
 
 	// Are we creating the gateway based on the configuration
 	solicit := cfg != nil
 	var tlsRequired bool
-	if solicit {
-		tlsRequired = cfg.TLSConfig != nil
-	} else {
-		tlsRequired = opts.Gateway.TLSConfig != nil
-	}
 
-	// Generate INFO to send
 	s.gateway.RLock()
-	// Make a copy
-	info := *s.gateway.info
-	info.GatewayURLs = s.gateway.getURLs()
+	infoJSON := s.gateway.infoJSON
 	s.gateway.RUnlock()
-	b, _ := json.Marshal(&info)
-	infoJSON := []byte(fmt.Sprintf(InfoProto, b))
 
 	// Perform some initialization under the client lock
 	c.mu.Lock()
@@ -727,87 +735,51 @@ func (s *Server) createGateway(cfg *gatewayCfg, url *url.URL, conn net.Conn) {
 	c.gw = &gateway{}
 	if solicit {
 		// This is an outbound gateway connection
+		cfg.RLock()
+		tlsRequired = cfg.TLSConfig != nil
+		cfgName := cfg.Name
+		cfg.RUnlock()
 		c.gw.outbound = true
-		c.gw.name = cfg.Name
+		c.gw.name = cfgName
 		c.gw.cfg = cfg
 		cfg.bumpConnAttempts()
 		// Since we are delaying the connect until after receiving
 		// the remote's INFO protocol, save the URL we need to connect to.
 		c.gw.connectURL = url
-		c.gw.infoJSON = infoJSON
 
-		c.Noticef("Creating outbound gateway connection to %q", cfg.Name)
+		c.Noticef("Creating outbound gateway connection to %q", cfgName)
 	} else {
 		c.flags.set(expectConnect)
 		// Inbound gateway connection
 		c.Noticef("Processing inbound gateway connection")
+		// Check if TLS is required for inbound GW connections.
+		tlsRequired = opts.Gateway.TLSConfig != nil
 	}
 
 	// Check for TLS
 	if tlsRequired {
-		var host string
+		var tlsConfig *tls.Config
+		var tlsName string
 		var timeout float64
-		// If we solicited, we will act like the client, otherwise the server.
+
 		if solicit {
-			c.Debugf("Starting TLS gateway client handshake")
 			cfg.RLock()
-			tlsName := cfg.tlsName
-			tlsConfig := cfg.TLSConfig.Clone()
+			tlsName = cfg.tlsName
+			tlsConfig = cfg.TLSConfig.Clone()
 			timeout = cfg.TLSTimeout
 			cfg.RUnlock()
-			if tlsConfig.ServerName == "" {
-				// If the given url is a hostname, use this hostname for the
-				// ServerName. If it is an IP, use the cfg's tlsName. If none
-				// is available, resort to current IP.
-				host = url.Hostname()
-				if tlsName != "" && net.ParseIP(host) != nil {
-					host = tlsName
-				}
-				tlsConfig.ServerName = host
-			}
-			c.nc = tls.Client(c.nc, tlsConfig)
 		} else {
-			c.Debugf("Starting TLS gateway server handshake")
-			c.nc = tls.Server(c.nc, opts.Gateway.TLSConfig)
+			tlsConfig = opts.Gateway.TLSConfig
 			timeout = opts.Gateway.TLSTimeout
 		}
 
-		conn := c.nc.(*tls.Conn)
-
-		// Setup the timeout
-		ttl := secondsToDuration(timeout)
-		time.AfterFunc(ttl, func() { tlsTimeout(c, conn) })
-		conn.SetReadDeadline(time.Now().Add(ttl))
-
-		c.mu.Unlock()
-		if err := conn.Handshake(); err != nil {
-			if solicit {
-				// Based on type of error, possibly clear the saved tlsName
-				// See: https://github.com/nats-io/nats-server/issues/1256
-				if _, ok := err.(x509.HostnameError); ok {
-					cfg.Lock()
-					if host == cfg.tlsName {
-						cfg.tlsName = ""
-					}
-					cfg.Unlock()
-				}
+		// Perform (either server or client side) TLS handshake.
+		if resetTLSName, err := c.doTLSHandshake("gateway", solicit, url, tlsConfig, tlsName, timeout); err != nil {
+			if resetTLSName {
+				cfg.Lock()
+				cfg.tlsName = _EMPTY_
+				cfg.Unlock()
 			}
-			c.Errorf("TLS gateway handshake error: %v", err)
-			c.sendErr("Secure Connection - TLS Required")
-			c.closeConnection(TLSHandshakeError)
-			return
-		}
-		// Reset the read deadline
-		conn.SetReadDeadline(time.Time{})
-
-		// Re-Grab lock
-		c.mu.Lock()
-
-		// To be consistent with client, set this flag to indicate that handshake is done
-		c.flags.set(handshakeComplete)
-
-		// Verify that the connection did not go away while we released the lock.
-		if c.isClosed() {
 			c.mu.Unlock()
 			return
 		}
@@ -838,7 +810,7 @@ func (s *Server) createGateway(cfg *gatewayCfg, url *url.URL, conn net.Conn) {
 	}
 
 	// Spin up the read loop.
-	s.startGoRoutine(func() { c.readLoop() })
+	s.startGoRoutine(func() { c.readLoop(nil) })
 
 	// Spin up the write loop.
 	s.startGoRoutine(func() { c.writeLoop() })
@@ -853,10 +825,18 @@ func (s *Server) createGateway(cfg *gatewayCfg, url *url.URL, conn net.Conn) {
 	s.setFirstPingTimer(c)
 
 	c.mu.Unlock()
+
+	// Announce ourselves again to new connections.
+	if solicit && s.EventsEnabled() {
+		s.mu.Lock()
+		s.sendStatsz(fmt.Sprintf(serverStatsSubj, s.info.ID))
+		s.mu.Unlock()
+	}
 }
 
-// Builds and sends the CONNET protocol for a gateway.
-func (c *client) sendGatewayConnect() {
+// Builds and sends the CONNECT protocol for a gateway.
+// Client lock held on entry.
+func (c *client) sendGatewayConnect(opts *Options) {
 	tlsRequired := c.gw.cfg.TLSConfig != nil
 	url := c.gw.connectURL
 	c.gw.connectURL = nil
@@ -864,6 +844,9 @@ func (c *client) sendGatewayConnect() {
 	if userInfo := url.User; userInfo != nil {
 		user = userInfo.Username()
 		pass, _ = userInfo.Password()
+	} else if opts != nil {
+		user = opts.Gateway.Username
+		pass = opts.Gateway.Password
 	}
 	cinfo := connectInfo{
 		Verbose:  false,
@@ -872,7 +855,7 @@ func (c *client) sendGatewayConnect() {
 		Pass:     pass,
 		TLS:      tlsRequired,
 		Name:     c.srv.info.ID,
-		Gateway:  c.srv.getGatewayName(),
+		Gateway:  c.srv.gateway.name,
 	}
 	b, err := json.Marshal(cinfo)
 	if err != nil {
@@ -1008,16 +991,23 @@ func (c *client) processGatewayInfo(info *Info) {
 
 		// If this is the first INFO, send our connect
 		if isFirstINFO {
+			s.gateway.RLock()
+			infoJSON := s.gateway.infoJSON
+			s.gateway.RUnlock()
+
+			supportsHeaders := s.supportsHeaders()
+			opts := s.getOpts()
+
 			// Note, if we want to support NKeys, then we would get the nonce
 			// from this INFO protocol and can sign it in the CONNECT we are
 			// going to send now.
 			c.mu.Lock()
-			c.sendGatewayConnect()
+			c.sendGatewayConnect(opts)
 			c.Debugf("Gateway connect protocol sent to %q", gwName)
 			// Send INFO too
-			c.enqueueProto(c.gw.infoJSON)
-			c.gw.infoJSON = nil
+			c.enqueueProto(infoJSON)
 			c.gw.useOldPrefix = !info.GatewayNRP
+			c.headers = supportsHeaders && info.Headers
 			c.mu.Unlock()
 
 			// Register as an outbound gateway.. if we had a protocol to ack our connect,
@@ -1077,6 +1067,31 @@ func (c *client) processGatewayInfo(info *Info) {
 		// Send back to the server that initiated this gateway connection the
 		// list of all remote gateways known on this server.
 		s.gossipGatewaysToInboundGateway(info.Gateway, c)
+
+		// Now make sure if we have any knowledge of connected leafnodes that we resend the
+		// connect events to switch those accounts into interest only mode.
+		s.mu.Lock()
+		s.ensureGWsInterestOnlyForLeafNodes()
+		js := s.js
+		s.mu.Unlock()
+
+		// Switch JetStream accounts to interest-only mode.
+		if js != nil {
+			var accounts []*Account
+			js.mu.Lock()
+			if len(js.accounts) > 0 {
+				accounts = make([]*Account, 0, len(js.accounts))
+				for acc := range js.accounts {
+					accounts = append(accounts, acc)
+				}
+			}
+			js.mu.Unlock()
+			for _, acc := range accounts {
+				if acc.JetStreamEnabled() {
+					s.switchAccountToInterestMode(acc.GetName())
+				}
+			}
+		}
 	}
 }
 
@@ -1122,6 +1137,7 @@ func (s *Server) forwardNewGatewayToLocalCluster(oinfo *Info) {
 	// the sent protocol will not have host/port defined.
 	info := &Info{
 		ID:          "GW" + s.info.ID,
+		Name:        s.getOpts().ServerName,
 		Gateway:     oinfo.Gateway,
 		GatewayURLs: oinfo.GatewayURLs,
 		GatewayCmd:  gatewayCmdGossip,
@@ -1214,8 +1230,7 @@ func (s *Server) sendSubsToGateway(c *client, accountName []byte) {
 	}
 	// Send
 	c.mu.Lock()
-	c.queueOutbound(buf)
-	c.flushSignal()
+	c.enqueueProto(buf)
 	c.Debugf("Sent queue subscriptions to gateway")
 	c.mu.Unlock()
 }
@@ -1305,7 +1320,7 @@ func (s *Server) processImplicitGateway(info *Info) {
 	opts := s.getOpts()
 	cfg = &gatewayCfg{
 		RemoteGatewayOpts: &RemoteGatewayOpts{Name: gwName},
-		hash:              getHash(gwName),
+		hash:              getGWHash(gwName),
 		oldHash:           getOldHash(gwName),
 		urls:              make(map[string]*url.URL, len(info.GatewayURLs)),
 		implicit:          true,
@@ -1468,20 +1483,45 @@ func (g *gatewayCfg) addURLs(infoURLs []string) {
 	}
 }
 
-// Adds this URL to the set of Gateway URLs
+// Adds this URL to the set of Gateway URLs.
+// Returns true if the URL has been added, false otherwise.
 // Server lock held on entry
-func (s *Server) addGatewayURL(urlStr string) {
+func (s *Server) addGatewayURL(urlStr string) bool {
 	s.gateway.Lock()
-	s.gateway.URLs[urlStr] = struct{}{}
+	added := s.gateway.URLs.addUrl(urlStr)
+	if added {
+		s.gateway.generateInfoJSON()
+	}
 	s.gateway.Unlock()
+	return added
 }
 
-// Remove this URL from the set of gateway URLs
+// Removes this URL from the set of gateway URLs.
+// Returns true if the URL has been removed, false otherwise.
 // Server lock held on entry
-func (s *Server) removeGatewayURL(urlStr string) {
+func (s *Server) removeGatewayURL(urlStr string) bool {
+	if s.shutdown {
+		return false
+	}
 	s.gateway.Lock()
-	delete(s.gateway.URLs, urlStr)
+	removed := s.gateway.URLs.removeUrl(urlStr)
+	if removed {
+		s.gateway.generateInfoJSON()
+	}
 	s.gateway.Unlock()
+	return removed
+}
+
+// Sends a Gateway's INFO to all inbound GW connections.
+// Server lock is held on entry
+func (s *Server) sendAsyncGatewayInfo() {
+	s.gateway.RLock()
+	for _, ig := range s.gateway.in {
+		ig.mu.Lock()
+		ig.enqueueProto(s.gateway.infoJSON)
+		ig.mu.Unlock()
+	}
+	s.gateway.RUnlock()
 }
 
 // This returns the URL of the Gateway listen spec, or empty string
@@ -1496,7 +1536,8 @@ func (s *Server) getGatewayURL() string {
 // Returns this server gateway name.
 // Same than calling s.gateway.getName()
 func (s *Server) getGatewayName() string {
-	return s.gateway.getName()
+	// This is immutable
+	return s.gateway.name
 }
 
 // All gateway connections (outbound and inbound) are put in the given map.
@@ -1977,6 +2018,12 @@ func (c *client) gatewayInterest(acc, subj string) (bool, *SublistResult) {
 			}
 		}
 		e.RUnlock()
+		// Since callers may just check if the sublist result is nil or not,
+		// make sure that if what is returned by sl.Match() is the emptyResult, then
+		// we return nil to the caller.
+		if r == emptyResult {
+			r = nil
+		}
 	}
 	return psi, r
 }
@@ -2276,11 +2323,13 @@ func hasGWRoutedReplyPrefix(subj []byte) bool {
 
 // Evaluates if the given reply should be mapped or not.
 func (g *srvGateway) shouldMapReplyForGatewaySend(c *client, acc *Account, reply []byte) bool {
-	// If the reply is a service reply (_R_), we will use the replyClient
-	// instead of the client handed to us. This client holds the wildcard
+	// If the reply is a service reply (_R_), we will use the account's internal
+	// client instead of the client handed to us. This client holds the wildcard
 	// for all service replies.
 	if isServiceReply(reply) {
-		c = acc.replyClient()
+		acc.mu.Lock()
+		c = acc.internalClient()
+		acc.mu.Unlock()
 	}
 	// If for this client there is a recent matching subscription interest
 	// then we will map.
@@ -2294,6 +2343,7 @@ func (g *srvGateway) shouldMapReplyForGatewaySend(c *client, acc *Account, reply
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -2308,10 +2358,15 @@ var subPool = &sync.Pool{
 // it is known that this gateway has no interest in the account or
 // subject, etc..
 // <Invoked from any client connection's readLoop>
-func (c *client) sendMsgToGateways(acc *Account, msg, subject, reply []byte, qgroups [][]byte) {
+func (c *client) sendMsgToGateways(acc *Account, msg, subject, reply []byte, qgroups [][]byte) bool {
+	// We had some times when we were sending across a GW with no subject, and the other side would break
+	// due to parser error. These need to be fixed upstream but also double check here.
+	if len(subject) == 0 {
+		return false
+	}
 	gwsa := [16]*client{}
 	gws := gwsa[:0]
-	// This is in fast path, so avoid calling function when possible.
+	// This is in fast path, so avoid calling functions when possible.
 	// Get the outbound connections in place instead of calling
 	// getOutboundGatewayConnections().
 	gw := c.srv.gateway
@@ -2323,7 +2378,7 @@ func (c *client) sendMsgToGateways(acc *Account, msg, subject, reply []byte, qgr
 	thisClusterOldReplyPrefix := gw.oldReplyPfx
 	gw.RUnlock()
 	if len(gws) == 0 {
-		return
+		return false
 	}
 	var (
 		subj       = string(subject)
@@ -2334,13 +2389,11 @@ func (c *client) sendMsgToGateways(acc *Account, msg, subject, reply []byte, qgr
 		mreply     []byte
 		dstHash    []byte
 		checkReply = len(reply) > 0
+		didDeliver bool
 	)
 
 	// Get a subscription from the pool
 	sub := subPool.Get().(*subscription)
-
-	// Make sure we are an 'R' proto
-	c.msgb[0] = 'R'
 
 	// Check if the subject is on the reply prefix, if so, we
 	// need to send that message directly to the origin cluster.
@@ -2418,6 +2471,9 @@ func (c *client) sendMsgToGateways(acc *Account, msg, subject, reply []byte, qgr
 				mreply = append(mreply, reply...)
 			}
 		}
+		// Setup the message header.
+		// Make sure we are an 'R' proto by default
+		c.msgb[0] = 'R'
 		mh := c.msgb[:msgHeadProtoLen]
 		mh = append(mh, accName...)
 		mh = append(mh, ' ')
@@ -2436,7 +2492,25 @@ func (c *client) sendMsgToGateways(acc *Account, msg, subject, reply []byte, qgr
 			mh = append(mh, mreply...)
 			mh = append(mh, ' ')
 		}
-		mh = append(mh, c.pa.szb...)
+		// Headers
+		hasHeader := c.pa.hdr > 0
+		canReceiveHeader := gwc.headers
+
+		if hasHeader {
+			if canReceiveHeader {
+				mh[0] = 'H'
+				mh = append(mh, c.pa.hdb...)
+				mh = append(mh, ' ')
+				mh = append(mh, c.pa.szb...)
+			} else {
+				// If we are here we need to truncate the payload size
+				nsz := strconv.Itoa(c.pa.size - c.pa.hdr)
+				mh = append(mh, nsz...)
+			}
+		} else {
+			mh = append(mh, c.pa.szb...)
+		}
+
 		mh = append(mh, CR_LF...)
 
 		// We reuse the subscription object that we pass to deliverMsg.
@@ -2444,11 +2518,12 @@ func (c *client) sendMsgToGateways(acc *Account, msg, subject, reply []byte, qgr
 		sub.nm, sub.max = 0, 0
 		sub.client = gwc
 		sub.subject = subject
-		c.deliverMsg(sub, subject, mh, msg, false)
+		didDeliver = c.deliverMsg(sub, subject, mreply, mh, msg, false) || didDeliver
 	}
 	// Done with subscription, put back to pool. We don't need
 	// to reset content since we explicitly set when using it.
 	subPool.Put(sub)
+	return didDeliver
 }
 
 // Possibly sends an A- to the remote gateway `c`.
@@ -2571,13 +2646,32 @@ func (g *srvGateway) getClusterHash() []byte {
 	return clusterHash
 }
 
-// Returns the route with given hash or nil if not found.
-func (s *Server) getRouteByHash(srvHash []byte) *client {
-	var route *client
-	if v, ok := s.routesByHash.Load(string(srvHash)); ok {
-		route = v.(*client)
+// Store this route in map with the key being the remote server's name hash
+// and the remote server's ID hash used by gateway replies mapping routing.
+func (s *Server) storeRouteByHash(srvNameHash, srvIDHash string, c *client) {
+	s.routesByHash.Store(srvNameHash, c)
+	if !s.gateway.enabled {
+		return
 	}
-	return route
+	s.gateway.routesIDByHash.Store(srvIDHash, c)
+}
+
+// Remove the route with the given keys from the map.
+func (s *Server) removeRouteByHash(srvNameHash, srvIDHash string) {
+	s.routesByHash.Delete(srvNameHash)
+	if !s.gateway.enabled {
+		return
+	}
+	s.gateway.routesIDByHash.Delete(srvIDHash)
+}
+
+// Returns the route with given hash or nil if not found.
+// This is for gateways only.
+func (g *srvGateway) getRouteByHash(hash []byte) *client {
+	if v, ok := g.routesIDByHash.Load(string(hash)); ok {
+		return v.(*client)
+	}
+	return nil
 }
 
 // Returns the subject from the routed reply
@@ -2635,8 +2729,8 @@ func (c *client) handleGatewayReply(msg []byte) (processed bool) {
 	var route *client
 
 	// If the origin is not this server, get the route this should be sent to.
-	if c.kind == GATEWAY && srvHash != nil && !bytes.Equal(srvHash, c.srv.hash) {
-		route = c.srv.getRouteByHash(srvHash)
+	if c.kind == GATEWAY && srvHash != nil && !bytes.Equal(srvHash, c.srv.gateway.sIDHash) {
+		route = c.srv.gateway.getRouteByHash(srvHash)
 		// This will be possibly nil, and in this case we will try to process
 		// the interest from this server.
 	}
@@ -2665,15 +2759,12 @@ func (c *client) handleGatewayReply(msg []byte) (processed bool) {
 		}
 		return true
 	}
+
 	// If route is nil, we will process the incoming message locally.
 	if route == nil {
 		// Check if this is a service reply subject (_R_)
-		if acc.imports.services != nil && isServiceReply(c.pa.subject) {
-			// This will map the _R_ back to a real subject and get
-			// the interest for that subject and process the message.
-			c.checkForImportServices(acc, msg)
-			return true
-		}
+		isServiceReply := len(acc.imports.services) > 0 && isServiceReply(c.pa.subject)
+
 		var queues [][]byte
 		if len(r.psubs)+len(r.qsubs) > 0 {
 			flags := pmrCollectQueueNames | pmrIgnoreEmptyQueueFilter
@@ -2683,12 +2774,14 @@ func (c *client) handleGatewayReply(msg []byte) (processed bool) {
 			if c.kind == ROUTER {
 				flags |= pmrAllowSendFromRouteToRoute
 			}
-			queues = c.processMsgResults(acc, r, msg, c.pa.subject, c.pa.reply, flags)
+			_, queues = c.processMsgResults(acc, r, msg, nil, c.pa.subject, c.pa.reply, flags)
 		}
 		// Since this was a reply that made it to the origin cluster,
 		// we now need to send the message with the real subject to
 		// gateways in case they have interest on that reply subject.
-		c.sendMsgToGateways(acc, msg, c.pa.subject, c.pa.reply, queues)
+		if !isServiceReply {
+			c.sendMsgToGateways(acc, msg, c.pa.subject, c.pa.reply, queues)
+		}
 	} else if c.kind == GATEWAY {
 		// Only if we are a gateway connection should we try to route
 		// to the server where the request originated.
@@ -2753,12 +2846,24 @@ func (c *client) processInboundGatewayMsg(msg []byte) {
 	}
 
 	// Check if this is a service reply subject (_R_)
+	noInterest := len(r.psubs) == 0
 	checkNoInterest := true
-	if acc.imports.services != nil && isServiceReply(c.pa.subject) {
-		c.checkForImportServices(acc, msg)
-		checkNoInterest = false
+	if acc.imports.services != nil {
+		if isServiceReply(c.pa.subject) {
+			checkNoInterest = false
+		} else {
+			// We need to eliminate the subject interest from the service imports here to
+			// make sure we send the proper no interest if the service import is the only interest.
+			noInterest = true
+			for _, sub := range r.psubs {
+				if sub.client.kind != ACCOUNT {
+					noInterest = false
+					break
+				}
+			}
+		}
 	}
-	if checkNoInterest && len(r.psubs) == 0 {
+	if checkNoInterest && noInterest {
 		// If there is no interest on plain subs, possibly send an RS-,
 		// even if there is qsubs interest.
 		c.srv.gatewayHandleSubjectNoInterest(c, acc, c.pa.account, c.pa.subject)
@@ -2769,7 +2874,7 @@ func (c *client) processInboundGatewayMsg(msg []byte) {
 			return
 		}
 	}
-	c.processMsgResults(acc, r, msg, c.pa.subject, c.pa.reply, pmrNoFlag)
+	c.processMsgResults(acc, r, msg, nil, c.pa.subject, c.pa.reply, pmrNoFlag)
 }
 
 // Indicates that the remote which we are sending messages to
@@ -2782,7 +2887,7 @@ func (c *client) gatewayAllSubsReceiveStart(info *Info) {
 		return
 	}
 
-	c.Noticef("Gateway %q: switching account %q to %s mode",
+	c.Debugf("Gateway %q: switching account %q to %s mode",
 		info.Gateway, account, InterestOnly)
 
 	// Since the remote would send us this start command
@@ -2827,7 +2932,7 @@ func (c *client) gatewayAllSubsReceiveComplete(info *Info) {
 		e.mode = InterestOnly
 		e.Unlock()
 
-		c.Noticef("Gateway %q: switching account %q to %s mode complete",
+		c.Debugf("Gateway %q: switching account %q to %s mode complete",
 			info.Gateway, account, InterestOnly)
 	}
 }
@@ -2862,7 +2967,7 @@ func (c *client) gatewaySwitchAccountToSendAllSubs(e *insie, accName string) {
 	s := c.srv
 
 	remoteGWName := c.gw.name
-	c.Noticef("Gateway %q: switching account %q to %s mode",
+	c.Debugf("Gateway %q: switching account %q to %s mode",
 		remoteGWName, accName, InterestOnly)
 
 	// Function that will create an INFO protocol
@@ -2871,7 +2976,7 @@ func (c *client) gatewaySwitchAccountToSendAllSubs(e *insie, accName string) {
 		// Use bare server info and simply set the
 		// gateway name and command
 		info := Info{
-			Gateway:           s.getGatewayName(),
+			Gateway:           s.gateway.name,
 			GatewayCmd:        cmd,
 			GatewayCmdPayload: []byte(accName),
 		}
@@ -2904,7 +3009,7 @@ func (c *client) gatewaySwitchAccountToSendAllSubs(e *insie, accName string) {
 		// matching sub from us.
 		sendCmd(gatewayCmdAllSubsComplete, true)
 
-		c.Noticef("Gateway %q: switching account %q to %s mode complete",
+		c.Debugf("Gateway %q: switching account %q to %s mode complete",
 			remoteGWName, accName, InterestOnly)
 	})
 }
