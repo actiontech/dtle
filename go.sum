@@ -382,6 +382,8 @@ github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a h1:lDbwgaAZcv89/2K
 github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a/go.mod h1:3lFZKf7l95Qo70+3XB2WpiSf9wu2s3na3geLMaIIrqQ=
 github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89 h1:fu/ZBRwa1XQykvfFy3wdMf9KeoEebyFk8PT7IXbd+xo=
 github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89/go.mod h1:48Jyr6LI/jtBpl6+7WSM17E7/hvnKHPQgGFuXb6PnNY=
+github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9 h1:Ma2ssL8wst/Zmqlep+ocYlpkCD4NOSG3Pg659mObPlQ=
+github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9/go.mod h1:48Jyr6LI/jtBpl6+7WSM17E7/hvnKHPQgGFuXb6PnNY=
 github.com/flosch/pongo2 v0.0.0-20190707114632-bbf5a6c351f4/go.mod h1:T9YF2M40nIgbVgp3rreNmTged+9HrbNTIQf1PsaIiTA=
 github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=
 github.com/fogleman/gg v1.3.0/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=

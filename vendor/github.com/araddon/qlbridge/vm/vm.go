@@ -358,6 +358,19 @@ func evalBinary(ctx expr.EvalContext, node *expr.BinaryNode, depth int) (value.V
 		}
 	}
 
+	if _, bIsNil := br.(value.NilValue); bIsNil {
+		_, aIsNil := ar.(value.NilValue)
+		switch node.Operator.T {
+		case lex.TokenIs:
+			return value.NewBoolValue(aIsNil), true
+		case lex.TokenNE:
+			return value.NewBoolValue(!aIsNil), true
+		default:
+			// not `is [not] null` expression
+			// fallthrough
+		}
+	}
+
 	switch at := ar.(type) {
 	case value.IntValue:
 		switch bt := br.(type) {

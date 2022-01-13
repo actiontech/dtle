@@ -40,7 +40,7 @@ github.com/alecthomas/template/parse
 github.com/araddon/dateparse
 # github.com/araddon/gou v0.0.0-20190110011759-c797efecbb61
 github.com/araddon/gou
-# github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000 => github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89
+# github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000 => github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9
 ## explicit
 github.com/araddon/qlbridge/datasource
 github.com/araddon/qlbridge/expr
@@ -1169,7 +1169,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 gopkg.in/yaml.v3
 # github.com/go-mysql-org/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a
-# github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20211129135511-6866b8e31c89
+# github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9
 # github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20211206092524-9e640f6da0ac
 # github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
 # github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
