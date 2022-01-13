@@ -44,6 +44,7 @@ github.com/araddon/gou
 ## explicit
 github.com/araddon/qlbridge/datasource
 github.com/araddon/qlbridge/expr
+github.com/araddon/qlbridge/expr/builtins
 github.com/araddon/qlbridge/lex
 github.com/araddon/qlbridge/plan
 github.com/araddon/qlbridge/rel
@@ -135,6 +136,8 @@ github.com/cznic/sortutil
 github.com/danjacques/gofslock/fslock
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
+# github.com/dchest/siphash v1.2.1
+github.com/dchest/siphash
 # github.com/deepmap/oapi-codegen v1.8.2
 github.com/deepmap/oapi-codegen/pkg/runtime
 github.com/deepmap/oapi-codegen/pkg/types
@@ -372,6 +375,8 @@ github.com/labstack/gommon/bytes
 github.com/labstack/gommon/color
 github.com/labstack/gommon/log
 github.com/labstack/gommon/random
+# github.com/leekchan/timeutil v0.0.0-20150802142658-28917288c48d
+github.com/leekchan/timeutil
 # github.com/leodido/go-urn v1.2.1
 ## explicit
 github.com/leodido/go-urn
@@ -413,6 +418,8 @@ github.com/modern-go/reflect2
 # github.com/mojocn/base64Captcha v1.3.4
 ## explicit
 github.com/mojocn/base64Captcha
+# github.com/mssola/user_agent v0.5.0
+github.com/mssola/user_agent
 # github.com/nats-io/gnatsd v1.4.1
 ## explicit
 # github.com/nats-io/go-nats v1.7.2
@@ -458,6 +465,8 @@ github.com/opentracing/opentracing-go/log
 # github.com/outbrain/golib v0.0.0-20180830062331-ab954725f502
 ## explicit
 github.com/outbrain/golib/tests
+# github.com/pborman/uuid v1.2.0
+github.com/pborman/uuid
 # github.com/pierrec/lz4 v2.4.1+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
