@@ -44,24 +44,23 @@ func warningsFormatter(es []error) string {
 
 // RemoveAllocs is used to remove any allocs with the given IDs
 // from the list of allocations
-func RemoveAllocs(alloc []*Allocation, remove []*Allocation) []*Allocation {
+func RemoveAllocs(allocs []*Allocation, remove []*Allocation) []*Allocation {
+	if len(remove) == 0 {
+		return allocs
+	}
 	// Convert remove into a set
 	removeSet := make(map[string]struct{})
 	for _, remove := range remove {
 		removeSet[remove.ID] = struct{}{}
 	}
 
-	n := len(alloc)
-	for i := 0; i < n; i++ {
-		if _, ok := removeSet[alloc[i].ID]; ok {
-			alloc[i], alloc[n-1] = alloc[n-1], nil
-			i--
-			n--
+	r := make([]*Allocation, 0, len(allocs))
+	for _, alloc := range allocs {
+		if _, ok := removeSet[alloc.ID]; !ok {
+			r = append(r, alloc)
 		}
 	}
-
-	alloc = alloc[:n]
-	return alloc
+	return r
 }
 
 // FilterTerminalAllocs filters out all allocations in a terminal state and
@@ -205,7 +204,7 @@ func ScoreFitBinPack(node *Node, util *ComparableResources) float64 {
 	return score
 }
 
-// ScoreFitBinSpread computes a fit score to achieve spread behavior.
+// ScoreFitSpread computes a fit score to achieve spread behavior.
 // Score is in [0, 18]
 //
 // This is equivalent to Worst Fit of
