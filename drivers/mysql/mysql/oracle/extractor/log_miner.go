@@ -237,7 +237,8 @@ func (l *LogMinerStream) buildFilterSchemaTable() (filterSchemaTable string) {
 	return
 }
 
-func (l *LogMinerStream) GetLogMinerRecord(startScn, endScn int64, records chan *LogMinerRecord) error {
+func (e *ExtractorOracle) GetLogMinerRecord(startScn, endScn int64, records chan *LogMinerRecord) error {
+	l := e.LogMinerStream
 	// AND table_name IN ('%s')
 	// strings.Join(sourceTableNames, `','`),
 	query := fmt.Sprintf(`
@@ -292,7 +293,7 @@ WHERE
 	}
 	recordsNum := 0
 	// var lrs []*LogMinerRecord
-	for rows.Next() {
+	for rows.Next() && !e.shutdown {
 		lr, err := scan(rows)
 		if err != nil {
 			return err
@@ -745,7 +746,10 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 		}()
 		for !e.shutdown {
 			select {
-			case r := <-records:
+			case r, ok := <-records:
+				if !ok {
+					continue
+				}
 				atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
 				switch r.Operation {
 				case OperationCodeStart:
@@ -798,11 +802,11 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 
 		err = l.StartLogMinerBySCN2(l.startScn, endScn)
 		if err != nil {
-			fmt.Println("StartLMBySCN ", err)
+			l.logger.Error("StartLMBySCN ", "err", err)
 			return err
 		}
 		l.logger.Info("Get log miner record form", "StartScn", l.startScn, "EndScn", endScn)
-		err = l.GetLogMinerRecord(l.startScn, endScn, records)
+		err = e.GetLogMinerRecord(l.startScn, endScn, records)
 		if err != nil {
 			l.logger.Error("GetLogMinerRecord ", "err", err)
 			return err
