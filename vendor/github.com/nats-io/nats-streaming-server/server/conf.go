@@ -1,4 +1,4 @@
-// Copyright 2016-2019 The NATS Authors
+// Copyright 2016-2021 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -179,6 +179,31 @@ func ProcessConfigFile(configFile string, opts *Options) error {
 			}
 			opts.Encrypt = true
 			opts.EncryptionKey = []byte(v.(string))
+		case "username", "user":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.Username = v.(string)
+		case "password", "pass":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.Password = v.(string)
+		case "token":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.Token = v.(string)
+		case "nkey_seed_file":
+			if err := checkType(k, reflect.String, v); err != nil {
+				return err
+			}
+			opts.NKeySeedFile = v.(string)
+		case "replace_durable", "replace_durables", "replace_duplicate_durable", "replace_duplicate_durables":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.ReplaceDurable = v.(bool)
 		}
 	}
 	return nil
@@ -292,6 +317,11 @@ func parseCluster(itf interface{}, opts *Options) error {
 				return err
 			}
 			opts.Clustering.ProceedOnRestoreFailure = v.(bool)
+		case "allow_add_remove_node":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.Clustering.AllowAddRemoveNode = v.(bool)
 		case "raft_logging":
 			if err := checkType(k, reflect.Bool, v); err != nil {
 				return err
@@ -321,6 +351,21 @@ func parseCluster(itf interface{}, opts *Options) error {
 			case "raft_commit_timeout":
 				opts.Clustering.RaftCommitTimeout = dur
 			}
+		case "bolt_free_list_sync":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.Clustering.BoltFreeListSync = v.(bool)
+		case "bolt_free_list_map":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.Clustering.BoltFreeListMap = v.(bool)
+		case "nodes_connections":
+			if err := checkType(k, reflect.Bool, v); err != nil {
+				return err
+			}
+			opts.Clustering.NodesConnections = v.(bool)
 		}
 	}
 	return nil
@@ -565,6 +610,11 @@ func parseSQLOptions(itf interface{}, opts *Options) error {
 				return err
 			}
 			opts.SQLStoreOpts.MaxOpenConns = int(v.(int64))
+		case "bulk_insert_limit":
+			if err := checkType(name, reflect.Int64, v); err != nil {
+				return err
+			}
+			opts.SQLStoreOpts.BulkInsertLimit = int(v.(int64))
 		}
 	}
 	return nil
@@ -652,15 +702,18 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 	fs.BoolVar(&sopts.Clustering.Sync, "cluster_sync", false, "stan.Clustering.Sync")
 	fs.BoolVar(&sopts.Clustering.RaftLogging, "cluster_raft_logging", false, "")
 	fs.BoolVar(&sopts.Clustering.ProceedOnRestoreFailure, "cluster_proceed_on_restore_failure", false, "")
+	fs.BoolVar(&sopts.Clustering.AllowAddRemoveNode, "cluster_allow_add_remove_node", false, "")
 	fs.StringVar(&sopts.SQLStoreOpts.Driver, "sql_driver", "", "SQL Driver")
 	fs.StringVar(&sopts.SQLStoreOpts.Source, "sql_source", "", "SQL Data Source")
 	defSQLOpts := stores.DefaultSQLStoreOptions()
 	fs.BoolVar(&sopts.SQLStoreOpts.NoCaching, "sql_no_caching", defSQLOpts.NoCaching, "Enable/Disable caching")
 	fs.IntVar(&sopts.SQLStoreOpts.MaxOpenConns, "sql_max_open_conns", defSQLOpts.MaxOpenConns, "Max opened connections to the database")
+	fs.IntVar(&sopts.SQLStoreOpts.BulkInsertLimit, "sql_bulk_insert_limit", 0, "Limit the number of messages inserted in one SQL query")
 	fs.StringVar(&sopts.SyslogName, "syslog_name", "", "Syslog Name")
 	fs.BoolVar(&sopts.Encrypt, "encrypt", false, "Specify if server should use encryption at rest")
 	fs.StringVar(&sopts.EncryptionCipher, "encryption_cipher", stores.CryptoCipherAutoSelect, "Encryption cipher. Supported are AES and CHACHA (default is AES)")
 	fs.StringVar(&encryptionKey, "encryption_key", "", "Encryption Key. It is recommended to specify it through the NATS_STREAMING_ENCRYPTION_KEY environment variable instead")
+	fs.BoolVar(&sopts.ReplaceDurable, "replace_durable", false, "Replace the existing durable subscription instead of reporting a duplicate durable error")
 
 	// First, we need to call NATS's ConfigureOptions() with above flag set.
 	// It will be augmented with NATS specific flags and call fs.Parse(args) for us.
@@ -735,6 +788,8 @@ func ConfigureOptions(fs *flag.FlagSet, args []string, printVersion, printHelp, 
 			var i64 int64
 			i64, flagErr = getBytes(f)
 			sopts.FileStoreOpts.ReadBufferSize = int(i64)
+		case "file_slice_max_bytes":
+			sopts.FileStoreOpts.SliceMaxBytes, flagErr = getBytes(f)
 		}
 	})
 	if flagErr != nil {

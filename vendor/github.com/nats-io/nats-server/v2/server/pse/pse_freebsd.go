@@ -11,6 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !amd64
+// +build !amd64
+
 package pse
 
 /*
@@ -54,7 +57,7 @@ int getusage(double *pcpu, unsigned int *rss, unsigned int *vss)
 
     *rss = pagetok(kp.ki_rssize);
     *vss = kp.ki_size;
-    *pcpu = kp.ki_pctcpu;
+    *pcpu = (double)kp.ki_pctcpu / FSCALE;
 
     return 0;
 }

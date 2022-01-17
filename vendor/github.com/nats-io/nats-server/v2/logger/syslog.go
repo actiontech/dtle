@@ -11,6 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
 // +build !windows
 
 package logger
@@ -102,9 +103,9 @@ func (l *SysLogger) Noticef(format string, v ...interface{}) {
 	l.writer.Notice(fmt.Sprintf(format, v...))
 }
 
-// Warnf logs a notice statement
+// Warnf logs a warning statement
 func (l *SysLogger) Warnf(format string, v ...interface{}) {
-	l.writer.Notice(fmt.Sprintf(format, v...))
+	l.writer.Warning(fmt.Sprintf(format, v...))
 }
 
 // Fatalf logs a fatal error
