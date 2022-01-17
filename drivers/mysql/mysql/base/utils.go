@@ -406,6 +406,8 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 	columns := []umconf.Column{}
 
 	pks, _ := sqle.GetPrimaryKey(cStmt)
+	// pks: column names are in lower case.
+	// MySQL column names are case insensitive.
 
 	for _, col := range cStmt.Cols {
 		newColumn := umconf.Column{
@@ -413,7 +415,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 			Nullable: true, // by default
 		}
 		newColumn.EscapedName = umconf.EscapeName(newColumn.RawName)
-		if _, inPk := pks[newColumn.RawName]; inPk {
+		if _, inPk := pks[col.Name.Name.L]; inPk {
 			newColumn.Key = "PRI"
 		}
 
@@ -488,8 +490,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 			switch colOpt.Tp {
 			case ast.ColumnOptionNoOption:
 			case ast.ColumnOptionPrimaryKey:
-				// TODO multiple value?
-				newColumn.Key = "PRI"
+				// already handled in `GetPrimaryKey()`
 			case ast.ColumnOptionNotNull:
 				newColumn.Nullable = false
 			case ast.ColumnOptionAutoIncrement:

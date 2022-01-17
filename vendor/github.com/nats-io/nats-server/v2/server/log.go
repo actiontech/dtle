@@ -88,6 +88,13 @@ func (s *Server) ConfigureLogger() {
 	s.SetLoggerV2(log, opts.Debug, opts.Trace, opts.TraceVerbose)
 }
 
+// Returns our current logger.
+func (s *Server) Logger() Logger {
+	s.logging.Lock()
+	defer s.logging.Unlock()
+	return s.logging.logger
+}
+
 // SetLogger sets the logger of the server
 func (s *Server) SetLogger(logger Logger, debugFlag, traceFlag bool) {
 	s.SetLoggerV2(logger, debugFlag, traceFlag, false)
@@ -148,6 +155,9 @@ func (s *Server) ReOpenLogFile() {
 		fileLog := srvlog.NewFileLogger(opts.LogFile,
 			opts.Logtime, opts.Debug, opts.Trace, true)
 		s.SetLogger(fileLog, opts.Debug, opts.Trace)
+		if opts.LogSizeLimit > 0 {
+			fileLog.SetSizeLimit(opts.LogSizeLimit)
+		}
 		s.Noticef("File log re-opened")
 	}
 }

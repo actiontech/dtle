@@ -11,6 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
 // +build !windows
 
 package server
@@ -40,7 +41,7 @@ func (s *Server) handleSignals() {
 	}
 	c := make(chan os.Signal, 1)
 
-	signal.Notify(c, syscall.SIGINT, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGHUP)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGHUP)
 
 	go func() {
 		for {
@@ -51,6 +52,16 @@ func (s *Server) handleSignals() {
 				case syscall.SIGINT:
 					s.Shutdown()
 					os.Exit(0)
+				case syscall.SIGTERM:
+					// Shutdown unless graceful shutdown already in progress.
+					s.mu.Lock()
+					ldm := s.ldm
+					s.mu.Unlock()
+
+					if !ldm {
+						s.Shutdown()
+						os.Exit(1)
+					}
 				case syscall.SIGUSR1:
 					// File log re-open for rotating file logs.
 					s.ReOpenLogFile()
@@ -113,6 +124,8 @@ func ProcessSignal(command Command, pidStr string) error {
 		err = kill(pid, syscall.SIGHUP)
 	case commandLDMode:
 		err = kill(pid, syscall.SIGUSR2)
+	case commandTerm:
+		err = kill(pid, syscall.SIGTERM)
 	default:
 		err = fmt.Errorf("unknown signal %q", command)
 	}

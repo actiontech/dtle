@@ -375,13 +375,12 @@ func (t *tree) C(depth int) Node {
 			return NewUnary(cur, t.cInner(n, depth+1))
 		case lex.TokenIs:
 			t.Next()
+			op := cur
 			if t.Cur().T == lex.TokenNegate {
 				cur = t.Next()
-				ne := lex.Token{T: lex.TokenNE, V: "!="}
-				return NewBinaryNode(ne, n, t.P(depth+1))
+				op = lex.Token{T: lex.TokenNE, V: "!="}
 			}
-			u.Warnf("TokenIS?  is this supported?")
-			return NewUnary(cur, t.cInner(n, depth+1))
+			return NewBinaryNode(op, n, t.P(depth+1))
 		default:
 			return t.cInner(n, depth)
 		}

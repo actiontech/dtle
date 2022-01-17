@@ -1,4 +1,4 @@
-// Copyright 2012-2020 The NATS Authors
+// Copyright 2012-2021 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -43,6 +43,12 @@ var (
 	// ErrBadPublishSubject represents an error condition for an invalid publish subject.
 	ErrBadPublishSubject = errors.New("invalid publish subject")
 
+	// ErrBadSubject represents an error condition for an invalid subject.
+	ErrBadSubject = errors.New("invalid subject")
+
+	// ErrBadQualifier is used to error on a bad qualifier for a transform.
+	ErrBadQualifier = errors.New("bad qualifier")
+
 	// ErrBadClientProtocol signals a client requested an invalid client protocol.
 	ErrBadClientProtocol = errors.New("invalid client protocol")
 
@@ -57,6 +63,9 @@ var (
 	// ErrTooManySubs signals a client that the maximum number of subscriptions per connection
 	// has been reached.
 	ErrTooManySubs = errors.New("maximum subscriptions exceeded")
+
+	// ErrTooManySubTokens signals a client that the subject has too many tokens.
+	ErrTooManySubTokens = errors.New("subject has exceeded number of tokens limit")
 
 	// ErrClientConnectedToRoutePort represents an error condition when a client
 	// attempted to connect to the route listen port.
@@ -119,6 +128,12 @@ var (
 	// ErrServiceImportAuthorization is returned when a service import is not authorized.
 	ErrServiceImportAuthorization = errors.New("service import not authorized")
 
+	// ErrImportFormsCycle is returned when an import would form a cycle.
+	ErrImportFormsCycle = errors.New("import forms a cycle")
+
+	// ErrCycleSearchDepth is returned when we have exceeded our maximum search depth..
+	ErrCycleSearchDepth = errors.New("search cycle depth exhausted")
+
 	// ErrClientOrRouteConnectedToGatewayPort represents an error condition when
 	// a client or route attempted to connect to the Gateway port.
 	ErrClientOrRouteConnectedToGatewayPort = errors.New("attempted to connect to gateway port")
@@ -135,8 +150,37 @@ var (
 	// ErrRevocation is returned when a credential has been revoked.
 	ErrRevocation = errors.New("credentials have been revoked")
 
-	// Used to signal an error that a server is not running.
+	// ErrServerNotRunning is used to signal an error that a server is not running.
 	ErrServerNotRunning = errors.New("server is not running")
+
+	// ErrBadMsgHeader signals the parser detected a bad message header
+	ErrBadMsgHeader = errors.New("bad message header detected")
+
+	// ErrMsgHeadersNotSupported signals the parser detected a message header
+	// but they are not supported on this server.
+	ErrMsgHeadersNotSupported = errors.New("message headers not supported")
+
+	// ErrNoRespondersRequiresHeaders signals that a client needs to have headers
+	// on if they want no responders behavior.
+	ErrNoRespondersRequiresHeaders = errors.New("no responders requires headers support")
+
+	// ErrClusterNameConfigConflict signals that the options for cluster name in cluster and gateway are in conflict.
+	ErrClusterNameConfigConflict = errors.New("cluster name conflicts between cluster and gateway definitions")
+
+	// ErrClusterNameRemoteConflict signals that a remote server has a different cluster name.
+	ErrClusterNameRemoteConflict = errors.New("cluster name from remote server conflicts")
+
+	// ErrMalformedSubject is returned when a subscription is made with a subject that does not conform to subject rules.
+	ErrMalformedSubject = errors.New("malformed subject")
+
+	// ErrSubscribePermissionViolation is returned when processing of a subscription fails due to permissions.
+	ErrSubscribePermissionViolation = errors.New("subscribe permission violation")
+
+	// ErrNoTransforms signals no subject transforms are available to map this subject.
+	ErrNoTransforms = errors.New("no matching transforms available")
+
+	// ErrCertNotPinned is returned when pinned certs are set and the certificate is not in it
+	ErrCertNotPinned = errors.New("certificate not pinned")
 )
 
 // configErr is a configuration error.
@@ -220,7 +264,7 @@ func NewErrorCtx(err error, format string, args ...interface{}) error {
 	return &errCtx{err, fmt.Sprintf(format, args...)}
 }
 
-// implement to work with errors.Is and errors.As
+// Unwrap implement to work with errors.Is and errors.As
 func (e *errCtx) Unwrap() error {
 	if e == nil {
 		return nil
@@ -236,7 +280,7 @@ func (e *errCtx) Context() string {
 	return e.ctx
 }
 
-// Return Error or, if type is right error and context
+// UnpackIfErrorCtx return Error or, if type is right error and context
 func UnpackIfErrorCtx(err error) string {
 	if e, ok := err.(*errCtx); ok {
 		if _, ok := e.error.(*errCtx); ok {
@@ -259,7 +303,7 @@ func errorsUnwrap(err error) error {
 	return u.Unwrap()
 }
 
-// implements: go 1.13 errors.Is(err, target error) bool
+// ErrorIs implements: go 1.13 errors.Is(err, target error) bool
 // TODO replace with native code once we no longer support go1.12
 func ErrorIs(err, target error) bool {
 	// this is an outright copy of go 1.13 errors.Is(err, target error) bool

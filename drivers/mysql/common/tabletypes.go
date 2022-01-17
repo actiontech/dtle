@@ -3,12 +3,27 @@ package common
 import (
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
+	qlbuiltins "github.com/araddon/qlbridge/expr/builtins"
 	"github.com/araddon/qlbridge/datasource"
 	"github.com/araddon/qlbridge/expr"
 	"github.com/araddon/qlbridge/vm"
 	"github.com/pkg/errors"
 	"strings"
 )
+
+func init() {
+	expr.FuncAdd("pow", &qlbuiltins.Pow{})
+	expr.FuncAdd("now", &qlbuiltins.Now{})
+	expr.FuncAdd("sqrt", &qlbuiltins.Sqrt{})
+	expr.FuncAdd("replace", &qlbuiltins.Replace{})
+	expr.FuncAdd("uuid", &qlbuiltins.UuidGenerate{})
+	expr.FuncAdd("char_length", &qlbuiltins.Length{})
+	expr.FuncAdd("upper", &qlbuiltins.UpperCase{})
+	expr.FuncAdd("lower", &qlbuiltins.LowerCase{})
+	expr.FuncAdd("ucase", &qlbuiltins.UpperCase{})
+	expr.FuncAdd("lcase", &qlbuiltins.LowerCase{})
+	expr.FuncAdd("unix_timestamp", &qlbuiltins.ToTimestamp{})
+}
 
 type SchemaContext struct {
 	TableSchema        string

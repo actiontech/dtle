@@ -53,6 +53,10 @@ const (
 	LAYOUT = "2006-01-02 15:04:05"
 )
 
+var (
+	jsonNullBs []byte
+)
+
 type ColDefs []*Schema
 
 type KafkaManager struct {
@@ -323,6 +327,7 @@ func init() {
 	for i := 0; i <= 10; i++ {
 		decimalNums[i] = big.NewInt(int64(i))
 	}
+	jsonNullBs, _ = json.Marshal(nil)
 }
 
 // value: e.g. decimal(11,5), 123.45 will be 123.45000

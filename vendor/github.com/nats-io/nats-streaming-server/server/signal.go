@@ -51,7 +51,23 @@ func (s *StanServer) handleSignals() {
 					// File log re-open for rotating file logs.
 					s.log.ReopenLogFile()
 				case syscall.SIGHUP:
-					// Ignore for now
+					s.mu.Lock()
+					ns := s.natsServer
+					nobr := s.natsOpts
+					s.mu.Unlock()
+					if ns != nil {
+						if err := ns.Reload(); err != nil {
+							s.log.Errorf("Reload: %v", err)
+						} else if fileOpts, err := natsd.ProcessConfigFile(nobr.ConfigFile); err == nil {
+							newOpts := natsd.MergeOptions(fileOpts, nobr)
+							s.mu.Lock()
+							s.natsOpts = newOpts.Clone()
+							s.log.UpdateNATSOptions(s.natsOpts)
+							s.mu.Unlock()
+						}
+					} else {
+						s.log.Warnf("Reload supported only for embedded NATS Server's configuration")
+					}
 				}
 			case <-s.shutdownCh:
 				return

@@ -150,4 +150,5 @@ type KafkaConfig struct {
 	MessageGroupTimeout uint64
 
 	TopicWithSchemaTable bool
+	SchemaChangeTopic    string
 }
