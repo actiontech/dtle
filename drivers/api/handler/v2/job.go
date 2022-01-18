@@ -419,9 +419,9 @@ func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateM
 	}
 	logger.Debug("buildJob", "database", jobParam.SrcTask.ConnectionConfig, "database2", jobParam.DestTask.ConnectionConfig)
 	jobInfo := common.JobListItemV2{
-		JobId:         jobParam.JobId,
-		JobStatus:     common.DtleJobStatusNonPaused,
-		JobCreateTime: time.Now().In(time.Local).Format(time.RFC3339),
+		JobId:           jobParam.JobId,
+		JobStatus:       common.DtleJobStatusNonPaused,
+		JobCreateTime:   time.Now().In(time.Local).Format(time.RFC3339),
 		SrcDatabaseType: jobParam.SrcTask.ConnectionConfig.DatabaseType,
 		DstDatabaseType: jobParam.DestTask.ConnectionConfig.DatabaseType,
 		SrcAddrList: []string{net.JoinHostPort(jobParam.SrcTask.ConnectionConfig.Host,
@@ -516,18 +516,20 @@ func buildNomadTaskGroupItem(dtleTaskconfig map[string]interface{}, taskName, no
 
 func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomadApi.RestartPolicy) {
 	// set default ReschedulePolicy and default RestartPolicy interval
-	// https://github.com/actiontech/dtle-docs-cn/blob/master/4/4.3_job_configuration.md#restart--reschedule
-	defaultRescheduleAttempts := 1
-	defaultRescheduleInterval := time.Duration(1800000000000)
-	defaultRescheduleUnlimited := false
+	// https://www.nomadproject.io/docs/job-specification/reschedule#exponential
+	defaultRescheduleUnlimited := true
+	defaultRescheduleDelay := 5 * time.Second
+	defaultRescheduleMaxDelay := time.Minute
+	defaultRescheduleDelayFunction := "exponential"
 
 	defaultRestartInterval := time.Duration(1800000000000)
 	defaultRestartMode := "fail"
 
 	return &nomadApi.ReschedulePolicy{
-			Attempts:  &defaultRescheduleAttempts,
-			Interval:  &defaultRescheduleInterval,
-			Unlimited: &defaultRescheduleUnlimited,
+			Unlimited:     &defaultRescheduleUnlimited,
+			DelayFunction: &defaultRescheduleDelayFunction,
+			Delay:         &defaultRescheduleDelay,
+			MaxDelay:      &defaultRescheduleMaxDelay,
 		}, &nomadApi.RestartPolicy{
 			Interval: &defaultRestartInterval,
 			Attempts: &RestartAttempts,
@@ -737,10 +739,10 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 		if srcTaskDetail.TaskConfig.MysqlSrcTaskConfig != nil {
 			srcConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
 				ExpandSyntaxSupport: srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.ExpandSyntaxSupport,
-				Gtid:        srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.Gtid,
-				BinlogRelay: srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.BinlogRelay,
-				WaitOnJob:   srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob,
-				AutoGtid:    srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.AutoGtid,
+				Gtid:                srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.Gtid,
+				BinlogRelay:         srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.BinlogRelay,
+				WaitOnJob:           srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob,
+				AutoGtid:            srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.AutoGtid,
 			}
 		} else if srcTaskDetail.TaskConfig.OracleSrcTaskConfig != nil {
 			srcConfig.OracleSrcTaskConfig = &models.OracleSrcTaskConfig{
@@ -934,10 +936,10 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 		connectionConfig.Password = internalTaskConfig.ConnectionConfig.Password
 		srcTaskDetail.TaskConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
 			ExpandSyntaxSupport: internalTaskConfig.ExpandSyntaxSupport,
-			AutoGtid:    internalTaskConfig.AutoGtid,
-			Gtid:        internalTaskConfig.Gtid,
-			BinlogRelay: internalTaskConfig.BinlogRelay,
-			WaitOnJob:   internalTaskConfig.WaitOnJob,
+			AutoGtid:            internalTaskConfig.AutoGtid,
+			Gtid:                internalTaskConfig.Gtid,
+			BinlogRelay:         internalTaskConfig.BinlogRelay,
+			WaitOnJob:           internalTaskConfig.WaitOnJob,
 		}
 	}
 	srcTaskDetail.TaskConfig.ConnectionConfig = connectionConfig
@@ -1875,10 +1877,10 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 
 			GroupTimeout: originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupTimeout,
 			MysqlSrcTaskConfig: &models.MysqlSrcTaskConfig{
-				ExpandSyntaxSupport:   originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.ExpandSyntaxSupport,
-				BinlogRelay: originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.BinlogRelay,
-				WaitOnJob:   consulJobItem.JobId,
-				AutoGtid:    true,
+				ExpandSyntaxSupport: originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.ExpandSyntaxSupport,
+				BinlogRelay:         originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.BinlogRelay,
+				WaitOnJob:           consulJobItem.JobId,
+				AutoGtid:            true,
 			},
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{
