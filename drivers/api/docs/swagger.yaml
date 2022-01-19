@@ -1961,6 +1961,138 @@ paths:
       - ApiKeyAuth: []
       tags:
       - monitor
+  /v2/mysql/columns:
+    get:
+      description: list columns of mysql source instance.
+      operationId: ListMysqlColumnsV2
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: mysql schema
+        in: query
+        name: mysql_schema
+        required: true
+        type: string
+      - description: mysql table
+        in: query
+        name: mysql_table
+        required: true
+        type: string
+      - description: mysql character set
+        in: query
+        name: mysql_character_set
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListColumnsRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - mysql
+  /v2/mysql/instance_connection:
+    get:
+      description: connect to  mysql instance.
+      operationId: MySQLConnectionV2
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ConnectionRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - mysql
+  /v2/mysql/schemas:
+    get:
+      description: list schemas of mysql source instance.
+      operationId: ListMysqlSchemasV2
+      parameters:
+      - description: mysql host
+        in: query
+        name: mysql_host
+        required: true
+        type: string
+      - description: mysql port
+        in: query
+        name: mysql_port
+        required: true
+        type: string
+      - description: mysql user
+        in: query
+        name: mysql_user
+        required: true
+        type: string
+      - description: mysql password
+        in: query
+        name: mysql_password
+        required: true
+        type: string
+      - description: mysql character set
+        in: query
+        name: mysql_character_set
+        type: string
+      - description: indecate that mysql password is encrypted or not
+        in: query
+        name: is_mysql_password_encrypted
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListSchemasRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - mysql
   /v2/nodes:
     get:
       description: get node list.
