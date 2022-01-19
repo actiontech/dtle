@@ -122,7 +122,7 @@ var (
 		"GtidStart":                           hclspec.NewAttr("GtidStart", "string", false),
 		"AutoGtid":                            hclspec.NewAttr("AutoGtid", "bool", false),
 		"BinlogRelay":                         hclspec.NewAttr("BinlogRelay", "bool", false),
-		"MysqlDestTaskConfig.ParallelWorkers": hclspec.NewAttr("ParallelWorkers", "number", false),
+		"ParallelWorkers":					   hclspec.NewAttr("ParallelWorkers", "number", false),
 		"SkipCreateDbTable":                   hclspec.NewAttr("SkipCreateDbTable", "bool", false),
 		"SkipPrivilegeCheck":                  hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":                 hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
