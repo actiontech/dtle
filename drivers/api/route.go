@@ -138,6 +138,11 @@ func SetupApiServer(logger g.LoggerType, driverConfig *mysql.DriverConfig) (err 
 	v2Router.POST("/role/delete", v2.DeleteRoleV2)
 	v2Router.POST("/role/update", v2.UpdateRoleV2)
 
+	// Deprecated
+	v2Router.GET("/mysql/schemas", v2.ListMysqlSchemasV2)
+	v2Router.GET("/mysql/columns", v2.ListMysqlColumnsV2)
+	v2Router.GET("/mysql/instance_connection", v2.MySQLConnectionV2)
+
 	// for coverage report
 	e.GET("/coverage_report", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -263,6 +268,9 @@ var whiteList = []string{
 	"/v2/database/schemas",
 	"/v2/database/columns",
 	"/v2/database/instance_connection",
+	"/v2/mysql/schemas",
+	"/v2/mysql/columns",
+	"/v2/mysql/instance_connection",
 	"/v2/job/gtid",
 	"/v2/user/list_action",
 	"/v2/user/current_user",
