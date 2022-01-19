@@ -539,7 +539,9 @@ func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomad
 
 func buildDatabaseDestTaskConfigMap(config *models.DestTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
-
+	if config.MysqlDestTaskConfig == nil{
+		return taskConfigInNomadFormat
+	}
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.UseMySQLDependency, "UseMySQLDependency")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
