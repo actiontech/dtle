@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 
 	"github.com/hashicorp/go-hclog"
@@ -15,7 +16,6 @@ import (
 	"github.com/actiontech/dtle/drivers/api/handler"
 
 	"github.com/actiontech/dtle/drivers/api/models"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 )
 
@@ -249,6 +249,7 @@ func listMySQLColumns(logger hclog.Logger, reqParam *models.ListColumnsReqV2) ([
 	}
 	return columns, nil
 }
+
 func buildMysqlUri(host, user, pwd, characterSet string, port int, isMysqlPasswordEncrypted bool) (string, error) {
 	mysqlConnectionConfig := mysqlconfig.ConnectionConfig{
 		Host:     host,
@@ -292,33 +293,38 @@ func ConnectionV2(c echo.Context) error {
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
+	err := connectDatabase(reqParam)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	return c.JSON(http.StatusOK, &models.ConnectionRespV2{
+		BaseResp: models.BuildBaseResp(nil),
+	})
+}
 
+func connectDatabase(reqParam *models.ConnectionReqV2) error {
 	switch reqParam.DatabaseType {
 	case DB_TYPE_MYSQL:
 		uri, err := buildMysqlUri(reqParam.Host, reqParam.User, reqParam.Password,
 			"", int(reqParam.Port), reqParam.IsPasswordEncrypted)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build database Uri failed: %v", err)))
+			return fmt.Errorf("build database Uri failed: %v", err)
 		}
 		db, err := sql.CreateDB(uri)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("open db failed: %v", err)))
+			return fmt.Errorf("open db failed: %v", err)
 		}
 		defer db.Close()
 
 		err = db.Ping()
 		if err != nil {
-			return c.JSON(http.StatusOK, &models.ConnectionRespV2{
-				BaseResp: models.BuildBaseResp(err),
-			})
+			return err
 		}
 	case DB_TYPE_ORACLE:
 		if reqParam.IsPasswordEncrypted && reqParam.Password != "" {
 			realPwd, err := handler.DecryptPassword(reqParam.Password, g.RsaPrivateKey)
 			if nil != err {
-				return c.JSON(http.StatusOK, &models.ConnectionRespV2{
-					BaseResp: models.BuildBaseResp(err),
-				})
+				return err
 			}
 			reqParam.Password = realPwd
 		}
@@ -330,18 +336,12 @@ func ConnectionV2(c echo.Context) error {
 			ServiceName: reqParam.ServiceName,
 		})
 		if err != nil {
-			return c.JSON(http.StatusOK, &models.ConnectionRespV2{
-				BaseResp: models.BuildBaseResp(err),
-			})
+			return err
 		}
 		defer oracleDb.Close()
 	default:
-		return c.JSON(http.StatusOK, &models.ConnectionRespV2{
-			BaseResp: models.BuildBaseResp(fmt.Errorf("data type %v is unsupport", reqParam.DatabaseType)),
-		})
+		return fmt.Errorf("data type %v is unsupport", reqParam.DatabaseType)
 	}
 
-	return c.JSON(http.StatusOK, &models.ConnectionRespV2{
-		BaseResp: models.BuildBaseResp(nil),
-	})
+	return nil
 }

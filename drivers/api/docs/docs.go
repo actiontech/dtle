@@ -1470,6 +1470,206 @@ var doc = `{
                 }
             }
         },
+        "/v2/mysql/columns": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "list columns of mysql source instance.",
+                "tags": [
+                    "mysql"
+                ],
+                "operationId": "ListMysqlColumnsV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "mysql host",
+                        "name": "mysql_host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql port",
+                        "name": "mysql_port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql user",
+                        "name": "mysql_user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql password",
+                        "name": "mysql_password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql schema",
+                        "name": "mysql_schema",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql table",
+                        "name": "mysql_table",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql character set",
+                        "name": "mysql_character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that mysql password is encrypted or not",
+                        "name": "is_mysql_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListColumnsRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/mysql/instance_connection": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "connect to  mysql instance.",
+                "tags": [
+                    "mysql"
+                ],
+                "operationId": "MySQLConnectionV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "mysql host",
+                        "name": "mysql_host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql port",
+                        "name": "mysql_port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql user",
+                        "name": "mysql_user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql password",
+                        "name": "mysql_password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that mysql password is encrypted or not",
+                        "name": "is_mysql_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConnectionRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/mysql/schemas": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "list schemas of mysql source instance.",
+                "tags": [
+                    "mysql"
+                ],
+                "operationId": "ListMysqlSchemasV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "mysql host",
+                        "name": "mysql_host",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql port",
+                        "name": "mysql_port",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql user",
+                        "name": "mysql_user",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql password",
+                        "name": "mysql_password",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "mysql character set",
+                        "name": "mysql_character_set",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "indecate that mysql password is encrypted or not",
+                        "name": "is_mysql_password_encrypted",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ListSchemasRespV2"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/nodes": {
             "get": {
                 "security": [
