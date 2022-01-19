@@ -828,6 +828,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 		renameAstTableFn(v.Table)
 	case *ast.CreateTableStmt:
 		renameAstTableFn(v.Table)
+		renameAstTableFn(v.ReferTable)
 	case *ast.AlterTableStmt:
 		renameAstTableFn(v.Table)
 		for _, spec := range v.Specs {

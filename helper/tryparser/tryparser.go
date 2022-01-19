@@ -18,7 +18,7 @@ func main() {
 	log.Println("hello")
 
 	p := tparser.New()
-	sql := "CREATE DATABASE `db1` /*!40100 DEFAULT CHARACTER SET utf8 */"
+	sql := "create table a.b like a.a"
 	ast, err := p.ParseOneStmt(sql, "", "")
 
 	u.PanicIfErr(err)
