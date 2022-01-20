@@ -1,4 +1,7 @@
 # dtle (Data-Transformation-le)
+
+DTLE由上海爱可生信息技术股份有限公司（以下简称爱可生公司）出品和维护，DTLE是爱可生公司“云树·DTS数据传输工具”软件产品的开源版本。
+
 ## What is dtle
 dtle is MySQL data transfer/replication tool.
 * **Compression** dtle can compress data in transfer, which saves cost.
