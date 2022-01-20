@@ -769,7 +769,11 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 		b.logger.Debug(msg, "from", oldName, "to", newName)
 	}
 
+	// will do nothing if `table` is nil
 	renameAstTableFn := func(table *ast.TableName) {
+		if table == nil {
+			return
+		}
 		table.Schema = model.NewCIStr(g.StringElse(table.Schema.String(), currentSchema))
 		newSchemaName := schemasRenameMap[table.Schema.String()]
 		tableNameMap := oldSchemaNameToTablesRenameMap[table.Schema.String()]
