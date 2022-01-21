@@ -395,10 +395,10 @@ func (a *ApplierIncr) heterogeneousReplay() {
 
 	a.wg.Add(1)
 	go func() {
-		defer a.wg.Done()
 		for {
 			select {
 			case <-a.shutdownCh:
+				a.wg.Done()
 				return
 			case entry := <-a.binlogEntryQueue:
 				err := a.handleEntry(&common.BinlogEntryContext{
@@ -406,6 +406,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 					TableItems:  nil,
 				})
 				if err != nil {
+					a.wg.Done()
 					a.OnError(common.TaskStateDead, err)
 					return
 				}
