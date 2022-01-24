@@ -759,7 +759,9 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 			}
 			ast, err := sqle.ParseCreateTableStmt("mysql", stmt)
 			if err != nil {
-				e.logger.Error("error at ParseCreateTableStmt.", "err", err)
+				err = errors.Wrapf(err, "ParseCreateTableStmt %v.%v", tb.TableSchema, tb.TableName)
+				e.logger.Error("error at ParseCreateTableStmt.", "err", err,
+					"sql", stmt)
 				return err
 			}
 
