@@ -266,10 +266,36 @@ const (
 	MySQLColTypeTEXT      = "TEXT"
 )
 
+const (
+	MySQLConstrainNotNull = "NOT NULL"
+	MySQLConstrainNull    = "NULL"
+	MySQLConstrainPK      = "PRIMARY KEY"
+	MySQLConstrainUNIQUE  = "UNIQUE"
+	// 外键
+	MySQLConstrainReferences = ""
+)
+
 // colDefinetione = column type
 // example : colName colType(size) NOT NULL DEFAULT testDef
 func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 	var colDefinition string
+
+	inlinieConstraints := make([]string, len(td.Constraints))
+	for i := range td.Constraints {
+		switch td.Constraints[i].Type {
+		case oracle_ast.ConstraintTypeNotNull:
+			inlinieConstraints = append(inlinieConstraints, MySQLConstrainNotNull)
+		case oracle_ast.ConstraintTypeNull:
+			inlinieConstraints = append(inlinieConstraints, MySQLConstrainNull)
+		case oracle_ast.ConstraintTypeUnique:
+			inlinieConstraints = append(inlinieConstraints, MySQLConstrainUNIQUE)
+		case oracle_ast.ConstraintTypePK:
+			inlinieConstraints = append(inlinieConstraints, MySQLConstrainPK)
+		case oracle_ast.ConstraintTypeReferences:
+			// todo
+		}
+	}
+
 	switch td.Datatype.DataDef() {
 	case oracle_element.DataDefBFile:
 		colDefinition = fmt.Sprintf("%s %s(%d)%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeVARCHAR, 255, colDefaultString(td.Default))
@@ -383,6 +409,8 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 	case oracle_element.DataDefXMLType:
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeLONGTEXT, colDefaultString(td.Default))
 	}
+
+	colDefinition = fmt.Sprintf("%s %s", colDefinition, strings.Join(inlinieConstraints, " "))
 	return colDefinition
 }
 

@@ -566,6 +566,44 @@ func TestParseDDLSQL(t *testing.T) {
 	}
 }
 
+func TestParseConstraintSQL(t *testing.T) {
+
+	tests := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{
+			name: "createTableSQLCharRelation",
+			sql: `create table TEST.userInfo (  
+				id number(6) primary key,--主键  
+				name varchar2(20) not null,--非空  
+				sex number(1),  
+				age number(3) default 18,  
+				birthday date,  
+				address varchar2(50),  
+				email varchar2(25) unique,--唯一  
+				tel number(11)
+				-- deptno number(2) references dept(deptno) -- 外键  
+				)`,
+			want: "CREATE TABLE `TEST`.`USERINFO` (`ID` INT  PRIMARY KEY,`NAME` VARCHAR(20)  NOT NULL,`SEX` TINYINT ,`AGE` SMALLINT ,`BIRTHDAY` DATETIME ,`ADDRESS` VARCHAR(50) ,`EMAIL` VARCHAR(25)  UNIQUE,`TEL` BIGINT ) DEFAULT CHARACTER SET=utf8"},
+	}
+	logger := hclog.NewNullLogger()
+	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if dataEvent.Query != tt.want {
+				t.Errorf("parseDDLSQL() = %v, want %v", dataEvent.Query, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseDDLSQLAlter(t *testing.T) {
 	logger := hclog.NewNullLogger()
 	testAlter := []struct {
