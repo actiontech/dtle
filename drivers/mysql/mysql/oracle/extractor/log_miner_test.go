@@ -587,6 +587,31 @@ func TestParseConstraintSQL(t *testing.T) {
 				-- deptno number(2) references dept(deptno) -- 外键  
 				)`,
 			want: "CREATE TABLE `TEST`.`USERINFO` (`ID` INT  PRIMARY KEY,`NAME` VARCHAR(20)  NOT NULL,`SEX` TINYINT ,`AGE` SMALLINT ,`BIRTHDAY` DATETIME ,`ADDRESS` VARCHAR(50) ,`EMAIL` VARCHAR(25)  UNIQUE,`TEL` BIGINT ) DEFAULT CHARACTER SET=utf8"},
+		{
+			name: "createOutOfLineConstraint",
+			sql: `CREATE TABLE TEST.employees_demo
+				( employee_id    NUMBER(6)
+				, first_name     VARCHAR2(20)
+				, last_name      VARCHAR2(25)
+					 CONSTRAINT emp_last_name_nn_demo NOT NULL
+				, email          VARCHAR2(25)
+					 CONSTRAINT emp_email_nn_demo     NOT NULL
+				, phone_number   VARCHAR2(20)
+				, hire_date      DATE
+					 CONSTRAINT emp_hire_date_nn_demo  NOT NULL
+				, job_id         VARCHAR2(10)
+				   CONSTRAINT     emp_job_nn_demo  NOT NULL
+				, salary         NUMBER(8,2)
+				   CONSTRAINT     emp_salary_nn_demo  NOT NULL
+				, commission_pct NUMBER(2,2)
+				, manager_id     NUMBER(6)
+				, department_id  NUMBER(4)
+				, dn             VARCHAR2(300)
+				, CONSTRAINT     emp_email_uk_demo
+								 UNIQUE (email)
+				)`,
+			want: "CREATE TABLE `TEST`.`EMPLOYEES_DEMO` (`EMPLOYEE_ID` INT ,`FIRST_NAME` VARCHAR(20) ,`LAST_NAME` VARCHAR(25)  NOT NULL,`EMAIL` VARCHAR(25)  NOT NULL,`PHONE_NUMBER` VARCHAR(20) ,`HIRE_DATE` DATETIME  NOT NULL,`JOB_ID` VARCHAR(10)  NOT NULL,`SALARY` DECIMAL(8,2)  NOT NULL,`COMMISSION_PCT` DECIMAL(2,2) ,`MANAGER_ID` INT ,`DEPARTMENT_ID` SMALLINT ,`DN` VARCHAR(300) ,UNIQUE EMP_EMAIL_UK_DEMO (EMAIL)) DEFAULT CHARACTER SET=utf8",
+		},
 	}
 	logger := hclog.NewNullLogger()
 	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}

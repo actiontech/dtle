@@ -282,18 +282,7 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 
 	inlinieConstraints := make([]string, len(td.Constraints))
 	for i := range td.Constraints {
-		switch td.Constraints[i].Type {
-		case oracle_ast.ConstraintTypeNotNull:
-			inlinieConstraints = append(inlinieConstraints, MySQLConstrainNotNull)
-		case oracle_ast.ConstraintTypeNull:
-			inlinieConstraints = append(inlinieConstraints, MySQLConstrainNull)
-		case oracle_ast.ConstraintTypeUnique:
-			inlinieConstraints = append(inlinieConstraints, MySQLConstrainUNIQUE)
-		case oracle_ast.ConstraintTypePK:
-			inlinieConstraints = append(inlinieConstraints, MySQLConstrainPK)
-		case oracle_ast.ConstraintTypeReferences:
-			// todo
-		}
+		inlinieConstraints = append(inlinieConstraints, transConstraintOtoM(td.Constraints[i].Type))
 	}
 
 	switch td.Datatype.DataDef() {
@@ -412,6 +401,22 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 
 	colDefinition = fmt.Sprintf("%s %s", colDefinition, strings.Join(inlinieConstraints, " "))
 	return colDefinition
+}
+
+func transConstraintOtoM(oracleConstraintType oracle_ast.ConstraintType) (constraintType string) {
+	switch oracleConstraintType {
+	case oracle_ast.ConstraintTypeNotNull:
+		constraintType = MySQLConstrainNotNull
+	case oracle_ast.ConstraintTypeNull:
+		constraintType = MySQLConstrainNull
+	case oracle_ast.ConstraintTypeUnique:
+		constraintType = MySQLConstrainUNIQUE
+	case oracle_ast.ConstraintTypePK:
+		constraintType = MySQLConstrainPK
+	case oracle_ast.ConstraintTypeReferences:
+		// todo
+	}
+	return
 }
 
 // MySQL DEC/DECIMAL/NUMERIC type max scale is 30

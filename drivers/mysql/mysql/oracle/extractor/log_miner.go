@@ -1094,12 +1094,12 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 				columns = append(columns, OracleTypeParse(td))
 				ordinals[IdentifierToString(td.ColumnName)] = len(ordinals)
 			case *ast.OutOfLineConstraint:
-				columns := []string{}
+				columnNames := make([]string, 0)
 				for _, c := range td.Columns {
-					columns = append(columns, c.Value)
+					columnNames = append(columnNames, IdentifierToString(c))
 				}
-				e.logger.Debug("caseOutOfLineConstraint", "constraint type: ", td.Type, "constraint value :",
-					strings.Join(columns, ","))
+				constraintType := transConstraintOtoM(td.Type)
+				columns = append(columns, fmt.Sprintf("%s %s (%s)", constraintType, IdentifierToString(td.InlineConstraint.Name), strings.Join(columnNames, ",")))
 			}
 		}
 
