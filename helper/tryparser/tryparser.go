@@ -18,7 +18,9 @@ func main() {
 	log.Println("hello")
 
 	p := tparser.New()
-	sql := "create table a.b like a.a"
+	//sql := "create table b.t1 (id int primary key auto_increment, val timestamp not null default '0000-00-00 00:00:00')"
+	//sql := "create table b.t1 (id int primary key auto_increment, val timestamp not null default 0)"
+	sql := "create table b.t1 (id int primary key auto_increment, val varchar(64) not null default 'hello')"
 	ast, err := p.ParseOneStmt(sql, "", "")
 
 	u.PanicIfErr(err)
@@ -26,7 +28,8 @@ func main() {
 	buf := bytes.NewBuffer(nil)
 	rCtx := &format.RestoreCtx{
 		//Flags:     format.RestoreKeyWordUppercase | format.RestoreNameBackQuotes | format.RestoreSpacesAroundBinaryOperation,
-		Flags:     format.RestoreKeyWordUppercase | format.RestoreSpacesAroundBinaryOperation,
+		//Flags:     format.RestoreKeyWordUppercase | format.RestoreSpacesAroundBinaryOperation,
+		Flags:     format.DefaultRestoreFlags,
 		In:        buf,
 	}
 	switch v := ast.(type) {

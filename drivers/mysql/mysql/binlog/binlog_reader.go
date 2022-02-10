@@ -862,7 +862,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 
 	bs := bytes.NewBuffer(nil)
 	err := stmt.Restore(&parserformat.RestoreCtx{
-		Flags: parserformat.DefaultRestoreFlags,
+		Flags: common.ParserRestoreFlag,
 		In:    bs,
 	})
 	if err != nil {
@@ -1059,7 +1059,7 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 	if rewrite {
 		bs := bytes.NewBuffer(nil)
 		r := &parserformat.RestoreCtx{
-			Flags:     parserformat.DefaultRestoreFlags,
+			Flags:     common.ParserRestoreFlag,
 			In:        bs,
 		}
 		err = stmt.Restore(r)

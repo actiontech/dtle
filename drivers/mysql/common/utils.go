@@ -8,9 +8,12 @@ package common
 
 import (
 	"fmt"
+	"github.com/pingcap/tidb/parser/format"
 	"regexp"
 	"strconv"
 )
+
+const ParserRestoreFlag = format.DefaultRestoreFlags | format.RestoreStringWithoutDefaultCharset
 
 func MysqlVersionInDigit(v string) (int, error) {
 	maybeErr := fmt.Errorf("bad format of MySQL version %v", v)
