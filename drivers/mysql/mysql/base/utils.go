@@ -657,7 +657,7 @@ func RenameCreateSchemaAddINE(createSchema string, newSchema string) (string, er
 }
 func ParserRestore(stmt ast.Node) (string, error) {
 	buf := bytes.NewBuffer(nil)
-	err := stmt.Restore(parserformat.NewRestoreCtx(parserformat.DefaultRestoreFlags, buf))
+	err := stmt.Restore(parserformat.NewRestoreCtx(common.ParserRestoreFlag, buf))
 	if err != nil {
 		return "", err
 	}
@@ -676,7 +676,7 @@ func RenameCreateTable(createTable string, newSchema string, newTable string) (s
 	stmt.Table.Name = model.NewCIStr(newTable)
 
 	buf := bytes.NewBuffer(nil)
-	err = stmt.Restore(parserformat.NewRestoreCtx(parserformat.DefaultRestoreFlags, buf))
+	err = stmt.Restore(parserformat.NewRestoreCtx(common.ParserRestoreFlag, buf))
 	if err != nil {
 		return "", err
 	}
