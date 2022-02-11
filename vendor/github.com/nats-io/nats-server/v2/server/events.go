@@ -343,7 +343,6 @@ RESET:
 						b, _ = json.Marshal(pm.msg)
 					}
 				}
-
 				// Setup our client. If the user wants to use a non-system account use our internal
 				// account scoped here so that we are not changing out accounts for the system client.
 				var c *client
@@ -685,6 +684,7 @@ func (s *Server) sendStatsz(subj string) {
 		if v, ok := s.nodeToInfo.Load(ourNode); ok && v != nil {
 			ni := v.(nodeInfo)
 			ni.stats = jStat.Stats
+			ni.cfg = jStat.Config
 			s.nodeToInfo.Store(ourNode, ni)
 		}
 		// Metagroup info.
@@ -1135,6 +1135,7 @@ func (s *Server) remoteServerUpdate(sub *subscription, c *client, _ *Account, su
 	node := string(getHash(si.Name))
 	s.nodeToInfo.Store(node, nodeInfo{
 		si.Name,
+		si.Version,
 		si.Cluster,
 		si.Domain,
 		si.ID,
@@ -1176,7 +1177,7 @@ func (s *Server) processNewServer(si *ServerInfo) {
 		node := string(getHash(si.Name))
 		// Only update if non-existent
 		if _, ok := s.nodeToInfo.Load(node); !ok {
-			s.nodeToInfo.Store(node, nodeInfo{si.Name, si.Cluster, si.Domain, si.ID, nil, nil, false, si.JetStream})
+			s.nodeToInfo.Store(node, nodeInfo{si.Name, si.Version, si.Cluster, si.Domain, si.ID, nil, nil, false, si.JetStream})
 		}
 	}
 	// Announce ourselves..
@@ -1615,7 +1616,7 @@ func (s *Server) sendLeafNodeConnect(a *Account) {
 func (s *Server) sendLeafNodeConnectMsg(accName string) {
 	subj := fmt.Sprintf(leafNodeConnectEventSubj, accName)
 	m := accNumConnsReq{Account: accName}
-	s.sendInternalMsg(subj, "", &m.Server, &m)
+	s.sendInternalMsg(subj, _EMPTY_, &m.Server, &m)
 }
 
 // sendAccConnsUpdate is called to send out our information on the
