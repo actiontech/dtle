@@ -1138,5 +1138,25 @@
     "help": "",
     "url": "",
     "deprecates": ""
+  },
+  {
+    "constant": "JSConsumerMaxDeliverBackoffErr",
+    "code": 400,
+    "error_code": 10116,
+    "description": "max deliver is required to be \u003e length of backoff values",
+    "comment": "",
+    "help": "",
+    "url": "",
+    "deprecates": ""
+  },
+  {
+    "constant": "JSStreamInfoMaxSubjectsErr",
+    "code": 500,
+    "error_code": 10117,
+    "description": "subject details would exceed maximum allowed",
+    "comment": "",
+    "help": "",
+    "url": "",
+    "deprecates": ""
   }
 ]

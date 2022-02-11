@@ -171,16 +171,19 @@ func (p *Permissions) clone() *Permissions {
 // Lock is assumed held.
 func (s *Server) checkAuthforWarnings() {
 	warn := false
-	if s.opts.Password != "" && !isBcrypt(s.opts.Password) {
+	if s.opts.Password != _EMPTY_ && !isBcrypt(s.opts.Password) {
 		warn = true
 	}
 	for _, u := range s.users {
 		// Skip warn if using TLS certs based auth
 		// unless a password has been left in the config.
-		if u.Password == "" && s.opts.TLSMap {
+		if u.Password == _EMPTY_ && s.opts.TLSMap {
 			continue
 		}
-
+		// Check if this is our internal sys client created on the fly.
+		if s.sysAccOnlyNoAuthUser != _EMPTY_ && u.Username == s.sysAccOnlyNoAuthUser {
+			continue
+		}
 		if !isBcrypt(u.Password) {
 			warn = true
 			break
@@ -706,7 +709,7 @@ func (s *Server) processClientOrLeafAuthentication(c *client, opts *Options) boo
 		acc.mu.RLock()
 		c.Debugf("Authenticated JWT: %s %q (claim-name: %q, claim-tags: %q) "+
 			"signed with %q by Account %q (claim-name: %q, claim-tags: %q) signed with %q has mappings %t accused %p",
-			c.kindString(), juc.Subject, juc.Name, juc.Tags, juc.Issuer, issuer, acc.nameTag, acc.tags, acc.Issuer, acc.hasMappings(), acc)
+			c.kindString(), juc.Subject, juc.Name, juc.Tags, juc.Issuer, issuer, acc.nameTag, acc.tags, acc.Issuer, acc.hasMappingsLocked(), acc)
 		acc.mu.RUnlock()
 		return true
 	}
@@ -1142,7 +1145,7 @@ func validateAllowedConnectionTypes(m map[string]struct{}) error {
 }
 
 func validateNoAuthUser(o *Options, noAuthUser string) error {
-	if noAuthUser == "" {
+	if noAuthUser == _EMPTY_ {
 		return nil
 	}
 	if len(o.TrustedOperators) > 0 {
