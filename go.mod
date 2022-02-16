@@ -29,7 +29,7 @@ require (
 	github.com/outbrain/golib v0.0.0-20180830062331-ab954725f502
 	github.com/pingcap/dm v0.0.0-00010101000000-000000000000
 	github.com/pingcap/tidb v1.1.0-beta.0.20211025024448-36e694bfc536
-	github.com/pingcap/tidb/parser v0.0.0-20211025024448-36e694bfc536
+	github.com/pingcap/tidb/parser v0.0.0-20220216061539-43e666ba7c23
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.1
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b

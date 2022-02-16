@@ -13,8 +13,11 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/types"
 
 	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/model"
+	"github.com/pingcap/tidb/parser/mysql"
 	oracle_ast "github.com/sjjian/oracle-sql-parser/ast"
 	oracle_element "github.com/sjjian/oracle-sql-parser/ast/element"
 )
@@ -384,6 +387,181 @@ func OracleTypeParse(td *oracle_ast.ColumnDef) string {
 		colDefinition = fmt.Sprintf("%s %s%s", HandlingForSpecialCharacters(td.ColumnName), MySQLColTypeLONGTEXT, colDefaultString(td.Default))
 	}
 	return colDefinition
+}
+
+func oracleTp2MySQLTp(td *oracle_ast.ColumnDef) *ast.ColumnDef {
+	columnName := IdentifierToString(td.ColumnName)
+	column := &ast.ColumnDef{
+		Name: &ast.ColumnName{
+			Name: model.CIStr{columnName, columnName},
+		},
+	}
+	for i := range td.Constraints {
+		column.Options = append(column.Options, transConstraintOtoM(td.Constraints[i]))
+	}
+
+	tp := &types.FieldType{
+		Flen:    types.UnspecifiedLength,
+		Decimal: types.UnspecifiedLength,
+	}
+
+	switch td.Datatype.DataDef() {
+	case oracle_element.DataDefBFile:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = 255
+	case oracle_element.DataDefBinaryFloat:
+		tp.Tp = mysql.TypeFloat
+	case oracle_element.DataDefBinaryDouble:
+		tp.Tp = mysql.TypeDouble
+	case oracle_element.DataDefBlob:
+		tp.Tp = mysql.TypeLongBlob
+		tp.Flag = mysql.BinaryFlag
+		tp.Charset = "binary"
+		tp.Collate = "binary"
+	case oracle_element.DataDefChar:
+		if *td.Datatype.(*oracle_element.Char).Size >= 1 && *td.Datatype.(*oracle_element.Char).Size <= 255 {
+			tp.Tp = mysql.TypeString
+			tp.Flen = *td.Datatype.(*oracle_element.Char).Size
+		} else if *td.Datatype.(*oracle_element.Char).Size >= 256 && *td.Datatype.(*oracle_element.Char).Size <= 2000 {
+			tp.Tp = mysql.TypeVarchar
+			tp.Flen = *td.Datatype.(*oracle_element.Char).Size
+		}
+	case oracle_element.DataDefCharacter:
+		if *td.Datatype.(*oracle_element.Char).Size >= 1 && *td.Datatype.(*oracle_element.Char).Size <= 255 {
+			tp.Tp = mysql.TypeString
+			tp.Flen = *td.Datatype.(*oracle_element.Char).Size
+		} else if *td.Datatype.(*oracle_element.Char).Size >= 256 && *td.Datatype.(*oracle_element.Char).Size <= 2000 {
+			tp.Tp = mysql.TypeVarchar
+			tp.Flen = *td.Datatype.(*oracle_element.Char).Size
+		}
+	case oracle_element.DataDefClob:
+		tp.Tp = mysql.TypeLongBlob
+	case oracle_element.DataDefDate:
+		tp.Tp = mysql.TypeDatetime
+	case oracle_element.DataDefDecimal, oracle_element.DataDefDec:
+		tp.Tp = mysql.TypeNewDecimal
+		tp.Flen = td.Datatype.(*oracle_element.Number).Precision.Number
+		tp.Decimal = LimitSize(*td.Datatype.(*oracle_element.Number).Scale)
+	case oracle_element.DataDefDoublePrecision:
+		tp.Tp = mysql.TypeDouble
+	case oracle_element.DataDefFloat:
+		tp.Tp = mysql.TypeDouble
+	case oracle_element.DataDefInteger:
+		tp.Tp = mysql.TypeLong
+	case oracle_element.DataDefInt:
+		tp.Tp = mysql.TypeLong
+	case oracle_element.DataDefIntervalYear, oracle_element.DataDefIntervalDay:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = 30
+	case oracle_element.DataDefLong:
+		tp.Tp = mysql.TypeLongBlob
+	case oracle_element.DataDefLongRaw:
+		tp.Tp = mysql.TypeLongBlob
+		tp.Flag = mysql.BlobFlag
+		tp.Charset = "binary"
+		tp.Collate = "binary"
+	case oracle_element.DataDefNChar:
+		if *td.Datatype.(*oracle_element.NChar).Size >= 1 && *td.Datatype.(*oracle_element.NChar).Size <= 255 {
+			tp.Tp = mysql.TypeString
+			tp.Flen = *td.Datatype.(*oracle_element.NChar).Size
+		} else if *td.Datatype.(*oracle_element.NChar).Size >= 256 && *td.Datatype.(*oracle_element.NChar).Size <= 2000 {
+			tp.Tp = mysql.TypeVarchar
+			//tp.Flag = 0
+			tp.Flen = *td.Datatype.(*oracle_element.NChar).Size
+		}
+	case oracle_element.DataDefNCharVarying:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = *td.Datatype.(*oracle_element.NVarchar2).Size
+	case oracle_element.DataDefNClob:
+		tp.Tp = mysql.TypeBlob
+	case oracle_element.DataDefNumber:
+		num := td.Datatype.(*oracle_element.Number)
+		if num.Precision == nil { // p == nil s == nil
+			tp.Tp = mysql.TypeDouble
+		} else {
+			p := num.Precision.Number
+			if num.Scale != nil && *num.Scale != 0 {
+				tp.Tp = mysql.TypeNewDecimal
+				tp.Flen = p
+				tp.Decimal = LimitSize(*num.Scale)
+			} else {
+				switch {
+				case p <= 0:
+					tp.Tp = mysql.TypeDouble
+				case p < 3:
+					tp.Tp = mysql.TypeTiny
+				case p < 5:
+					tp.Tp = mysql.TypeShort
+				case p < 9:
+					tp.Tp = mysql.TypeLong
+				case p < 19:
+					tp.Tp = mysql.TypeLonglong
+				case p <= 38:
+					tp.Tp = mysql.TypeNewDecimal
+					tp.Flen = p
+				}
+			}
+		}
+	case oracle_element.DataDefNumeric:
+		tp.Tp = mysql.TypeNewDecimal
+		tp.Flen = td.Datatype.(*oracle_element.Number).Precision.Number
+		tp.Decimal = LimitSize(*td.Datatype.(*oracle_element.Number).Scale)
+	case oracle_element.DataDefNVarChar2:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = *td.Datatype.(*oracle_element.NVarchar2).Size
+	case oracle_element.DataDefRaw:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = *td.Datatype.(*oracle_element.Raw).Size
+		tp.Flag = mysql.BinaryFlag
+		tp.Charset = "binary"
+		tp.Collate = "binary"
+	case oracle_element.DataDefReal:
+		tp.Tp = mysql.TypeDouble
+	case oracle_element.DataDefRowId:
+		tp.Tp = mysql.TypeString
+		tp.Flen = 100
+	case oracle_element.DataDefSmallInt:
+		tp.Tp = mysql.TypeNewDecimal
+		tp.Flen = 38
+	case oracle_element.DataDefTimestamp:
+		// todo with time zone
+		fractionalSecondsPrecision := *td.Datatype.(*oracle_element.Timestamp).FractionalSecondsPrecision
+		if fractionalSecondsPrecision > 6 {
+			fractionalSecondsPrecision = 6
+		}
+		tp.Tp = mysql.TypeDatetime
+		tp.Decimal = fractionalSecondsPrecision
+	case oracle_element.DataDefURowId:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = *td.Datatype.(*oracle_element.URowId).Size
+	case oracle_element.DataDefVarchar:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = *td.Datatype.(*oracle_element.Varchar2).Size
+	case oracle_element.DataDefVarchar2:
+		tp.Tp = mysql.TypeVarchar
+		tp.Flen = *td.Datatype.(*oracle_element.Varchar2).Size
+	case oracle_element.DataDefXMLType:
+		tp.Tp = mysql.TypeLongBlob
+	}
+	column.Tp = tp
+	return column
+}
+
+func transConstraintOtoM(oracleConstraint *oracle_ast.InlineConstraint) (constraint *ast.ColumnOption) {
+	constraint = new(ast.ColumnOption)
+	switch oracleConstraint.Type {
+	case oracle_ast.ConstraintTypeNotNull:
+		constraint.Tp = ast.ColumnOptionNotNull
+	case oracle_ast.ConstraintTypeNull:
+		constraint.Tp = ast.ColumnOptionNull
+	case oracle_ast.ConstraintTypeUnique:
+		constraint.Tp = ast.ColumnOptionUniqKey
+	case oracle_ast.ConstraintTypePK:
+		constraint.Tp = ast.ColumnOptionPrimaryKey
+	case oracle_ast.ConstraintTypeReferences:
+		// todo
+	}
+	return
 }
 
 // MySQL DEC/DECIMAL/NUMERIC type max scale is 30
