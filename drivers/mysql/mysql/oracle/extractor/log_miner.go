@@ -528,7 +528,7 @@ func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err e
 }
 
 func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
-	e.logger.Debug("start oracle. DatoracleAstreamEvents")
+	e.logger.Debug("start oracle. DatastreamEvents")
 
 	if e.LogMinerStream.startScn == 0 {
 		scn, err := e.LogMinerStream.GetCurrentSnapshotSCN()
@@ -636,7 +636,7 @@ func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	l.logger.Info("getRedoLogFp:", "currentRedoLogSequenceFP", l.currentRedoLogSequenceFP, "loracleAstFp", fp)
+	l.logger.Info("getRedoLogFp:", "currentRedoLogSequenceFP", l.currentRedoLogSequenceFP, "lastFp", fp)
 	if l.currentRedoLogSequenceFP == fp {
 		return false, nil
 	}
@@ -1129,7 +1129,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 
 		createTableStmt.Cols = columns
 		var createSQL strings.Builder
-		err := createTableStmt.Restore(parserformat.NewRestoreCtx(parserformat.DefaultRestoreFlags, &createSQL))
+		err := createTableStmt.Restore(parserformat.NewRestoreCtx(common.ParserRestoreFlag, &createSQL))
 		if err != nil {
 			e.logger.Error("restore ddl err", "err", err)
 			return dataEvent, err
