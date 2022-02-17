@@ -1104,9 +1104,6 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 				Schema: model.NewCIStr(schemaName),
 				Name:   model.NewCIStr(tableName),
 			},
-			Cols:           make([]*ast.ColumnDef, 0),
-			Constraints:    make([]*ast.Constraint, 0),
-			OnCommitDelete: false,
 			Options: []*ast.TableOption{{
 				Tp:       ast.TableOptionCharset,
 				StrValue: "utf8mb4",
