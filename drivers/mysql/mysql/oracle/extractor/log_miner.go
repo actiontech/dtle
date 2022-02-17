@@ -8,18 +8,18 @@ import (
 	gosql "database/sql"
 	"encoding/hex"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 	"github.com/actiontech/dtle/g"
 	"github.com/pingcap/tidb/parser"
 	"github.com/pingcap/tidb/parser/ast"
-	parserformat "github.com/pingcap/tidb/parser/format"
 	"github.com/pingcap/tidb/parser/model"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/pkg/errors"
@@ -637,7 +637,7 @@ func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	l.logger.Info("getRedoLogFp:", "currentRedoLogSequenceFP", l.currentRedoLogSequenceFP, "loracleAstFp", fp)
+	l.logger.Info("getRedoLogFp:", "currentRedoLogSequenceFP", l.currentRedoLogSequenceFP, "lastFp", fp)
 	if l.currentRedoLogSequenceFP == fp {
 		return false, nil
 	}
