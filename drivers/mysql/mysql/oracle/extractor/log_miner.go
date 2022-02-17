@@ -8,23 +8,24 @@ import (
 	gosql "database/sql"
 	"encoding/hex"
 	"fmt"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 	"github.com/actiontech/dtle/g"
 	"github.com/pingcap/tidb/parser"
 	"github.com/pingcap/tidb/parser/ast"
-	parserformat "github.com/pingcap/tidb/parser/format"
 	"github.com/pingcap/tidb/parser/model"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/pkg/errors"
 	oracleParser "github.com/sjjian/oracle-sql-parser"
 	oracleAst "github.com/sjjian/oracle-sql-parser/ast"
+	oracle_element "github.com/sjjian/oracle-sql-parser/ast/element"
 	"github.com/thinkeridea/go-extend/exbytes"
 )
 
@@ -637,7 +638,7 @@ func (l *LogMinerStream) checkRedoLogChanged() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	l.logger.Info("getRedoLogFp:", "currentRedoLogSequenceFP", l.currentRedoLogSequenceFP, "loracleAstFp", fp)
+	l.logger.Info("getRedoLogFp:", "currentRedoLogSequenceFP", l.currentRedoLogSequenceFP, "lastFp", fp)
 	if l.currentRedoLogSequenceFP == fp {
 		return false, nil
 	}
@@ -1070,36 +1071,25 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 }
 
 func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEvent common.DataEvent, err error) {
-	e.logger.Debug("============= ddl stmt parse start===============", "redoSQL", redoSQL)
+	e.logger.Debug("ddl stmt parse start", "redoSQL", redoSQL)
 	stmt, err := oracleParser.Parser(redoSQL)
 	if err != nil {
-		e.logger.Error("============= ddl parse err===============", "redoSQL", redoSQL)
+		e.logger.Error("ddl parse err", "redoSQL", redoSQL)
 		return dataEvent, err
+	}
+	getSchemaName := func(schema *oracle_element.Identifier) string {
+		schemaName := ""
+		if schema == nil {
+			schemaName = segOwner
+		} else {
+			schemaName = IdentifierToString(schema)
+		}
+		return schemaName
 	}
 	switch s := stmt[0].(type) {
 	case *oracleAst.CreateTableStmt:
-		schemaName := ""
-		if s.TableName.Schema == nil {
-			schemaName = segOwner
-		} else {
-			schemaName = IdentifierToString(s.TableName.Schema)
-		}
+		schemaName := getSchemaName(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
-		e.logger.Debug("CreateTableStmt", "schema:", schemaName, " table", tableName)
-
-		// generate MySQL create table stmt
-		defaultTableOptions := &ast.TableOption{
-			Tp:       ast.TableOptionCharset,
-			StrValue: "utf8mb4",
-		}
-
-		createTableStmt := &ast.CreateTableStmt{
-			Table: &ast.TableName{
-				Schema: model.NewCIStr(schemaName),
-				Name:   model.NewCIStr(tableName),
-			},
-			Options: []*ast.TableOption{defaultTableOptions},
-		}
 
 		// database table structure record
 		schemaConfig := e.findSchemaConfig(schemaName)
@@ -1107,6 +1097,18 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		ordinals := make(map[string]int, 0)
 		tableConfig.OriginalTableColumns = &common.ColumnList{Ordinals: ordinals}
 
+		// generate MySQL create table stmt
+		createTableStmt := &ast.CreateTableStmt{
+			TemporaryKeyword: ast.TemporaryNone,
+			Table: &ast.TableName{
+				Schema: model.NewCIStr(schemaName),
+				Name:   model.NewCIStr(tableName),
+			},
+			Options: []*ast.TableOption{{
+				Tp:       ast.TableOptionCharset,
+				StrValue: "utf8mb4",
+			}},
+		}
 		var columns []*ast.ColumnDef
 		for _, ts := range s.RelTable.TableStructs {
 			switch td := ts.(type) {
@@ -1114,23 +1116,15 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 				columns = append(columns, oracleTp2MySQLTp(td))
 				ordinals[IdentifierToString(td.ColumnName)] = len(ordinals)
 			case *oracleAst.OutOfLineConstraint:
-				columns := []string{}
-				for _, c := range td.Columns {
-					columns = append(columns, c.Value)
-				}
-				e.logger.Debug("caseOutOfLineConstraint", "constraint type: ", td.Type, "constraint value :",
-					strings.Join(columns, ","))
+				// todo
 			}
 		}
-
 		createTableStmt.Cols = columns
-
 		createSQL, err := base.ParserRestore(createTableStmt)
 		if err != nil {
 			e.logger.Error("restore ddl err", "err", err)
 			return dataEvent, err
 		}
-
 		dataEvent = common.DataEvent{
 			Query:         createSQL,
 			CurrentSchema: schemaName,
@@ -1140,34 +1134,56 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		}
 		dataEvent.DtleFlags |= common.DtleFlagCreateSchemaIfNotExists
 	case *oracleAst.AlterTableStmt:
-		// todo when schema is nil
-		if s.TableName.Schema == nil {
-			return
-		}
-		schemaName := IdentifierToString(s.TableName.Schema)
-
+		schemaName := getSchemaName(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
 		schemaConfig := e.findSchemaConfig(schemaName)
 		tableConfig := findTableConfig(schemaConfig, tableName)
 		ordinals := make(map[string]int, 0)
 		tableConfig.OriginalTableColumns = &common.ColumnList{Ordinals: ordinals}
-		alterOptions := make([]string, 0)
+
+		alterTableStmt := &ast.AlterTableStmt{
+			Table: &ast.TableName{
+				Schema: model.NewCIStr(schemaName),
+				Name:   model.NewCIStr(tableName),
+			},
+		}
+		alterOptions := make([]*ast.AlterTableSpec, 0)
 		for _, alter := range s.AlterTableClauses {
 			switch a := alter.(type) {
 			case *oracleAst.AddColumnClause:
-				colDefinitions := make([]string, 0)
+				colDefinitions := make([]*ast.ColumnDef, 0)
 				for _, column := range a.Columns {
-					colDefinitions = append(colDefinitions, OracleTypeParse(column))
+					colDefinitions = append(colDefinitions, oracleTp2MySQLTp(column))
 					ordinals[IdentifierToString(column.ColumnName)] = len(ordinals)
 				}
-				alterOptions = append(alterOptions, fmt.Sprintf("ADD COLUMN(%s)", strings.Join(colDefinitions, ",")))
+				alterOptions = append(alterOptions, &ast.AlterTableSpec{
+					NewColumns: colDefinitions,
+					Tp:         ast.AlterTableAddColumns,
+				})
 			case *oracleAst.ModifyColumnClause:
+				colDefinitions := make([]*ast.ColumnDef, 0)
 				for _, column := range a.Columns {
-					alterOptions = append(alterOptions, fmt.Sprintf("MODIFY %s", OracleTypeParse(column)))
+					colDefinitions = append(colDefinitions, oracleTp2MySQLTp(column))
+					ordinals[IdentifierToString(column.ColumnName)] = len(ordinals)
 				}
+				alterOptions = append(alterOptions, &ast.AlterTableSpec{
+					NewColumns: colDefinitions,
+					Position: &ast.ColumnPosition{
+						Tp: ast.ColumnPositionNone,
+					},
+					Tp: ast.AlterTableModifyColumn,
+				})
 			case *oracleAst.DropColumnClause:
 				for _, column := range a.Columns {
-					alterOptions = append(alterOptions, fmt.Sprintf("DROP COLUMN %s", HandlingForSpecialCharacters(column)))
+					columnName := IdentifierToString(column)
+					alterOptions = append(alterOptions, &ast.AlterTableSpec{
+						OldColumnName: &ast.ColumnName{
+							Schema: model.NewCIStr(schemaName),
+							Table:  model.NewCIStr(tableName),
+							Name:   model.NewCIStr(columnName),
+						},
+						Tp: ast.AlterTableDropColumn,
+					})
 					// sort columns ordinals
 					dropIndex := ordinals[IdentifierToString(column)]
 					delete(ordinals, IdentifierToString(column))
@@ -1178,9 +1194,22 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 					}
 				}
 			case *oracleAst.RenameColumnClause:
-				oldName := HandlingForSpecialCharacters(a.OldName)
-				newName := HandlingForSpecialCharacters(a.NewName)
-				alterOptions = append(alterOptions, fmt.Sprintf("RENAME COLUMN %s TO %s", oldName, newName))
+				oldName := IdentifierToString(a.OldName)
+				newName := IdentifierToString(a.NewName)
+				alterOptions = append(alterOptions, &ast.AlterTableSpec{
+					OldColumnName: &ast.ColumnName{
+						Schema: model.NewCIStr(schemaName),
+						Table:  model.NewCIStr(tableName),
+						Name:   model.NewCIStr(oldName),
+					},
+					NewColumnName: &ast.ColumnName{
+						Schema: model.NewCIStr(schemaName),
+						Table:  model.NewCIStr(tableName),
+						Name:   model.NewCIStr(newName),
+					},
+					Tp: ast.AlterTableRenameColumn,
+				})
+
 				ordinals[newName] = ordinals[oldName]
 				delete(ordinals, oldName)
 			case *oracleAst.AddConstraintClause:
@@ -1193,27 +1222,43 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 				// todo
 			}
 		}
-		ddl := fmt.Sprintf("ALTER TABLE `%s`.`%s` %s", schemaName, tableName, strings.Join(alterOptions, ","))
+		alterTableStmt.Specs = alterOptions
+
+		alterSQL, err := base.ParserRestore(alterTableStmt)
+		if err != nil {
+			e.logger.Error("restore alter ddl err", "err", err)
+			return dataEvent, err
+		}
 		dataEvent = common.DataEvent{
-			Query:         ddl,
+			Query:         alterSQL,
 			CurrentSchema: schemaName,
 			DatabaseName:  schemaName,
 			TableName:     tableName,
 			DML:           common.NotDML,
 		}
 	case *oracleAst.DropTableStmt:
-		schemaName := IdentifierToString(s.TableName.Schema)
+		schemaName := getSchemaName(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
-		ddl := fmt.Sprintf("DROP TABLE `%s`.`%s`", schemaName, tableName)
+		dropTableStmt := ast.DropTableStmt{
+			Tables: []*ast.TableName{},
+		}
+		dropTableStmt.Tables = append(dropTableStmt.Tables, &ast.TableName{
+			Schema: model.NewCIStr(schemaName),
+			Name:   model.NewCIStr(tableName),
+		})
+		dropSQL, err := base.ParserRestore(&dropTableStmt)
+		if err != nil {
+			return dataEvent, err
+		}
 		dataEvent = common.DataEvent{
-			Query:         ddl,
+			Query:         dropSQL,
 			CurrentSchema: schemaName,
 			DatabaseName:  schemaName,
 			TableName:     tableName,
 			DML:           common.NotDML,
 		}
 	}
-	e.logger.Debug("============= ddl stmt parse end =========", "ddl", dataEvent.Query)
+	e.logger.Debug("ddl stmt parse end", "ddl", dataEvent.Query)
 	return
 }
 
