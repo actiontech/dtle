@@ -650,3 +650,41 @@ func TestParseAlterTable(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDropTable(t *testing.T) {
+	logger := hclog.NewNullLogger()
+	testAlter := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{
+			name: "DROPTABLE",
+			sql:  `DROP TABLE TEST.DROPTABLE`,
+			want: "DROP TABLE `TEST`.`DROPTABLE`"},
+	}
+	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
+	for _, tt := range testAlter {
+		t.Run(tt.name, func(t *testing.T) {
+			// ==== load test config start
+			schemaConfig := extractor.findSchemaConfig("TEST")
+			tableConfig := findTableConfig(schemaConfig, tt.name)
+			tableConfig.OriginalTableColumns = &common.ColumnList{
+				Ordinals: map[string]int{},
+			}
+			for i, column := range []string{"COL1", "COL2"} {
+				tableConfig.OriginalTableColumns.Ordinals[column] = i
+			}
+			// ==== load test config end
+
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if dataEvent.Query != tt.want {
+				t.Errorf("alterTableSQL() = %v, want %v", dataEvent.Query, tt.want)
+			}
+		})
+	}
+}

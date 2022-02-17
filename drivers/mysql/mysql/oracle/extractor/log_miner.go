@@ -1239,9 +1239,19 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 	case *oracleAst.DropTableStmt:
 		schemaName := getSchemaName(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
-		ddl := fmt.Sprintf("DROP TABLE `%s`.`%s`", schemaName, tableName)
+		dropTableStmt := ast.DropTableStmt{
+			Tables: []*ast.TableName{},
+		}
+		dropTableStmt.Tables = append(dropTableStmt.Tables, &ast.TableName{
+			Schema: model.NewCIStr(schemaName),
+			Name:   model.NewCIStr(tableName),
+		})
+		dropSQL, err := base.ParserRestore(&dropTableStmt)
+		if err != nil {
+			return dataEvent, err
+		}
 		dataEvent = common.DataEvent{
-			Query:         ddl,
+			Query:         dropSQL,
 			CurrentSchema: schemaName,
 			DatabaseName:  schemaName,
 			TableName:     tableName,
