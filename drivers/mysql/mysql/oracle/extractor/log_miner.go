@@ -1077,7 +1077,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		e.logger.Error("ddl parse err", "redoSQL", redoSQL)
 		return dataEvent, err
 	}
-	f := func(schema *oracle_element.Identifier) string {
+	getSchemaName := func(schema *oracle_element.Identifier) string {
 		schemaName := ""
 		if schema == nil {
 			schemaName = segOwner
@@ -1088,7 +1088,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 	}
 	switch s := stmt[0].(type) {
 	case *oracleAst.CreateTableStmt:
-		schemaName := f(s.TableName.Schema)
+		schemaName := getSchemaName(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
 
 		// database table structure record
@@ -1101,8 +1101,8 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		createTableStmt := &ast.CreateTableStmt{
 			TemporaryKeyword: ast.TemporaryNone,
 			Table: &ast.TableName{
-				Schema: model.CIStr{O: schemaName, L: schemaName},
-				Name:   model.CIStr{O: tableName, L: tableName},
+				Schema: model.NewCIStr(schemaName),
+				Name:   model.NewCIStr(tableName),
 			},
 			Cols:           make([]*ast.ColumnDef, 0),
 			Constraints:    make([]*ast.Constraint, 0),
@@ -1137,7 +1137,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		}
 		dataEvent.DtleFlags |= common.DtleFlagCreateSchemaIfNotExists
 	case *oracleAst.AlterTableStmt:
-		schemaName := f(s.TableName.Schema)
+		schemaName := getSchemaName(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
 		schemaConfig := e.findSchemaConfig(schemaName)
 		tableConfig := findTableConfig(schemaConfig, tableName)
@@ -1146,8 +1146,8 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 
 		alterTableStmt := &ast.AlterTableStmt{
 			Table: &ast.TableName{
-				Schema: model.CIStr{O: schemaName, L: schemaName},
-				Name:   model.CIStr{O: tableName, L: tableName},
+				Schema: model.NewCIStr(schemaName),
+				Name:   model.NewCIStr(tableName),
 			},
 		}
 		alterOptions := make([]*ast.AlterTableSpec, 0)
@@ -1181,9 +1181,9 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 					columnName := IdentifierToString(column)
 					alterOptions = append(alterOptions, &ast.AlterTableSpec{
 						OldColumnName: &ast.ColumnName{
-							Schema: model.CIStr{O: schemaName, L: schemaName},
-							Table:  model.CIStr{O: tableName, L: tableName},
-							Name:   model.CIStr{O: columnName, L: columnName},
+							Schema: model.NewCIStr(schemaName),
+							Table:  model.NewCIStr(tableName),
+							Name:   model.NewCIStr(columnName),
 						},
 						Tp: ast.AlterTableDropColumn,
 					})
@@ -1201,14 +1201,14 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 				newName := IdentifierToString(a.NewName)
 				alterOptions = append(alterOptions, &ast.AlterTableSpec{
 					OldColumnName: &ast.ColumnName{
-						Schema: model.CIStr{O: schemaName, L: schemaName},
-						Table:  model.CIStr{O: tableName, L: tableName},
-						Name:   model.CIStr{O: oldName, L: oldName},
+						Schema: model.NewCIStr(schemaName),
+						Table:  model.NewCIStr(tableName),
+						Name:   model.NewCIStr(oldName),
 					},
 					NewColumnName: &ast.ColumnName{
-						Schema: model.CIStr{O: schemaName, L: schemaName},
-						Table:  model.CIStr{O: tableName, L: tableName},
-						Name:   model.CIStr{O: newName, L: newName},
+						Schema: model.NewCIStr(schemaName),
+						Table:  model.NewCIStr(tableName),
+						Name:   model.NewCIStr(newName),
 					},
 					Tp: ast.AlterTableRenameColumn,
 				})
@@ -1240,7 +1240,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 			DML:           common.NotDML,
 		}
 	case *oracleAst.DropTableStmt:
-		schemaName := f(s.TableName.Schema)
+		schemaName := getSchemaName(s.TableName.Schema)
 		tableName := IdentifierToString(s.TableName.Table)
 		ddl := fmt.Sprintf("DROP TABLE `%s`.`%s`", schemaName, tableName)
 		dataEvent = common.DataEvent{
