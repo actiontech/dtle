@@ -5,6 +5,7 @@ import (
 	compress "compress/gzip"
 	"encoding/gob"
 	"fmt"
+	"github.com/pingcap/tidb/types"
 	"io/ioutil"
 	"time"
 
@@ -61,6 +62,8 @@ type GencodeType interface {
 }
 
 func init() {
+	// "Only types that will be transferred as implementations of interface values need to be registered."
+	gob.Register(types.BinaryLiteral{})
 	if g.EnvIsTrue(g.ENV_BIG_MSG_100K) {
 		g.NatsMaxMsg = 100 * 1024 // TODO this does not works
 	}
