@@ -593,3 +593,60 @@ func TestParseDDLSQLDROP(t *testing.T) {
 		})
 	}
 }
+
+func TestParseAlterTable(t *testing.T) {
+	logger := hclog.NewNullLogger()
+	testAlter := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{
+			name: "ADDCOLUMN",
+			sql:  `alter table TEST.ADDCOLUMN add (author_last_published date);`,
+			want: "ALTER TABLE `TEST`.`ADDCOLUMN` ADD COLUMN (`AUTHOR_LAST_PUBLISHED` DATETIME)"},
+		{
+			name: "MODIFYCOLUMN",
+			sql:  `ALTER TABLE test."MODIFYCOLUMN" MODIFY ( alter_new_name1 CHAR ( 13 )) MODIFY ( alter_name2 VARCHAR ( 66 ))`,
+			want: "ALTER TABLE `TEST`.`MODIFYCOLUMN` MODIFY COLUMN `ALTER_NEW_NAME1` CHAR(13), MODIFY COLUMN `ALTER_NAME2` VARCHAR(66)"},
+		{
+			name: "DROPCOLUMN",
+			// alter table table_name drop (column_name1, column_name2);
+			sql:  `alter table TEST.DROPCOLUMN drop (COL1, COL2);`,
+			want: "ALTER TABLE `TEST`.`DROPCOLUMN` DROP COLUMN `TEST`.`DROPCOLUMN`.`COL1`, DROP COLUMN `TEST`.`DROPCOLUMN`.`COL2`"},
+		{
+			name: "DROPCOLUMN1",
+			// alter table table_name drop column column_name;
+			sql:  `alter table TEST.DROPCOLUMN1 drop column COL1`,
+			want: "ALTER TABLE `TEST`.`DROPCOLUMN1` DROP COLUMN `TEST`.`DROPCOLUMN1`.`COL1`"},
+		{
+			name: "RENAMECOLUMN",
+			// alter table table_name drop column column_name;
+			sql:  `alter table TEST.RENAMECOLUMN RENAME  COLUMN COL1 TO COLNEW1`,
+			want: "ALTER TABLE `TEST`.`RENAMECOLUMN` RENAME COLUMN `TEST`.`RENAMECOLUMN`.`COL1` TO `TEST`.`RENAMECOLUMN`.`COLNEW1`"},
+	}
+	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
+	for _, tt := range testAlter {
+		t.Run(tt.name, func(t *testing.T) {
+			// ==== load test config start
+			schemaConfig := extractor.findSchemaConfig("TEST")
+			tableConfig := findTableConfig(schemaConfig, tt.name)
+			tableConfig.OriginalTableColumns = &common.ColumnList{
+				Ordinals: map[string]int{},
+			}
+			for i, column := range []string{"COL1", "COL2"} {
+				tableConfig.OriginalTableColumns.Ordinals[column] = i
+			}
+			// ==== load test config end
+
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if dataEvent.Query != tt.want {
+				t.Errorf("alterTableSQL() = %v, want %v", dataEvent.Query, tt.want)
+			}
+		})
+	}
+}
