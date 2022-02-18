@@ -1070,6 +1070,11 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 	return dataEvent, nil
 }
 
+var constrainto2m = map[oracleAst.ConstraintType]ast.ConstraintType{
+	oracleAst.ConstraintTypeUnique: ast.ConstraintUniq,
+	oracleAst.ConstraintTypePK:     ast.ConstraintPrimaryKey,
+}
+
 func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEvent common.DataEvent, err error) {
 	e.logger.Debug("ddl stmt parse start", "redoSQL", redoSQL)
 	stmt, err := oracleParser.Parser(redoSQL)
@@ -1110,16 +1115,30 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 			}},
 		}
 		var columns []*ast.ColumnDef
+		var constraints []*ast.Constraint
 		for _, ts := range s.RelTable.TableStructs {
 			switch td := ts.(type) {
 			case *oracleAst.ColumnDef:
 				columns = append(columns, oracleTp2MySQLTp(td))
 				ordinals[IdentifierToString(td.ColumnName)] = len(ordinals)
 			case *oracleAst.OutOfLineConstraint:
-				// todo
+				keys := make([]*ast.IndexPartSpecification, 0)
+				for i := range td.Columns {
+					keys = append(keys, &ast.IndexPartSpecification{
+						Column: &ast.ColumnName{
+							Name: model.NewCIStr(td.Columns[i].Value),
+						},
+					})
+				}
+				constraints = append(constraints, &ast.Constraint{
+					Tp:   constrainto2m[td.Type],
+					Name: IdentifierToString(td.Name),
+					Keys: keys,
+				})
 			}
 		}
 		createTableStmt.Cols = columns
+		createTableStmt.Constraints = constraints
 		createSQL, err := base.ParserRestore(createTableStmt)
 		if err != nil {
 			e.logger.Error("restore ddl err", "err", err)
