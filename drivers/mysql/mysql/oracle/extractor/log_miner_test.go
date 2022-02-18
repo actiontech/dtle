@@ -688,3 +688,72 @@ func TestParseDropTable(t *testing.T) {
 		})
 	}
 }
+
+func TestParseConstraintSQL(t *testing.T) {
+
+	tests := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{
+			name: "createTableSQLCharRelation",
+			sql: `create table TEST.userInfo (  
+				id number(6) primary key,--主键  
+				name varchar2(20) not null,--非空  
+				sex number(1),  
+				age number(3) default 18,  
+				birthday date,  
+				address varchar2(50),  
+				email varchar2(25) unique,--唯一  
+				tel number(11)
+				-- deptno number(2) references dept(deptno) -- 外键  
+				)`,
+			want: "CREATE TABLE `TEST`.`USERINFO` (`ID` INT PRIMARY KEY,`NAME` VARCHAR(20) NOT NULL,`SEX` TINYINT,`AGE` SMALLINT,`BIRTHDAY` DATETIME,`ADDRESS` VARCHAR(50),`EMAIL` VARCHAR(25) UNIQUE KEY,`TEL` BIGINT) DEFAULT CHARACTER SET = UTF8MB4"},
+
+		{
+			name: "createOutOfLineConstraint",
+			sql: `CREATE TABLE TEST.employees_demo
+				( employee_id    NUMBER(6)
+				, first_name     VARCHAR2(20)
+				, last_name      VARCHAR2(25)
+					 CONSTRAINT emp_last_name_nn_demo NOT NULL
+				, email          VARCHAR2(25)
+					 CONSTRAINT emp_email_nn_demo     NOT NULL
+				, phone_number   VARCHAR2(20)
+				, hire_date      DATE
+					 CONSTRAINT emp_hire_date_nn_demo  NOT NULL
+				, job_id         VARCHAR2(10)
+				   CONSTRAINT     emp_job_nn_demo  NOT NULL
+				, salary         NUMBER(8,2)
+				   CONSTRAINT     emp_salary_nn_demo  NOT NULL
+				, commission_pct NUMBER(2,2)
+				, manager_id     NUMBER(6)
+				, department_id  NUMBER(4)
+				, dn             VARCHAR2(300)
+				, CONSTRAINT     emp_email_uk_demo
+								 UNIQUE (email)
+				)`,
+			want: "CREATE TABLE `TEST`.`EMPLOYEES_DEMO` (`EMPLOYEE_ID` INT,`FIRST_NAME` VARCHAR(20),`LAST_NAME` VARCHAR(25) NOT NULL,`EMAIL` VARCHAR(25) NOT NULL,`PHONE_NUMBER` VARCHAR(20),`HIRE_DATE` DATETIME NOT NULL,`JOB_ID` VARCHAR(10) NOT NULL,`SALARY` DECIMAL(8,2) NOT NULL,`COMMISSION_PCT` DECIMAL(2,2),`MANAGER_ID` INT,`DEPARTMENT_ID` SMALLINT,`DN` VARCHAR(300),UNIQUE `EMP_EMAIL_UK_DEMO`(`email`)) DEFAULT CHARACTER SET = UTF8MB4",
+		},
+		// {
+		// 	name: "createOutOfLineConstraint",
+		// 	sql:  `CREATE TABLE TEST.emp1 ( id number REFERENCES TEST.USERINFO11 ( ID ), NAME VARCHAR ( 8 ) );`,
+		// 	want: "CREATE TABLE `TEST`.`EMP1` (`ID` DOUBLE,`NAME` VARCHAR(8)) DEFAULT CHARACTER SET = UTF8MB4",
+		// },
+	}
+	logger := hclog.NewNullLogger()
+	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if dataEvent.Query != tt.want {
+				t.Errorf("parseDDLSQL() = %v, want %v", dataEvent.Query, tt.want)
+			}
+		})
+	}
+}
