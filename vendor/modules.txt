@@ -531,7 +531,7 @@ github.com/pingcap/kvproto/pkg/span
 github.com/pingcap/kvproto/pkg/tikvpb
 # github.com/pingcap/log v0.0.0-20210906054005-afc726e70354
 github.com/pingcap/log
-# github.com/pingcap/tidb v1.1.0-beta.0.20211025024448-36e694bfc536 => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
+# github.com/pingcap/tidb v1.1.0-beta.0.20211025024448-36e694bfc536 => github.com/actiontech/tidb v0.0.0-20220221092239-137743364bb1
 ## explicit
 github.com/pingcap/tidb/bindinfo
 github.com/pingcap/tidb/br/pkg/errors
@@ -657,7 +657,7 @@ github.com/pingcap/tidb-tools/pkg/table-rule-selector
 github.com/pingcap/tidb-tools/pkg/utils
 github.com/pingcap/tidb-tools/tidb-binlog/node
 github.com/pingcap/tidb-tools/tidb-binlog/pump_client
-# github.com/pingcap/tidb/parser v0.0.0-20211025024448-36e694bfc536 => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
+# github.com/pingcap/tidb/parser v0.0.0-20211025024448-36e694bfc536 => github.com/actiontech/tidb/parser v0.0.0-20220221092239-137743364bb1
 ## explicit
 github.com/pingcap/tidb/parser
 github.com/pingcap/tidb/parser/ast
@@ -981,6 +981,7 @@ golang.org/x/text/encoding/korean
 golang.org/x/text/encoding/simplifiedchinese
 golang.org/x/text/encoding/traditionalchinese
 golang.org/x/text/encoding/unicode
+golang.org/x/text/encoding/unicode/utf32
 golang.org/x/text/internal/utf8internal
 golang.org/x/text/runes
 golang.org/x/text/secure/bidirule
@@ -1184,7 +1185,7 @@ gopkg.in/yaml.v3
 # github.com/go-mysql-org/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a
 # github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9
 # github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20211206092524-9e640f6da0ac
-# github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
-# github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
+# github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20220221092239-137743364bb1
+# github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20220221092239-137743364bb1
 # github.com/hashicorp/go-discover => github.com/hashicorp/go-discover v0.0.0-20211203145537-8b3ddf4349a8
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1

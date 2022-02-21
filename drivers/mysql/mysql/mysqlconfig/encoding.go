@@ -8,6 +8,7 @@ package mysqlconfig
 
 import (
 	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/unicode/utf32"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/simplifiedchinese"
 )
@@ -23,4 +24,5 @@ func init() {
 	charsetEncodingMap["latin2"] = charmap.Windows1250
 	charsetEncodingMap["gbk"] = simplifiedchinese.GBK
 	charsetEncodingMap["gb2312"] = simplifiedchinese.GB18030
+	charsetEncodingMap["utf32"] = utf32.UTF32(utf32.BigEndian, utf32.IgnoreBOM)
 }
