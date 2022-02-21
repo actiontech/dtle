@@ -13,13 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
-
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
 	"github.com/actiontech/dtle/g"
 	"github.com/pingcap/tidb/parser"
 	"github.com/pingcap/tidb/parser/ast"
+	"github.com/pingcap/tidb/parser/format"
 	"github.com/pingcap/tidb/parser/model"
 	_ "github.com/pingcap/tidb/types/parser_driver"
 	"github.com/pkg/errors"
@@ -1091,6 +1090,15 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		}
 		return schemaName
 	}
+	restoreDDL := func(stmt ast.Node) (string, error) {
+		sql := &strings.Builder{}
+		flag := format.RestoreStringSingleQuotes | format.RestoreStringWithoutDefaultCharset | format.RestoreNameBackQuotes
+		err := stmt.Restore(format.NewRestoreCtx(flag, sql))
+		if err != nil {
+			return "", err
+		}
+		return sql.String(), nil
+	}
 	switch s := stmt[0].(type) {
 	case *oracleAst.CreateTableStmt:
 		schemaName := getSchemaName(s.TableName.Schema)
@@ -1139,7 +1147,7 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		}
 		createTableStmt.Cols = columns
 		createTableStmt.Constraints = constraints
-		createSQL, err := base.ParserRestore(createTableStmt)
+		createSQL, err := restoreDDL(createTableStmt)
 		if err != nil {
 			e.logger.Error("restore ddl err", "err", err)
 			return dataEvent, err
@@ -1243,9 +1251,9 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 		}
 		alterTableStmt.Specs = alterOptions
 
-		alterSQL, err := base.ParserRestore(alterTableStmt)
+		alterSQL, err := restoreDDL(alterTableStmt)
 		if err != nil {
-			e.logger.Error("restore alter ddl err", "err", err)
+			e.logger.Error("restore ddl err", "err", err)
 			return dataEvent, err
 		}
 		dataEvent = common.DataEvent{
@@ -1265,8 +1273,9 @@ func (e *ExtractorOracle) parseDDLSQL(redoSQL string, segOwner string) (dataEven
 			Schema: model.NewCIStr(schemaName),
 			Name:   model.NewCIStr(tableName),
 		})
-		dropSQL, err := base.ParserRestore(&dropTableStmt)
+		dropSQL, err := restoreDDL(&dropTableStmt)
 		if err != nil {
+			e.logger.Error("restore ddl err", "err", err)
 			return dataEvent, err
 		}
 		dataEvent = common.DataEvent{

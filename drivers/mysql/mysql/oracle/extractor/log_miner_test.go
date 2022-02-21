@@ -309,226 +309,227 @@ func TestParseDDLSQL(t *testing.T) {
 	}{
 		{
 			name: "createTableSQLCharRelation",
-			sql:  `CREATE TABLE TEST.NUMBER_WILDCARD_COLUMNS(ID INT, C_NUMBER NUMBER(*));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_WILDCARD_COLUMNS` (`ID` INT,`C_NUMBER` DOUBLE) DEFAULT CHARACTER SET = UTF8MB4"},
+			sql:  `CREATE TABLE "TEST".NUMBER_WILDCARD_COLUMNS(ID INT, C_NUMBER NUMBER(*));`,
+			want: "CREATE TABLE `TEST`.`NUMBER_WILDCARD_COLUMNS` (`ID` int,`C_NUMBER` double) DEFAULT CHARACTER SET = utf8mb4"},
+		//    CREATE TABLE TEST.NUMBER_WILDCARD_COLUMNS (ID int,C_NUMBER double) DEFAULT CHARACTER SET = utf8mb4
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.BFILE_COLUMNS(ID INT, C_BFILE BFILE);`,
-			want: "CREATE TABLE `TEST`.`BFILE_COLUMNS` (`ID` INT,`C_BFILE` VARCHAR(255)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`BFILE_COLUMNS` (`ID` int,`C_BFILE` varchar(255)) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.BINARY_FLOAT_COLUMNS(ID INT, C_BINARY_FLOAT BINARY_FLOAT);`,
-			want: "CREATE TABLE `TEST`.`BINARY_FLOAT_COLUMNS` (`ID` INT,`C_BINARY_FLOAT` FLOAT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`BINARY_FLOAT_COLUMNS` (`ID` int,`C_BINARY_FLOAT` float) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.BINARY_DOUBLE_COLUMNS(ID INT, C_BINARY_DOUBLE BINARY_DOUBLE);`,
-			want: "CREATE TABLE `TEST`.`BINARY_DOUBLE_COLUMNS` (`ID` INT,`C_BINARY_DOUBLE` DOUBLE) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`BINARY_DOUBLE_COLUMNS` (`ID` int,`C_BINARY_DOUBLE` double) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.BLOB_COLUMNS(ID INT, C_BLOB BLOB);`,
-			want: "CREATE TABLE `TEST`.`BLOB_COLUMNS` (`ID` INT,`C_BLOB` LONGBLOB) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`BLOB_COLUMNS` (`ID` int,`C_BLOB` longblob) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.CHAR_255_COLUMNS(ID INT, C_CHAR CHAR(255));`,
-			want: "CREATE TABLE `TEST`.`CHAR_255_COLUMNS` (`ID` INT,`C_CHAR` CHAR(255)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`CHAR_255_COLUMNS` (`ID` int,`C_CHAR` char(255)) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.CHARACTER_255_COLUMNS(ID INT, C_CHARACTER CHARACTER(255));`,
-			want: "CREATE TABLE `TEST`.`CHARACTER_255_COLUMNS` (`ID` INT,`C_CHARACTER` CHAR(255)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`CHARACTER_255_COLUMNS` (`ID` int,`C_CHARACTER` char(255)) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.CHARACTER_256_COLUMNS(ID INT, C_CHARACTER CHARACTER(256));`,
-			want: "CREATE TABLE `TEST`.`CHARACTER_256_COLUMNS` (`ID` INT,`C_CHARACTER` VARCHAR(256)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`CHARACTER_256_COLUMNS` (`ID` int,`C_CHARACTER` varchar(256)) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.CLOB_COLUMNS(ID INT, C_CLOB CLOB);`,
-			want: "CREATE TABLE `TEST`.`CLOB_COLUMNS` (`ID` INT,`C_CLOB` LONGTEXT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`CLOB_COLUMNS` (`ID` int,`C_CLOB` longtext) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.DATE_COLUMNS(ID INT, C_DATE DATE);`,
-			want: "CREATE TABLE `TEST`.`DATE_COLUMNS` (`ID` INT,`C_DATE` DATETIME) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`DATE_COLUMNS` (`ID` int,`C_DATE` datetime) DEFAULT CHARACTER SET = utf8mb4"},
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.DECIMAL_COLUMNS(ID INT, C_DECIMAL DECIMAL(11, 3));`,
-			want: "CREATE TABLE `TEST`.`DECIMAL_COLUMNS` (`ID` INT,`C_DECIMAL` DECIMAL(11,3)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`DECIMAL_COLUMNS` (`ID` int,`C_DECIMAL` decimal(11,3)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.DEC_COLUMNS(ID INT, C_DEC DEC(11, 3));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.DEC_COLUMNS(ID INT, C_DEC DEC(11, 3));`,
-			want: "CREATE TABLE `TEST`.`DEC_COLUMNS` (`ID` INT,`C_DEC` DECIMAL(11,3)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`DEC_COLUMNS` (`ID` int,`C_DEC` decimal(11,3)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.DOUBLE_PRECISION_COLUMNS(ID INT, C_DOUBLE_PRECISION DOUBLE PRECISION);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.DOUBLE_PRECISION_COLUMNS(ID INT, C_DOUBLE_PRECISION DOUBLE PRECISION);`,
-			want: "CREATE TABLE `TEST`.`DOUBLE_PRECISION_COLUMNS` (`ID` INT,`C_DOUBLE_PRECISION` DOUBLE) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`DOUBLE_PRECISION_COLUMNS` (`ID` int,`C_DOUBLE_PRECISION` double) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.FLOAT_COLUMNS(ID INT, C_FLOAT FLOAT(11));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.FLOAT_COLUMNS(ID INT, C_FLOAT FLOAT(11));`,
-			want: "CREATE TABLE `TEST`.`FLOAT_COLUMNS` (`ID` INT,`C_FLOAT` DOUBLE) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`FLOAT_COLUMNS` (`ID` int,`C_FLOAT` double) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.INTEGER_COLUMNS(ID INT, C_INTEGER INTEGER);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.INTEGER_COLUMNS(ID INT, C_INTEGER INTEGER);`,
-			want: "CREATE TABLE `TEST`.`INTEGER_COLUMNS` (`ID` INT,`C_INTEGER` INT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`INTEGER_COLUMNS` (`ID` int,`C_INTEGER` int) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.INT_COLUMNS(ID INT, C_INT INT);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.INT_COLUMNS(ID INT, C_INT INT);`,
-			want: "CREATE TABLE `TEST`.`INT_COLUMNS` (`ID` INT,`C_INT` INT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`INT_COLUMNS` (`ID` int,`C_INT` int) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.INTERVAL_YEAR_COLUMNS(ID INT, C_INTERVAL_YEAR INTERVAL YEAR(3) TO MONTH);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.INTERVAL_YEAR_COLUMNS(ID INT, C_INTERVAL_YEAR INTERVAL YEAR(3) TO MONTH);`,
-			want: "CREATE TABLE `TEST`.`INTERVAL_YEAR_COLUMNS` (`ID` INT,`C_INTERVAL_YEAR` VARCHAR(30)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`INTERVAL_YEAR_COLUMNS` (`ID` int,`C_INTERVAL_YEAR` varchar(30)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.INTERVAL_DAY_COLUMNS(ID INT, C_INTERVAL_DAY INTERVAL DAY(3) TO SECOND(5));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.INTERVAL_DAY_COLUMNS(ID INT, C_INTERVAL_DAY INTERVAL DAY(3) TO SECOND(5));`,
-			want: "CREATE TABLE `TEST`.`INTERVAL_DAY_COLUMNS` (`ID` INT,`C_INTERVAL_DAY` VARCHAR(30)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`INTERVAL_DAY_COLUMNS` (`ID` int,`C_INTERVAL_DAY` varchar(30)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.LONG_COLUMNS(ID INT, C_LONG LONG);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.LONG_COLUMNS(ID INT, C_LONG LONG);`,
-			want: "CREATE TABLE `TEST`.`LONG_COLUMNS` (`ID` INT,`C_LONG` LONGTEXT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`LONG_COLUMNS` (`ID` int,`C_LONG` longtext) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.LONG_RAW_COLUMNS(ID INT, C_LONG_RAW LONG RAW);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.LONG_RAW_COLUMNS(ID INT, C_LONG_RAW LONG RAW);`,
-			want: "CREATE TABLE `TEST`.`LONG_RAW_COLUMNS` (`ID` INT,`C_LONG_RAW` LONGBLOB) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`LONG_RAW_COLUMNS` (`ID` int,`C_LONG_RAW` longblob) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NCHAR_255_COLUMNS(ID INT, C_NCHAR NCHAR(255));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NCHAR_255_COLUMNS(ID INT, C_NCHAR NCHAR(255));`,
-			want: "CREATE TABLE `TEST`.`NCHAR_255_COLUMNS` (`ID` INT,`C_NCHAR` CHAR(255)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NCHAR_255_COLUMNS` (`ID` int,`C_NCHAR` char(255)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NCHAR_256_COLUMNS(ID INT, C_NCHAR NCHAR(256));
 		{
 			name: "createTableSQLCharRelation",
-			sql:  `CREATE TABLE TEST.NCHAR_256_COLUMNS(ID INT, C_NCHAR NCHAR(256));`,
-			want: "CREATE TABLE `TEST`.`NCHAR_256_COLUMNS` (`ID` INT,`C_NCHAR` VARCHAR(256)) DEFAULT CHARACTER SET = UTF8MB4"},
+			sql:  `CREATE TABLE TEST."nchar_256_COLUMNS"(ID INT, C_NCHAR NCHAR(256));`,
+			want: "CREATE TABLE `TEST`.`nchar_256_COLUMNS` (`ID` int,`C_NCHAR` varchar(256)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NCHAR_VARYING_COLUMNS(ID INT, C_NCHAR_VARYING NCHAR VARYING(2000));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NCHAR_VARYING_COLUMNS(ID INT, C_NCHAR_VARYING NCHAR VARYING(2000));`,
-			want: "CREATE TABLE `TEST`.`NCHAR_VARYING_COLUMNS` (`ID` INT,`C_NCHAR_VARYING` VARCHAR(2000)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NCHAR_VARYING_COLUMNS` (`ID` int,`C_NCHAR_VARYING` varchar(2000)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NCLOB_COLUMNS(ID INT, C_NCLOB NCLOB);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NCLOB_COLUMNS(ID INT, C_NCLOB NCLOB);`,
-			want: "CREATE TABLE `TEST`.`NCLOB_COLUMNS` (`ID` INT,`C_NCLOB` TEXT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NCLOB_COLUMNS` (`ID` int,`C_NCLOB` text) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_2_COLUMNS(ID INT, C_NUMBER NUMBER(2));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_2_COLUMNS(ID INT, C_NUMBER NUMBER(2));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_2_COLUMNS` (`ID` INT,`C_NUMBER` TINYINT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_2_COLUMNS` (`ID` int,`C_NUMBER` tinyint) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_4_COLUMNS(ID INT, C_NUMBER NUMBER(4, 0));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_4_COLUMNS(ID INT, C_NUMBER NUMBER(4, 0));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_4_COLUMNS` (`ID` INT,`C_NUMBER` SMALLINT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_4_COLUMNS` (`ID` int,`C_NUMBER` smallint) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_8_COLUMNS(ID INT, C_NUMBER NUMBER(8));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_8_COLUMNS(ID INT, C_NUMBER NUMBER(8));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_8_COLUMNS` (`ID` INT,`C_NUMBER` INT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_8_COLUMNS` (`ID` int,`C_NUMBER` int) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_18_COLUMNS(ID INT, C_NUMBER NUMBER(18, 0));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_18_COLUMNS(ID INT, C_NUMBER NUMBER(18, 0));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_18_COLUMNS` (`ID` INT,`C_NUMBER` BIGINT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_18_COLUMNS` (`ID` int,`C_NUMBER` bigint) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_38_COLUMNS(ID INT, C_NUMBER NUMBER(38));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_38_COLUMNS(ID INT, C_NUMBER NUMBER(38));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_38_COLUMNS` (`ID` INT,`C_NUMBER` DECIMAL(38)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_38_COLUMNS` (`ID` int,`C_NUMBER` decimal(38)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_38_COLUMNS(ID INT, C_NUMBER NUMBER(38,31));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_38_COLUMNS(ID INT, C_NUMBER NUMBER(38,31));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_38_COLUMNS` (`ID` INT,`C_NUMBER` DECIMAL(38,30)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_38_COLUMNS` (`ID` int,`C_NUMBER` decimal(38,30)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_8_2_COLUMNS(ID INT, C_NUMBER NUMBER(8, 2));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_8_2_COLUMNS(ID INT, C_NUMBER NUMBER(8, 2));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_8_2_COLUMNS` (`ID` INT,`C_NUMBER` DECIMAL(8,2)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_8_2_COLUMNS` (`ID` int,`C_NUMBER` decimal(8,2)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_COLUMNS(ID INT, C_NUMBER NUMBER);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_COLUMNS(ID INT, C_NUMBER NUMBER);`,
-			want: "CREATE TABLE `TEST`.`NUMBER_COLUMNS` (`ID` INT,`C_NUMBER` DOUBLE) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_COLUMNS` (`ID` int,`C_NUMBER` double) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMBER_WILDCARD_COLUMNS(ID INT, C_NUMBER NUMBER(*));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMBER_WILDCARD_COLUMNS(ID INT, C_NUMBER NUMBER(*));`,
-			want: "CREATE TABLE `TEST`.`NUMBER_WILDCARD_COLUMNS` (`ID` INT,`C_NUMBER` DOUBLE) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMBER_WILDCARD_COLUMNS` (`ID` int,`C_NUMBER` double) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NUMERIC_COLUMNS(ID INT, C_NUMERIC NUMERIC(8, 2));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NUMERIC_COLUMNS(ID INT, C_NUMERIC NUMERIC(8, 2));`,
-			want: "CREATE TABLE `TEST`.`NUMERIC_COLUMNS` (`ID` INT,`C_NUMERIC` DECIMAL(8,2)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NUMERIC_COLUMNS` (`ID` int,`C_NUMERIC` decimal(8,2)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.NVARCHAR2_COLUMNS(ID INT, C_NVARCHAR2 NVARCHAR2(256));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.NVARCHAR2_COLUMNS(ID INT, C_NVARCHAR2 NVARCHAR2(256));`,
-			want: "CREATE TABLE `TEST`.`NVARCHAR2_COLUMNS` (`ID` INT,`C_NVARCHAR2` VARCHAR(256)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`NVARCHAR2_COLUMNS` (`ID` int,`C_NVARCHAR2` varchar(256)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.RAW_COLUMNS(ID INT, C_RAW RAW(256));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.RAW_COLUMNS(ID INT, C_RAW RAW(256));`,
-			want: "CREATE TABLE `TEST`.`RAW_COLUMNS` (`ID` INT,`C_RAW` VARBINARY(256)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`RAW_COLUMNS` (`ID` int,`C_RAW` varbinary(256)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.REAL_COLUMNS(ID INT, C_REAL REAL);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.REAL_COLUMNS(ID INT, C_REAL REAL);`,
-			want: "CREATE TABLE `TEST`.`REAL_COLUMNS` (`ID` INT,`C_REAL` DOUBLE) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`REAL_COLUMNS` (`ID` int,`C_REAL` double) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.ROWID_COLUMNS(ID INT, C_ROWID ROWID);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.ROWID_COLUMNS(ID INT, C_ROWID ROWID);`,
-			want: "CREATE TABLE `TEST`.`ROWID_COLUMNS` (`ID` INT,`C_ROWID` CHAR(100)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`ROWID_COLUMNS` (`ID` int,`C_ROWID` char(100)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.SMALLINT_COLUMNS(ID INT, C_SMALLINT SMALLINT);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.SMALLINT_COLUMNS(ID INT, C_SMALLINT SMALLINT);`,
-			want: "CREATE TABLE `TEST`.`SMALLINT_COLUMNS` (`ID` INT,`C_SMALLINT` DECIMAL(38)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`SMALLINT_COLUMNS` (`ID` int,`C_SMALLINT` decimal(38)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.TIMESTAMP_COLUMNS(ID INT, C_TIMESTAMP TIMESTAMP(9));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.TIMESTAMP_COLUMNS(ID INT, C_TIMESTAMP TIMESTAMP(9));`,
-			want: "CREATE TABLE `TEST`.`TIMESTAMP_COLUMNS` (`ID` INT,`C_TIMESTAMP` DATETIME(6)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`TIMESTAMP_COLUMNS` (`ID` int,`C_TIMESTAMP` datetime(6)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.TIMESTAMP_ZONE_COLUMNS(ID INT, C_TIMESTAMP_ZONE TIMESTAMP(9) WITH TIME ZONE);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.TIMESTAMP_ZONE_COLUMNS(ID INT, C_TIMESTAMP_ZONE TIMESTAMP(9) WITH TIME ZONE);`,
-			want: "CREATE TABLE `TEST`.`TIMESTAMP_ZONE_COLUMNS` (`ID` INT,`C_TIMESTAMP_ZONE` DATETIME(6)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`TIMESTAMP_ZONE_COLUMNS` (`ID` int,`C_TIMESTAMP_ZONE` datetime(6)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.UROWID_COLUMNS(ID INT, C_UROWID UROWID(256));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.UROWID_COLUMNS(ID INT, C_UROWID UROWID(256));`,
-			want: "CREATE TABLE `TEST`.`UROWID_COLUMNS` (`ID` INT,`C_UROWID` VARCHAR(256)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`UROWID_COLUMNS` (`ID` int,`C_UROWID` varchar(256)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.VARCHAR_COLUMNS(ID INT, C_VARCHAR VARCHAR(256));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.VARCHAR_COLUMNS(ID INT, C_VARCHAR VARCHAR(256));`,
-			want: "CREATE TABLE `TEST`.`VARCHAR_COLUMNS` (`ID` INT,`C_VARCHAR` VARCHAR(256)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`VARCHAR_COLUMNS` (`ID` int,`C_VARCHAR` varchar(256)) DEFAULT CHARACTER SET = utf8mb4"},
 		//CREATE TABLE TEST.VARCHAR2_COLUMNS(ID INT, C_VARCHAR2 VARCHAR2(256));
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.VARCHAR2_COLUMNS(ID INT, C_VARCHAR2 VARCHAR2(256));`,
-			want: "CREATE TABLE `TEST`.`VARCHAR2_COLUMNS` (`ID` INT,`C_VARCHAR2` VARCHAR(256)) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`VARCHAR2_COLUMNS` (`ID` int,`C_VARCHAR2` varchar(256)) DEFAULT CHARACTER SET = utf8mb4"},
 		// CREATE TABLE TEST.XMLTYPE_COLUMNS(ID INT, C_XMLTYPE XMLTYPE);
 		{
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.XMLTYPE_COLUMNS(ID INT, C_XMLTYPE XMLTYPE);`,
-			want: "CREATE TABLE `TEST`.`XMLTYPE_COLUMNS` (`ID` INT,`C_XMLTYPE` LONGTEXT) DEFAULT CHARACTER SET = UTF8MB4"},
+			want: "CREATE TABLE `TEST`.`XMLTYPE_COLUMNS` (`ID` int,`C_XMLTYPE` longtext) DEFAULT CHARACTER SET = utf8mb4"},
 
 		// {
 		// 	name: "createTableSQLCharRelation",
-		// 	sql: `CREATE TABLE test."persons"(
+		// 	sql: CREATE TABLE test."persons"(
 		// 		   "first_name" VARCHAR(15) NOT NULL,
 		// 		   last_name VARCHAR2(45) NOT NULL
 		// 		 );`,
-		// 	want: "CREATE TABLE `TEST`.`persons (first_name VARCHAR(15),LAST_NAME VARCHAR(45)) DEFAULT CHARACTER SET = UTF8MB4"},
+		// 	want: "CREATE TABLE TEST.persons (first_name VARCHAR(15),LAST_NAME VARCHAR(45)) DEFAULT CHARACTER SET = utf8mb4"},
 		// {
 		// 	// 是否支持没有 p s,或者仅仅支持 p s
 		// 	//NUMERIC_NAME  NUMERIC(15,2),
@@ -536,7 +537,7 @@ func TestParseDDLSQL(t *testing.T) {
 		// 	//Dec_NAME DEC(15,2),
 		// 	// ps 都为空时候，oracle上限为 38,0 mysql上限为10,0
 		// 	name: "createTableSQLNumberRelation",
-		// 	sql: `CREATE TABLE test."persons"(
+		// 	sql: CREATE TABLE test."persons"(
 		// 		   "first_num" NUMBER(15,2) NOT NULL,
 		// 		    second_num NUMBER(10) NOT NULL,
 		// 			three_num NUMBER(5,0) NOT NULL,
@@ -548,7 +549,7 @@ func TestParseDDLSQL(t *testing.T) {
 		// 			INT_NAME  INT,
 		// 			SMALLINT_NAME SMALLINT
 		// 		 );`,
-		// 	want: "CREATE TABLE `TEST`.`persons (first_num DECIMAL(15,2),SECOND_NUM BIGINT,THREE_NUM INT,LAST_NAME DOUBLE,NUMERIC_NAME NUMERIC(15,2),DECIMAL_NAME DECIMAL(15,2),DEC_NAME DEC(15,2),INTEGER_NAME INT,INT_NAME INT,SMALLINT_NAME DECIMAL(38)) DEFAULT CHARACTER SET = UTF8MB4"},
+		// 	want: "CREATE TABLE TEST.persons (first_num DECIMAL(15,2),SECOND_NUM BIGINT,THREE_NUM INT,LAST_NAME DOUBLE,NUMERIC_NAME NUMERIC(15,2),DECIMAL_NAME DECIMAL(15,2),DEC_NAME DEC(15,2),INTEGER_NAME INT,INT_NAME INT,SMALLINT_NAME DECIMAL(38)) DEFAULT CHARACTER SET = utf8mb4"},
 	}
 	logger := hclog.NewNullLogger()
 	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
@@ -561,91 +562,6 @@ func TestParseDDLSQL(t *testing.T) {
 			}
 			if dataEvent.Query != tt.want {
 				t.Errorf("parseDDLSQL() = %v, want %v", dataEvent.Query, tt.want)
-			}
-		})
-	}
-}
-
-func TestParseDDLSQLDROP(t *testing.T) {
-	logger := hclog.NewNullLogger()
-	testAlter := []struct {
-		name string
-		sql  string
-		want string
-	}{
-		{
-			name: "DropTableSQL",
-			sql:  `DROP TABLE test."persons";`,
-			want: "DROP TABLE `TEST`.`persons`"},
-		// index
-	}
-	extractor := &ExtractorOracle{logger: logger}
-	for _, tt := range testAlter {
-		t.Run(tt.name, func(t *testing.T) {
-			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			if dataEvent.Query != tt.want {
-				t.Errorf("parseDDLSQL() = %v, want %v", dataEvent.Query, tt.want)
-			}
-		})
-	}
-}
-
-func TestParseAlterTable(t *testing.T) {
-	logger := hclog.NewNullLogger()
-	testAlter := []struct {
-		name string
-		sql  string
-		want string
-	}{
-		{
-			name: "ADDCOLUMN",
-			sql:  `alter table TEST.ADDCOLUMN add (author_last_published date);`,
-			want: "ALTER TABLE `TEST`.`ADDCOLUMN` ADD COLUMN (`AUTHOR_LAST_PUBLISHED` DATETIME)"},
-		{
-			name: "MODIFYCOLUMN",
-			sql:  `ALTER TABLE test."MODIFYCOLUMN" MODIFY ( alter_new_name1 CHAR ( 13 )) MODIFY ( alter_name2 VARCHAR ( 66 ))`,
-			want: "ALTER TABLE `TEST`.`MODIFYCOLUMN` MODIFY COLUMN `ALTER_NEW_NAME1` CHAR(13), MODIFY COLUMN `ALTER_NAME2` VARCHAR(66)"},
-		{
-			name: "DROPCOLUMN",
-			// alter table table_name drop (column_name1, column_name2);
-			sql:  `alter table TEST.DROPCOLUMN drop (COL1, COL2);`,
-			want: "ALTER TABLE `TEST`.`DROPCOLUMN` DROP COLUMN `TEST`.`DROPCOLUMN`.`COL1`, DROP COLUMN `TEST`.`DROPCOLUMN`.`COL2`"},
-		{
-			name: "DROPCOLUMN1",
-			// alter table table_name drop column column_name;
-			sql:  `alter table TEST.DROPCOLUMN1 drop column COL1`,
-			want: "ALTER TABLE `TEST`.`DROPCOLUMN1` DROP COLUMN `TEST`.`DROPCOLUMN1`.`COL1`"},
-		{
-			name: "RENAMECOLUMN",
-			// alter table table_name drop column column_name;
-			sql:  `alter table TEST.RENAMECOLUMN RENAME  COLUMN COL1 TO COLNEW1`,
-			want: "ALTER TABLE `TEST`.`RENAMECOLUMN` RENAME COLUMN `TEST`.`RENAMECOLUMN`.`COL1` TO `TEST`.`RENAMECOLUMN`.`COLNEW1`"},
-	}
-	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
-	for _, tt := range testAlter {
-		t.Run(tt.name, func(t *testing.T) {
-			// ==== load test config start
-			schemaConfig := extractor.findSchemaConfig("TEST")
-			tableConfig := findTableConfig(schemaConfig, tt.name)
-			tableConfig.OriginalTableColumns = &common.ColumnList{
-				Ordinals: map[string]int{},
-			}
-			for i, column := range []string{"COL1", "COL2"} {
-				tableConfig.OriginalTableColumns.Ordinals[column] = i
-			}
-			// ==== load test config end
-
-			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			if dataEvent.Query != tt.want {
-				t.Errorf("alterTableSQL() = %v, want %v", dataEvent.Query, tt.want)
 			}
 		})
 	}
@@ -689,6 +605,63 @@ func TestParseDropTable(t *testing.T) {
 	}
 }
 
+func TestParseAlterTable(t *testing.T) {
+	logger := hclog.NewNullLogger()
+	testAlter := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{
+			name: "ADDCOLUMN",
+			sql:  `alter table TEST.ADDCOLUMN add (author_last_published date);`,
+			want: "ALTER TABLE `TEST`.`ADDCOLUMN` ADD COLUMN (`AUTHOR_LAST_PUBLISHED` datetime)"},
+		{
+			name: "MODIFYCOLUMN",
+			sql:  `ALTER TABLE test."MODIFYCOLUMN" MODIFY ( alter_new_name1 CHAR ( 13 )) MODIFY ( alter_name2 VARCHAR ( 66 ))`,
+			want: "ALTER TABLE `TEST`.`MODIFYCOLUMN` MODIFY COLUMN `ALTER_NEW_NAME1` char(13), MODIFY COLUMN `ALTER_NAME2` varchar(66)"},
+		{
+			name: "DROPCOLUMN",
+			// alter table table_name drop (column_name1, column_name2);
+			sql:  `alter table TEST.DROPCOLUMN drop (COL1, COL2);`,
+			want: "ALTER TABLE `TEST`.`DROPCOLUMN` DROP COLUMN `TEST`.`DROPCOLUMN`.`COL1`, DROP COLUMN `TEST`.`DROPCOLUMN`.`COL2`"},
+		{
+			name: "DROPCOLUMN1",
+			// alter table table_name drop column column_name;
+			sql:  `alter table TEST.DROPCOLUMN1 drop column COL1`,
+			want: "ALTER TABLE `TEST`.`DROPCOLUMN1` DROP COLUMN `TEST`.`DROPCOLUMN1`.`COL1`"},
+		{
+			name: "RENAMECOLUMN",
+			// alter table table_name drop column column_name;
+			sql:  `alter table TEST.RENAMECOLUMN RENAME  COLUMN COL1 TO COLNEW1`,
+			want: "ALTER TABLE `TEST`.`RENAMECOLUMN` RENAME COLUMN `TEST`.`RENAMECOLUMN`.`COL1` TO `TEST`.`RENAMECOLUMN`.`COLNEW1`"},
+	}
+	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
+	for _, tt := range testAlter {
+		t.Run(tt.name, func(t *testing.T) {
+			// ==== load test config start
+			schemaConfig := extractor.findSchemaConfig("TEST")
+			tableConfig := findTableConfig(schemaConfig, tt.name)
+			tableConfig.OriginalTableColumns = &common.ColumnList{
+				Ordinals: map[string]int{},
+			}
+			for i, column := range []string{"COL1", "COL2"} {
+				tableConfig.OriginalTableColumns.Ordinals[column] = i
+			}
+			// ==== load test config end
+
+			dataEvent, err := extractor.parseDDLSQL(tt.sql, "")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if dataEvent.Query != tt.want {
+				t.Errorf("alterTableSQL() = %v, want %v", dataEvent.Query, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseConstraintSQL(t *testing.T) {
 
 	tests := []struct {
@@ -698,18 +671,8 @@ func TestParseConstraintSQL(t *testing.T) {
 	}{
 		{
 			name: "createTableSQLCharRelation",
-			sql: `create table TEST.userInfo (  
-				id number(6) primary key,--主键  
-				name varchar2(20) not null,--非空  
-				sex number(1),  
-				age number(3) default 18,  
-				birthday date,  
-				address varchar2(50),  
-				email varchar2(25) unique,--唯一  
-				tel number(11)
-				-- deptno number(2) references dept(deptno) -- 外键  
-				)`,
-			want: "CREATE TABLE `TEST`.`USERINFO` (`ID` INT PRIMARY KEY,`NAME` VARCHAR(20) NOT NULL,`SEX` TINYINT,`AGE` SMALLINT,`BIRTHDAY` DATETIME,`ADDRESS` VARCHAR(50),`EMAIL` VARCHAR(25) UNIQUE KEY,`TEL` BIGINT) DEFAULT CHARACTER SET = UTF8MB4"},
+			sql:  `create table TEST.userInfo (id number(6) primary key, name varchar2(20) not null,sex number(1),age number(3) default 18,birthday date,address varchar2(50),email varchar2(25) unique,tel number(11),CONSTRAINT     emp_email_uk_demo UNIQUE (emal))`,
+			want: "CREATE TABLE `TEST`.`USERINFO` (`ID` int PRIMARY KEY,`NAME` varchar(20) NOT NULL,`SEX` tinyint,`AGE` smallint,`BIRTHDAY` datetime,`ADDRESS` varchar(50),`EMAIL` varchar(25) UNIQUE KEY,`TEL` bigint,UNIQUE `EMP_EMAIL_UK_DEMO`(`emal`)) DEFAULT CHARACTER SET = utf8mb4"},
 
 		{
 			name: "createOutOfLineConstraint",
@@ -734,12 +697,12 @@ func TestParseConstraintSQL(t *testing.T) {
 				, CONSTRAINT     emp_email_uk_demo
 								 UNIQUE (email)
 				)`,
-			want: "CREATE TABLE `TEST`.`EMPLOYEES_DEMO` (`EMPLOYEE_ID` INT,`FIRST_NAME` VARCHAR(20),`LAST_NAME` VARCHAR(25) NOT NULL,`EMAIL` VARCHAR(25) NOT NULL,`PHONE_NUMBER` VARCHAR(20),`HIRE_DATE` DATETIME NOT NULL,`JOB_ID` VARCHAR(10) NOT NULL,`SALARY` DECIMAL(8,2) NOT NULL,`COMMISSION_PCT` DECIMAL(2,2),`MANAGER_ID` INT,`DEPARTMENT_ID` SMALLINT,`DN` VARCHAR(300),UNIQUE `EMP_EMAIL_UK_DEMO`(`email`)) DEFAULT CHARACTER SET = UTF8MB4",
+			want: "CREATE TABLE `TEST`.`EMPLOYEES_DEMO` (`EMPLOYEE_ID` int,`FIRST_NAME` varchar(20),`LAST_NAME` varchar(25) NOT NULL,`EMAIL` varchar(25) NOT NULL,`PHONE_NUMBER` varchar(20),`HIRE_DATE` datetime NOT NULL,`JOB_ID` varchar(10) NOT NULL,`SALARY` decimal(8,2) NOT NULL,`COMMISSION_PCT` decimal(2,2),`MANAGER_ID` int,`DEPARTMENT_ID` smallint,`DN` varchar(300),UNIQUE `EMP_EMAIL_UK_DEMO`(`email`)) DEFAULT CHARACTER SET = utf8mb4",		
 		},
 		// {
 		// 	name: "createOutOfLineConstraint",
 		// 	sql:  `CREATE TABLE TEST.emp1 ( id number REFERENCES TEST.USERINFO11 ( ID ), NAME VARCHAR ( 8 ) );`,
-		// 	want: "CREATE TABLE `TEST`.`EMP1` (`ID` DOUBLE,`NAME` VARCHAR(8)) DEFAULT CHARACTER SET = UTF8MB4",
+		// 	want: "CREATE TABLE TEST.EMP1 (ID DOUBLE,NAME VARCHAR(8)) DEFAULT CHARACTER SET = UTF8MB4",
 		// },
 	}
 	logger := hclog.NewNullLogger()
