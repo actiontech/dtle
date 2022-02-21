@@ -59,17 +59,20 @@ var charsetInfos = map[string]*Charset{
 	CharsetBin:     {CharsetBin, CollationBin, make(map[string]*Collation), "binary", 1},
 	CharsetGBK:     {CharsetGBK, CollationGBKBin, make(map[string]*Collation), "gbk", 1},
 	CharsetLatin2:  {CharsetLatin2, CollationLatin2, make(map[string]*Collation), "Latin2", 1},
+	CharsetUTF32:   {CharsetUTF32, CollationUTF32General, make(map[string]*Collation), "UTF-32", 4},
 }
 
 // All the names supported collations should be in the following table.
 var supportedCollationNames = map[string]struct{}{
-	CollationUTF8:    {},
-	CollationUTF8MB4: {},
-	CollationASCII:   {},
-	CollationLatin1:  {},
-	CollationBin:     {},
-	CollationGBKBin:  {},
-	CollationLatin2:  {},
+	CollationUTF8:         {},
+	CollationUTF8MB4:      {},
+	CollationASCII:        {},
+	CollationLatin1:       {},
+	CollationBin:          {},
+	CollationGBKBin:       {},
+	CollationLatin2:       {},
+	CollationUTF32General: {},
+	// TODO other collations?
 }
 
 // GetSupportedCharsets gets descriptions for all charsets supported so far.
@@ -202,43 +205,47 @@ const (
 
 	CollationGBKBin = "gbk_bin"
 
-	CharsetARMSCII8 = "armscii8"
-	CharsetBig5     = "big5"
-	CharsetBinary   = "binary"
-	CharsetCP1250   = "cp1250"
-	CharsetCP1251   = "cp1251"
-	CharsetCP1256   = "cp1256"
-	CharsetCP1257   = "cp1257"
-	CharsetCP850    = "cp850"
-	CharsetCP852    = "cp852"
-	CharsetCP866    = "cp866"
-	CharsetCP932    = "cp932"
-	CharsetDEC8     = "dec8"
-	CharsetEUCJPMS  = "eucjpms"
-	CharsetEUCKR    = "euckr"
-	CharsetGB18030  = "gb18030"
-	CharsetGB2312   = "gb2312"
-	CharsetGBK      = "gbk"
-	CharsetGEOSTD8  = "geostd8"
-	CharsetGreek    = "greek"
-	CharsetHebrew   = "hebrew"
-	CharsetHP8      = "hp8"
-	CharsetKEYBCS2  = "keybcs2"
-	CharsetKOI8R    = "koi8r"
-	CharsetKOI8U    = "koi8u"
-	CharsetLatin2   = "latin2"
-	CharsetLatin5   = "latin5"
-	CharsetLatin7   = "latin7"
-	CharsetMacCE    = "macce"
-	CharsetMacRoman = "macroman"
-	CharsetSJIS     = "sjis"
-	CharsetSWE7     = "swe7"
-	CharsetTIS620   = "tis620"
-	CharsetUCS2     = "ucs2"
-	CharsetUJIS     = "ujis"
-	CharsetUTF16    = "utf16"
-	CharsetUTF16LE  = "utf16le"
-	CharsetUTF32    = "utf32"
+	CharsetARMSCII8          = "armscii8"
+	CharsetBig5              = "big5"
+	CharsetBinary            = "binary"
+	CharsetCP1250            = "cp1250"
+	CharsetCP1251            = "cp1251"
+	CharsetCP1256            = "cp1256"
+	CharsetCP1257            = "cp1257"
+	CharsetCP850             = "cp850"
+	CharsetCP852             = "cp852"
+	CharsetCP866             = "cp866"
+	CharsetCP932             = "cp932"
+	CharsetDEC8              = "dec8"
+	CharsetEUCJPMS           = "eucjpms"
+	CharsetEUCKR             = "euckr"
+	CharsetGB18030           = "gb18030"
+	CharsetGB2312            = "gb2312"
+	CharsetGBK               = "gbk"
+	CharsetGEOSTD8           = "geostd8"
+	CharsetGreek             = "greek"
+	CharsetHebrew            = "hebrew"
+	CharsetHP8               = "hp8"
+	CharsetKEYBCS2           = "keybcs2"
+	CharsetKOI8R             = "koi8r"
+	CharsetKOI8U             = "koi8u"
+	CharsetLatin2            = "latin2"
+	CharsetLatin5            = "latin5"
+	CharsetLatin7            = "latin7"
+	CharsetMacCE             = "macce"
+	CharsetMacRoman          = "macroman"
+	CharsetSJIS              = "sjis"
+	CharsetSWE7              = "swe7"
+	CharsetTIS620            = "tis620"
+	CharsetUCS2              = "ucs2"
+	CharsetUJIS              = "ujis"
+	CharsetUTF16             = "utf16"
+	CharsetUTF16LE           = "utf16le"
+	CharsetUTF32             = "utf32"
+	CollationUTF32Bin        = "utf32_bin"
+	CollationUTF32General    = "utf32_general_ci"
+	CollationUTF32Unicode    = "utf32_unicode_ci"
+	CollationUTF32Unicode520 = "utf32_unicode_520_ci"
 
 	CollationLatin2 = "latin2_bin"
 )
@@ -470,6 +477,11 @@ var collations = []*Collation{
 	{308, "utf8mb4", "utf8mb4_zh_0900_as_cs", false},
 	{76, "utf8", "utf8_tolower_ci", false},
 	{2048, "utf8mb4", "utf8mb4_zh_pinyin_tidb_as_cs", false},
+
+	{60, CharsetUTF32, CollationUTF32General, true},
+	{61, CharsetUTF32, CollationUTF32Bin, false},
+	{160, CharsetUTF32, CollationUTF32Unicode, false},
+	{182, CharsetUTF32, CollationUTF32Unicode520, false},
 }
 
 // AddCharset adds a new charset.

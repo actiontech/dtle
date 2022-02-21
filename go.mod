@@ -52,9 +52,9 @@ replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-2022011
 
 replace github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20211206092524-9e640f6da0ac
 
-replace github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20211201045102-50ddce98336f
+replace github.com/pingcap/tidb => github.com/actiontech/tidb v0.0.0-20220221092239-137743364bb1
 
-replace github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f
+replace github.com/pingcap/tidb/parser => github.com/actiontech/tidb/parser v0.0.0-20220221092239-137743364bb1
 
 // fix tencentcloud-sdk-go version. Try remove this line after updating nomad.
 replace github.com/hashicorp/go-discover => github.com/hashicorp/go-discover v0.0.0-20211203145537-8b3ddf4349a8
