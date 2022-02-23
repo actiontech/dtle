@@ -1107,7 +1107,7 @@ var (
 	regexCreateTrigger   = regexp.MustCompile(`(?is)CREATE\b.+?TRIGGER\b.+?(?:BEFORE|AFTER)\b.+?(?:INSERT|UPDATE|DELETE)\b.+?ON\b.+?FOR\b.+?EACH\b.+?ROW\b`)
 	regexCreateEvent     = regexp.MustCompile(`(?is)CREATE\b.+?EVENT\b.+?ON\b.+?SCHEDULE\b.+?(?:AT|EVERY)\b.+?DO\b`)
 	regexAlterEvent      = regexp.MustCompile(`(?is)ALTER\b.+?EVENT\b.+?(?:ON SCHEDULE|ON COMPLETION|RENAME TO|ENABLE|DISABLE|COMMENT|DO)\b`)
-	regexCreateProcedure = regexp.MustCompile(`(?is)CREATE DEFINER=\b.+?(?:PROCEDURE|FUNCTION)\b.+?`)
+	regexCreateProcedure = regexp.MustCompile(`(?is)CREATE DEFINER=.+?(?:PROCEDURE|FUNCTION)\b.+?`)
 )
 
 func isSkipQuery(sql string) bool {

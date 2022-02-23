@@ -1321,3 +1321,32 @@ func Test_isSkipQuery(t *testing.T) {
 		})
 	}
 }
+
+func Test_isExpandSyntaxQuery(t *testing.T) {
+	type args struct {
+		sql string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "create-procedure-1",
+			args: args{sql: "CREATE DEFINER=`root`@`%` PROCEDURE p1 begin end"},
+			want: true,
+		},
+		{
+			name: "create-procedure-qq-20220223",
+			args: args{sql: "CREATE DEFINER=`tester`@`%` PROCEDURE `p_tb_test_update`()\nBEGIN\n\n-- 随机取一条记录\nSELECT @id:=t1.id\nFROM tb_test AS t1 \nJOIN (SELECT ROUND( RAND()*(SELECT MAX(id)-MIN(id) FROM tb_test) + (SELECT MIN(id) FROM tb_test) ) AS id) AS t2\nWHERE t1.id >= t2.id\n  AND t1.state = 1\nORDER BY t1.id \nLIMIT 1;\n\n-- SELECT @id;\n\n-- SELECT * FROM tb_test WHERE id=@id;\nUPDATE tb_test SET amount = FLOOR(POWER(RAND(),2)*1000000) WHERE id=@id;\n\nEND\" schema=testdb @module=reader job=job_testdb timestamp=2022-02-23T16:21:48.026+0800\n2022-02-23T16:21:48.035+0800 [WARN]  client.driver_mgr.dtle: mysql.reader: QueryEvent is not recognized. will still execute: driver=dtle @module=reader gno=407506 job=job_testdb query=\"CREATE DEFINER=`tester`@`%` PROCEDURE `p_tb_test_update`()\nBEGIN\n\n-- 随机取一条记录\nSELECT @id:=t1.id\nFROM tb_test AS t1 \nJOIN (SELECT ROUND( RAND()*(SELECT MAX(id)-MIN(id) FROM tb_test) + (SELECT MIN(id) FROM tb_test) ) AS id) AS t2\nWHERE t1.id >= t2.id\n  AND t1.state = 1\nORDER BY t1.id \nLIMIT 1;\n\n-- SELECT @id;\n\n-- SELECT * FROM tb_test WHERE id=@id;\nUPDATE tb_test SET amount = FLOOR(POWER(RAND(),2)*1000000) WHERE id=@id;\n\nEND"},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isExpandSyntaxQuery(tt.args.sql); got != tt.want {
+				t.Errorf("isExpandSyntaxQuery() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
