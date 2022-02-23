@@ -79,6 +79,7 @@ type TaskLog struct {
 	AllocationId string      `json:"allocation_id"`
 	Address      string      `json:"address"`
 	Target       string      `json:"target"`
+	Status  	 string      `json:"status"`
 }
 
 type BasicTaskProfile struct {

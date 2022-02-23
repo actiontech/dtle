@@ -539,7 +539,7 @@ func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomad
 
 func buildDatabaseDestTaskConfigMap(config *models.DestTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
-	if config.MysqlDestTaskConfig == nil{
+	if config.MysqlDestTaskConfig == nil {
 		return taskConfigInNomadFormat
 	}
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
@@ -666,6 +666,7 @@ func GetMysqlToMysqlJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJ
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
+	resp.BasicTaskProfile.JobBaseInfo.Delay = getDealy(logger, c.Request().Header, resp.TaskLogs)
 	resp.BasicTaskProfile.ConnectionInfo.SrcDataBase.Password = "*"
 	resp.BasicTaskProfile.ConnectionInfo.DstDataBase.Password = "*"
 
@@ -694,6 +695,30 @@ func getMysqlToMysqlJobDetail(logger g.LoggerType, jobId string, jobType DtleJob
 		TaskLogs:         taskLog,
 		BaseResp:         models.BuildBaseResp(nil),
 	}, nil
+}
+
+func getDealy(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog) int64 {
+	url := fmt.Sprintf("http://%v/v2/monitor/task", handler.ApiAddr)
+	for i := range taskLogs {
+		taskLog := taskLogs[i]
+		allocationId := taskLogs[i].AllocationId
+		if taskLog.Status == nomadApi.AllocDesiredStatusRun && taskLog.Target == "dest" {
+			res := models.GetTaskProgressRespV2{
+				BaseResp: models.BuildBaseResp(nil),
+			}
+			args := map[string]string{
+				"allocation_id": allocationId,
+				"task_name":     "dest",
+			}
+			if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, header); nil != err {
+				logger.Warn("forward api failed", "url", url, "err", err)
+				return 0
+			}
+			return res.TaskStatus.DelayCount.Time
+		}
+	}
+	logger.Warn("Unable to get delayed data")
+	return 0
 }
 
 func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *models.SrcTaskDetail,
@@ -779,6 +804,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 			AllocationId: srcAllocation.AllocationId,
 			Address:      nodeId2Addr[srcAllocation.NodeId],
 			Target:       "src",
+			Status:       srcAllocation.DesiredStatus,
 		})
 		if srcAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
 			dtleNode := models.DtleNodeInfo{
@@ -807,7 +833,8 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeId:       destAllocation.NodeId,
 				AllocationId: destAllocation.AllocationId,
 				Address:      nodeId2Addr[destAllocation.NodeId],
-				Target:       "dst",
+				Target:       "dest",
+				Status:       destAllocation.DesiredStatus,
 			})
 			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
 				dtleNode := models.DtleNodeInfo{
@@ -815,7 +842,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 					NodeAddr: nodeId2Addr[destAllocation.NodeId],
 					DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.ConnectionConfig.Host,
 						destMySqlTaskDetail.TaskConfig.ConnectionConfig.Port),
-					Source: "dst",
+					Source: "dest",
 				}
 				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 			}
@@ -829,14 +856,15 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeId:       destAllocation.NodeId,
 				AllocationId: destAllocation.AllocationId,
 				Address:      nodeId2Addr[destAllocation.NodeId],
-				Target:       "dst",
+				Target:       "dest",
+				Status:       destAllocation.DesiredStatus,
 			})
 			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
 				dtleNode := models.DtleNodeInfo{
 					NodeId:     destAllocation.NodeId,
 					NodeAddr:   nodeId2Addr[destAllocation.NodeId],
 					DataSource: strings.Join(destKafkaTaskDetail.TaskConfig.BrokerAddrs, ","),
-					Source:     "dst",
+					Source:     "dest",
 				}
 				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 			}
@@ -1290,6 +1318,7 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 	}
 	basicTaskProfile.Configuration.FailOver = failover
 	basicTaskProfile.ConnectionInfo.SrcDataBase.Password = "*"
+	basicTaskProfile.JobBaseInfo.Delay = getDealy(logger, c.Request().Header, taskLog)
 	if len(nomadJob.TaskGroups) != 0 {
 		basicTaskProfile.Configuration.RetryTimes = *nomadJob.TaskGroups[0].RestartPolicy.Attempts
 	}
@@ -1899,7 +1928,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
 			if node.Source == "src" {
 				reverseJobParam.DestTask.NodeId = node.NodeId
-			} else if node.Source == "dst" {
+			} else if node.Source == "dest" {
 				reverseJobParam.SrcTask.NodeId = node.NodeId
 			}
 		}

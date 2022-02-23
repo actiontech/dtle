@@ -600,6 +600,11 @@ func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 			e.logger.Error("parseOracleToMySQL", "err", err)
 			continue
 		}
+		times, err := time.Parse(time.RFC3339, row.StartTime)
+		if err != nil {
+			e.logger.Error("parse timestamp", "err", err)
+		}
+		dataEvent.Timestamp = uint32(times.Unix())
 		entry.Events = append(entry.Events, dataEvent)
 	}
 	return entry
