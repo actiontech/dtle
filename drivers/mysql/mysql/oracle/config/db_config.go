@@ -106,12 +106,12 @@ func (o *OracleDB) CurrentRedoLogSequenceFp() (string, error) {
 // reset date/timestamp format
 func (o *OracleDB) NLS_DATE_FORMAT() error {
 	SQL_ALTER_DATE_FORMAT := `ALTER SESSION SET NLS_DATE_FORMAT = 'SYYYY-MM-DD HH24:MI:SS'`
-	_, err := o.LogMinerConn.QueryContext(context.TODO(), SQL_ALTER_DATE_FORMAT)
+	_, err := o.LogMinerConn.ExecContext(context.TODO(), SQL_ALTER_DATE_FORMAT)
 	if err != nil {
 		return err
 	}
 	NLS_TIMESTAMP_FORMAT := "ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'SYYYY-MM-DD HH24:MI:SS.FF6'"
-	_, err = o.LogMinerConn.QueryContext(context.TODO(), NLS_TIMESTAMP_FORMAT)
+	_, err = o.LogMinerConn.ExecContext(context.TODO(), NLS_TIMESTAMP_FORMAT)
 	if err != nil {
 		return err
 	}

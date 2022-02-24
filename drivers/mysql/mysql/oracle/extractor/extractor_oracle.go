@@ -34,7 +34,6 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/binlog"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	gonats "github.com/nats-io/go-nats"
 )
@@ -360,31 +359,12 @@ func (e *ExtractorOracle) Shutdown() error {
 		e.natsConn.Close()
 	}
 
-	//for _, d := range e.dumpers {
-	//	d.Close()
-	//}
-
-	if err := sql.CloseDB(e.singletonDB); err != nil {
-		e.logger.Error("Shutdown error close singletonDB.", "err", err)
-	}
-
-	if e.inspector != nil {
-		e.inspector.Close()
-	}
-
-	if e.binlogReader != nil {
-		if err := e.binlogReader.Close(); err != nil {
-			e.logger.Error("Shutdown error close binlogReader.", "err", err)
-		}
+	if err := e.oracleDB.Close(); err != nil {
+		e.logger.Error("Shutdown error close oracleDB.", "err", err)
 	}
 
 	e.wg.Wait()
 
-	if err := sql.CloseDB(e.db); err != nil {
-		e.logger.Error("Shutdown error close e.oracleDB.", "err", err)
-	}
-
-	//close(e.binlogChannel)
 	e.logger.Info("Shutting down")
 	return nil
 }
