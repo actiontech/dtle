@@ -103,6 +103,10 @@ func TriggerFreeMemory() {
 	}
 }
 
+func GetLowMemoryStatus() bool {
+	return lowMemory
+}
+
 func IsLowMemory() bool {
 	//return atomic.LoadInt32(&lowMemory) == 1
 	memory, err := mem.VirtualMemory()
