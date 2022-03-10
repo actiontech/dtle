@@ -171,17 +171,22 @@ func RegularlyUpdateJobStatus(store *StoreManager, shutdownCh chan struct{}, job
 		case <-shutdownCh:
 			return
 		case <-ticker.C:
-			LowMemoryStatus := g.GetLowMemoryStatus()
+			lowMemoryStatus := g.GetLowMemoryStatus()
 			jobInfo, err := store.GetJobInfo(jobId)
 			if err != nil {
+				store.logger.Error("get job info err", "jobId", jobId, "err", err)
 				continue
 			}
-			if jobInfo.JobStatus == DtleJobStatusNonPaused && LowMemoryStatus {
+			if jobInfo.JobStatus == DtleJobStatusNonPaused && lowMemoryStatus {
 				jobInfo.JobStatus = DtleJobStatusStop
-			} else if jobInfo.JobStatus == DtleJobStatusStop && !LowMemoryStatus {
+			} else if jobInfo.JobStatus == DtleJobStatusStop && !lowMemoryStatus {
 				jobInfo.JobStatus = DtleJobStatusNonPaused
+			} else {
+				continue
 			}
+			store.logger.Info("update job status", "jobId", jobId, "jobStatus", jobInfo.JobStatus)
 			if err = store.SaveJobInfo(*jobInfo); err != nil {
+				store.logger.Error("get job info err", "jobId", jobId, "err", err)
 				continue
 			}
 		}
