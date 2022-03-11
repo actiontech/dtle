@@ -264,7 +264,7 @@ github.com/hashicorp/cronexpr
 github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.2
 github.com/hashicorp/go-cleanhttp
-# github.com/hashicorp/go-hclog v1.0.0
+# github.com/hashicorp/go-hclog v1.1.0
 ## explicit
 github.com/hashicorp/go-hclog
 # github.com/hashicorp/go-immutable-radix v1.3.0
@@ -337,7 +337,7 @@ github.com/hashicorp/nomad/plugins/shared/structs/proto
 ## explicit
 github.com/hashicorp/nomad/api
 github.com/hashicorp/nomad/api/contexts
-# github.com/hashicorp/raft v1.3.2
+# github.com/hashicorp/raft v1.3.3
 github.com/hashicorp/raft
 # github.com/hashicorp/serf v0.9.5
 github.com/hashicorp/serf/coordinate
@@ -423,6 +423,8 @@ github.com/modern-go/reflect2
 github.com/mojocn/base64Captcha
 # github.com/mssola/user_agent v0.5.0
 github.com/mssola/user_agent
+# github.com/nats-io/gnatsd v1.4.1
+## explicit
 # github.com/nats-io/go-nats v1.7.2
 ## explicit
 github.com/nats-io/go-nats
@@ -430,7 +432,7 @@ github.com/nats-io/go-nats/encoders/builtin
 github.com/nats-io/go-nats/util
 # github.com/nats-io/jwt/v2 v2.2.1-0.20220113022732-58e87895b296
 github.com/nats-io/jwt/v2
-# github.com/nats-io/nats-server/v2 v2.7.0
+# github.com/nats-io/nats-server/v2 v2.7.2
 ## explicit
 github.com/nats-io/nats-server/v2/conf
 github.com/nats-io/nats-server/v2/internal/ldap
@@ -438,14 +440,14 @@ github.com/nats-io/nats-server/v2/logger
 github.com/nats-io/nats-server/v2/server
 github.com/nats-io/nats-server/v2/server/pse
 github.com/nats-io/nats-server/v2/server/sysmem
-# github.com/nats-io/nats-streaming-server v0.23.2
+# github.com/nats-io/nats-streaming-server v0.24.1
 ## explicit
 github.com/nats-io/nats-streaming-server/logger
 github.com/nats-io/nats-streaming-server/server
 github.com/nats-io/nats-streaming-server/spb
 github.com/nats-io/nats-streaming-server/stores
 github.com/nats-io/nats-streaming-server/util
-# github.com/nats-io/nats.go v1.13.1-0.20211122170419-d7c1d78a50fc
+# github.com/nats-io/nats.go v1.13.1-0.20220121202836-972a071d373d
 github.com/nats-io/nats.go
 github.com/nats-io/nats.go/encoders/builtin
 github.com/nats-io/nats.go/util
@@ -959,7 +961,7 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.0.0-20220111092808-5a964db01320
+# golang.org/x/sys v0.0.0-20220114195835-da31bd327af9
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
