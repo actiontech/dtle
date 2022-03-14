@@ -60,7 +60,7 @@ type Extractor struct {
 	natsAddr        string
 
 	mysqlVersionDigit int
-	NetWriteTimeout int
+	NetWriteTimeout   int
 	db                *gosql.DB
 	singletonDB       *gosql.DB
 	dumpers           []*dumper
@@ -105,8 +105,8 @@ type Extractor struct {
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
-	wg              sync.WaitGroup
-	targetGtid      string
+	wg         sync.WaitGroup
+	targetGtid string
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
@@ -685,6 +685,10 @@ func (e *Extractor) initiateStreaming() error {
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
 		}
+	}()
+	go func() {
+		e.logger.Info("monitor and update job status")
+		common.RegularlyUpdateJobStatus(e.storeManager, e.shutdownCh, e.subject)
 	}()
 
 	return nil

@@ -5,13 +5,14 @@ import (
 	compress "compress/gzip"
 	"encoding/gob"
 	"fmt"
-	"github.com/pingcap/tidb/types"
 	"io/ioutil"
 	"time"
 
+	"github.com/pingcap/tidb/types"
+
 	"github.com/actiontech/dtle/g"
-	uuid "github.com/satori/go.uuid"
 	"github.com/go-mysql-org/go-mysql/mysql"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -22,6 +23,7 @@ const (
 	DtleJobStatusPaused      = "paused"
 	DtleJobStatusUndefined   = "undefined"
 	DtleJobStatusReverseInit = "reverse-init"
+	DtleJobStatusStop        = "stop"
 	TargetGtidFinished       = "finished"
 )
 
@@ -158,4 +160,35 @@ func UpdateGtidSet(gtidSet *mysql.MysqlGTIDSet, sid uuid.UUID, txGno int64) {
 		Start: txGno,
 		Stop:  txGno + 1,
 	}))
+}
+
+// regularly update the task status value by the memory usage
+func RegularlyUpdateJobStatus(store *StoreManager, shutdownCh chan struct{}, jobId string) {
+	ticker := time.NewTicker(time.Second * 3)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-shutdownCh:
+			return
+		case <-ticker.C:
+			lowMemoryStatus := g.GetLowMemoryStatus()
+			jobInfo, err := store.GetJobInfo(jobId)
+			if err != nil {
+				store.logger.Error("get job info err", "jobId", jobId, "err", err)
+				continue
+			}
+			if jobInfo.JobStatus == DtleJobStatusNonPaused && lowMemoryStatus {
+				jobInfo.JobStatus = DtleJobStatusStop
+			} else if jobInfo.JobStatus == DtleJobStatusStop && !lowMemoryStatus {
+				jobInfo.JobStatus = DtleJobStatusNonPaused
+			} else {
+				continue
+			}
+			store.logger.Info("update job status", "jobId", jobId, "jobStatus", jobInfo.JobStatus)
+			if err = store.SaveJobInfo(*jobInfo); err != nil {
+				store.logger.Error("get job info err", "jobId", jobId, "err", err)
+				continue
+			}
+		}
+	}
 }
