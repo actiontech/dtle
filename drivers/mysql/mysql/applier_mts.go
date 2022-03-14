@@ -2,10 +2,11 @@ package mysql
 
 import (
 	"container/heap"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/g"
 	"hash/fnv"
 	"sync/atomic"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/g"
 )
 
 // from container/heap/example_intheap_test.go
@@ -103,7 +104,7 @@ func (mm *MtsManager) LcUpdater() {
 			return
 
 		case seqNum := <-mm.chExecuted:
-//			g.Logger.Debug("LcUpdater", "seq", seqNum)
+			//			g.Logger.Debug("LcUpdater", "seq", seqNum)
 			if seqNum <= mm.lastCommitted {
 				// ignore it
 			} else {
@@ -129,7 +130,11 @@ func (mm *MtsManager) LcUpdater() {
 }
 
 func (mm *MtsManager) Executed(binlogEntry *common.BinlogEntry) {
-	mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber
+	select {
+	case <-mm.shutdownCh:
+		return
+	case mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber:
+	}
 }
 
 // HashTx returns an empty slice if there is no row events (DDL TX),
@@ -177,15 +182,17 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 
 	return hashes
 }
+
 type WritesetManager struct {
-	history          map[uint64]int64
-	lastCommonParent int64
+	history               map[uint64]int64
+	lastCommonParent      int64
 	dependencyHistorySize int
 }
+
 func NewWritesetManager(historySize int) *WritesetManager {
 	return &WritesetManager{
-		history:          make(map[uint64]int64),
-		lastCommonParent: 0,
+		history:               make(map[uint64]int64),
+		lastCommonParent:      0,
 		dependencyHistorySize: historySize,
 	}
 }
