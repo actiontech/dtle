@@ -129,7 +129,11 @@ func (mm *MtsManager) LcUpdater() {
 }
 
 func (mm *MtsManager) Executed(binlogEntry *common.BinlogEntry) {
-	mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber
+	select {
+	case <-mm.shutdownCh:
+		return
+	case mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber:
+	}
 }
 
 // HashTx returns an empty slice if there is no row events (DDL TX),

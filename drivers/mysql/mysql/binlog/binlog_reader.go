@@ -756,8 +756,12 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContex
 	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events),
 		"isBig", isBig)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
-	entriesChannel <- b.entryContext
-	atomic.AddUint32(&b.extractedTxCount, 1)
+	select {
+	case <-b.shutdownCh:
+		return
+	case entriesChannel <- b.entryContext:
+		atomic.AddUint32(&b.extractedTxCount, 1)
+	}
 }
 
 func (b *BinlogReader) loadMapping(sql, currentSchema string,
