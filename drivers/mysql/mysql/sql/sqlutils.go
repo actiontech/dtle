@@ -10,8 +10,8 @@ import (
 	"context"
 	gosql "database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/pkg/errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -321,12 +321,13 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 
 func ShowCreateSchema(ctx context.Context, db *gosql.DB, dbName string) (r string, err error) {
 	query := fmt.Sprintf("SHOW CREATE SCHEMA IF NOT EXISTS %s", mysqlconfig.EscapeName(dbName))
+	g.Logger.Debug("ShowCreateSchema", "query", query)
 	row := db.QueryRowContext(ctx, query)
 	var dummy interface{}
 	// | Database | Create Database |
 	err = row.Scan(&dummy, &r)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "ShowCreateSchema")
 	}
 	return r, nil
 }
@@ -340,6 +341,7 @@ func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*common.Ta
 	} else {
 		query = fmt.Sprintf("SHOW TABLES IN %s", escapedDbName)
 	}
+	g.Logger.Debug("ShowTables", "query", query)
 	rows, err := db.Query(query)
 	if err != nil {
 		return tables, err

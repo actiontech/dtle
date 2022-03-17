@@ -171,12 +171,12 @@ func NewColumnsMap(orderedColumns []Column) ColumnsMap {
 func EscapeName(name string) string {
 	sb := strings.Builder{}
 	sb.WriteByte('`')
-	for i := range name {
-		if name[i] == '`' {
+	for _, v := range name {
+		if v == '`' {
 			sb.WriteByte('`')
 			sb.WriteByte('`')
 		} else {
-			sb.WriteByte(name[i])
+			sb.WriteRune(v)
 		}
 	}
 	sb.WriteByte('`')

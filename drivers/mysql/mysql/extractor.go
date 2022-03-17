@@ -1303,6 +1303,7 @@ func (e *Extractor) mysqlDump() error {
 	if err != nil {
 		return err
 	}
+	e.logger.Debug("getSchemaTablesAndMeta. after.")
 
 	e.gotCoordinateCh <- struct{}{}
 
