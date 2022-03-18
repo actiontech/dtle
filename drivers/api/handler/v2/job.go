@@ -115,16 +115,17 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 			continue
 		}
 		jobItem := common.JobListItemV2{
-			JobId:           consulJob.JobId,
-			JobStatus:       consulJob.JobStatus,
-			Topic:           consulJob.Topic,
-			JobCreateTime:   consulJob.JobCreateTime,
-			SrcAddrList:     consulJob.SrcAddrList,
-			DstAddrList:     consulJob.DstAddrList,
-			User:            consulJob.User,
-			JobSteps:        consulJob.JobSteps,
-			DstDatabaseType: consulJob.DstDatabaseType,
-			SrcDatabaseType: consulJob.SrcDatabaseType,
+			JobId:            consulJob.JobId,
+			JobStatus:        consulJob.JobStatus,
+			Topic:            consulJob.Topic,
+			JobCreateTime:    consulJob.JobCreateTime,
+			SrcAddrList:      consulJob.SrcAddrList,
+			DstAddrList:      consulJob.DstAddrList,
+			User:             consulJob.User,
+			JobSteps:         consulJob.JobSteps,
+			DstDatabaseType:  consulJob.DstDatabaseType,
+			SrcDatabaseType:  consulJob.SrcDatabaseType,
+			AllocationStatus: map[string]string{},
 		}
 		if nomadItem, ok := nomadJobMap[jobItem.JobId]; !ok {
 			jobItem.JobStatus = common.DtleJobStatusUndefined
@@ -140,6 +141,17 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		if !(filterJobAddr(jobItem.SrcAddrList, reqParam.FilterJobSrcIP, reqParam.FilterJobSrcPort) &&
 			filterJobAddr(jobItem.DstAddrList, reqParam.FilterJobDestIP, reqParam.FilterJobDestPort)) {
 			continue
+		}
+
+		allocations, err := findAllocations(logger, jobItem.JobId)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job %v allocations err = %v ", jobItem.JobId, err)))
+		}
+		for i := range allocations {
+			allocation := allocations[i]
+			if _, ok := jobItem.AllocationStatus[allocation.TaskGroup]; !ok {
+				jobItem.AllocationStatus[allocation.TaskGroup] = allocations[i].DesiredStatus
+			}
 		}
 
 		jobs = append(jobs, jobItem)
