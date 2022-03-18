@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"encoding/hex"
+	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/helper/u"
 	"github.com/hashicorp/go-hclog"
 	"reflect"
@@ -20,19 +21,24 @@ func TestParseQueryEventFlags(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		wantR   QueryEventFlags
+		wantR   common.QueryEventFlags
 		wantErr bool
 	}{
 		{
 			name:    "query-event-flag-1",
 			args:    args{bs1},
-			wantR:   QueryEventFlags{false},
+			wantR:   common.QueryEventFlags{
+				NoForeignKeyChecks:  false,
+				CharacterSetClient:  45, // utf8mb4_general_ci
+				CollationConnection: 45,
+				CollationServer:     45,
+			},
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotR, err := ParseQueryEventFlags(tt.args.bs, logger)
+			gotR, err := common.ParseQueryEventFlags(tt.args.bs, logger)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseQueryEventFlags() error = %v, wantErr %v", err, tt.wantErr)
 				return

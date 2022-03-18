@@ -4,17 +4,16 @@ import (
 	"context"
 	gosql "database/sql"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
 	sql "github.com/actiontech/dtle/drivers/mysql/mysql/sql"
 	"github.com/actiontech/dtle/g"
+	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	"github.com/satori/go.uuid"
-	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -22,42 +21,6 @@ import (
 )
 
 const (
-	// see mysql-server/libbinlogevents/include/statement_events.h
-	Q_FLAGS2_CODE byte = iota
-	Q_SQL_MODE_CODE
-	Q_CATALOG
-	Q_AUTO_INCREMENT
-	Q_CHARSET_CODE
-	Q_TIME_ZONE_CODE
-	Q_CATALOG_NZ_CODE
-	Q_LC_TIME_NAMES_CODE
-	Q_CHARSET_DATABASE_CODE
-	Q_TABLE_MAP_FOR_UPDATE_CODE
-	Q_MASTER_DATA_WRITTEN_CODE
-	Q_INVOKERS
-	Q_UPDATED_DB_NAMES
-	Q_MICROSECONDS
-	Q_COMMIT_TS
-	Q_COMMIT_TS2
-	Q_EXPLICIT_DEFAULTS_FOR_TIMESTAMP
-	Q_DDL_LOGGED_WITH_XID
-	Q_DEFAULT_COLLATION_FOR_UTF8MB4
-	Q_SQL_REQUIRE_PRIMARY_KEY
-	Q_DEFAULT_TABLE_ENCRYPTION
-)
-
-const (
-	RowsEventFlagEndOfStatement     uint16 = 1
-	RowsEventFlagNoForeignKeyChecks uint16 = 2
-	RowsEventFlagNoUniqueKeyChecks  uint16 = 4
-	RowsEventFlagRowHasAColumns     uint16 = 8
-
-
-	OPTION_AUTO_IS_NULL          uint32 = 0x00004000
-	OPTION_NOT_AUTOCOMMIT        uint32 = 0x00080000
-	OPTION_NO_FOREIGN_KEY_CHECKS uint32 = 0x04000000
-	OPTION_RELAXED_UNIQUE_CHECKS uint32 = 0x08000000
-
 	querySetFKChecksOff = "set @@session.foreign_key_checks = 0"
 	querySetFKChecksOn  = "set @@session.foreign_key_checks = 1"
 )
@@ -608,7 +571,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 				}
 			}
 
-			flag, err := ParseQueryEventFlags(event.Flags, logger)
+			flag, err := common.ParseQueryEventFlags(event.Flags, logger)
 			if err != nil {
 				return err
 			}
@@ -638,7 +601,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Bin
 			} else {
 				// Oracle
 			}
-			noFKCheckFlag := flag & RowsEventFlagNoForeignKeyChecks != 0
+			noFKCheckFlag := flag &common.RowsEventFlagNoForeignKeyChecks != 0
 			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
 				if err != nil {
@@ -791,109 +754,3 @@ func (a *ApplierIncr) handleEntryOracle(entryCtx *common.BinlogEntryContext) (er
 	return nil
 }
 
-type QueryEventFlags struct {
-	NoForeignKeyChecks bool
-}
-
-func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, err error) {
-	logger = logger.Named("ParseQueryEventFlags")
-
-	if logger.IsDebug() {
-		logger.Debug("ParseQueryEventFlags", "bytes", hex.EncodeToString(bs))
-	}
-
-	// https://dev.mysql.com/doc/internals/en/query-event.html
-	for i := 0; i < len(bs); {
-		flag := bs[i]
-		i += 1
-		switch flag {
-		case Q_FLAGS2_CODE: // Q_FLAGS2_CODE
-			v := binary.LittleEndian.Uint32(bs[i:i+4])
-			i += 4
-			if v & OPTION_AUTO_IS_NULL != 0 {
-				//log.Printf("OPTION_AUTO_IS_NULL")
-			}
-			if v & OPTION_NOT_AUTOCOMMIT != 0 {
-				//log.Printf("OPTION_NOT_AUTOCOMMIT")
-			}
-			if v & OPTION_NO_FOREIGN_KEY_CHECKS != 0 {
-				r.NoForeignKeyChecks = true
-			}
-			if v & OPTION_RELAXED_UNIQUE_CHECKS != 0 {
-				//log.Printf("OPTION_RELAXED_UNIQUE_CHECKS")
-			}
-		case Q_SQL_MODE_CODE:
-			_ = binary.LittleEndian.Uint64(bs[i:i+8])
-			i += 8
-		case Q_CATALOG:
-			n := int(bs[i])
-			i += 1
-			i += n
-			i += 1 // TODO What does 'only written length > 0' mean?
-		case Q_AUTO_INCREMENT:
-			i += 2 + 2
-		case Q_CHARSET_CODE:
-			i += 2 + 2 + 2
-		case Q_TIME_ZONE_CODE:
-			n := int(bs[i])
-			i += 1
-			i += n
-		case Q_CATALOG_NZ_CODE:
-			length := int(bs[i])
-			i += 1
-			_ = string(bs[i:i+length])
-			i += length
-		case Q_LC_TIME_NAMES_CODE:
-			i += 2
-		case Q_CHARSET_DATABASE_CODE:
-			i += 2
-		case Q_TABLE_MAP_FOR_UPDATE_CODE:
-			i += 8
-		case Q_MASTER_DATA_WRITTEN_CODE:
-			i += 4
-		case Q_INVOKERS:
-			n := int(bs[i])
-			i += 1
-			username := string(bs[i:i+n])
-			i += n
-			n = int(bs[i])
-			i += 1
-			hostname := string(bs[i:i+n])
-			i += n
-			logger.Debug("Q_INVOKERS", "username", username, "hostname", hostname)
-		case Q_UPDATED_DB_NAMES:
-			count := int(bs[i])
-			i += 1
-			for j := 0; j < count; j++ {
-				i0 := i
-				for bs[i] != 0 {
-					i += 1
-				}
-				schemaName := string(bs[i0:i])
-				logger.Debug("Q_UPDATED_DB_NAMES", "schema", schemaName, "i", i, "j", j)
-				i += 1 // nul-terminated
-			}
-		case Q_MICROSECONDS:
-			i += 3
-		case Q_COMMIT_TS:
-			// not used in mysql
-		case Q_COMMIT_TS2:
-			// not used in mysql
-		case Q_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
-			i += 1
-		case Q_DDL_LOGGED_WITH_XID:
-			i += 8
-		case Q_DEFAULT_COLLATION_FOR_UTF8MB4:
-			i += 2
-		case Q_SQL_REQUIRE_PRIMARY_KEY:
-			i += 1
-		case Q_DEFAULT_TABLE_ENCRYPTION:
-			i += 1
-		default:
-			return r, fmt.Errorf("ParseQueryEventFlags. unknown flag 0x%x bytes %v",
-				flag, hex.EncodeToString(bs))
-		}
-	}
-
-	return r, nil
-}
