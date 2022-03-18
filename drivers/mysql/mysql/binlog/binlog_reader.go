@@ -478,6 +478,11 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 	evt := ev.Event.(*replication.QueryEvent)
 	query := string(evt.Query)
 
+	queryEventFlags, err := common.ParseQueryEventFlags(evt.StatusVars, b.logger)
+	if err != nil {
+		return errors.Wrap(err, "ParseQueryEventFlags")
+	}
+
 	if evt.ErrorCode != 0 {
 		b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled.",
 			"ErrorCode", evt.ErrorCode, "query", query, "gno", gno)
@@ -485,6 +490,14 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 	currentSchema := string(evt.Schema)
 
 	b.logger.Debug("query event", "schema", currentSchema, "query", query)
+
+	if !g.IsUTF8OrMB4(queryEventFlags.CharacterSetClient) {
+		b.logger.Info("transcode a DDL to UTF8", "from", queryEventFlags.CharacterSetClient)
+		query, err = mysqlconfig.ConvertToUTF8(query, queryEventFlags.CharacterSetClient)
+		if err != nil {
+			return errors.Wrap(err, "DDL ConvertToUTF8")
+		}
+	}
 
 	upperQuery := strings.ToUpper(query)
 	if upperQuery == "BEGIN" {
@@ -575,7 +588,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				case *ast.CreateDatabaseStmt:
 					b.sqleAfterCreateSchema(queryInfo.table.Schema)
 				case *ast.DropDatabaseStmt:
-					b.removeFKChildSchema(realAst.Name)
+					b.removeFKChildSchema(queryInfo.table.Schema)
 				case *ast.CreateTableStmt:
 					b.logger.Debug("ddl is create table")
 					_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query)

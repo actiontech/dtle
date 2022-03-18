@@ -7,6 +7,9 @@ import (
 	tast "github.com/pingcap/tidb/parser/ast"
 	"github.com/pingcap/tidb/parser/format"
 	"github.com/pingcap/tidb/parser/model"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
+	"strings"
 
 	"fmt"
 	_ "github.com/pingcap/tidb/types/parser_driver"
@@ -16,12 +19,21 @@ import (
 func main() {
 	fmt.Printf("")
 	log.Println("hello")
+	var err error
 
 	p := tparser.New()
 	//sql := "create table b.t1 (id int primary key auto_increment, val timestamp not null default '0000-00-00 00:00:00')"
 	//sql := "create table b.t1 (id int primary key auto_increment, val timestamp not null default 0)"
-	sql := "create table b.t1 (id int primary key auto_increment, val varchar(64) not null default 'hello')"
-	ast, err := p.ParseOneStmt(sql, "", "")
+	//sql := "create table b.t1 (id int primary key auto_increment, val varchar(64) not null default 'hello')"
+
+	sb := strings.Builder{}
+	gbkStr, _, err := transform.String(simplifiedchinese.GBK.NewEncoder(),
+		"create table s中文.t中文 (id中文 int primary key auto_increment,\n ")
+	u.PanicIfErr(err)
+	sb.WriteString(gbkStr)
+	sb.WriteString("val varchar(50) default _utf8mb4\"aa中文\")")
+	sql := sb.String()
+	ast, err := p.ParseOneStmt(sql, "gbk", "gbk_chinese_ci")
 
 	u.PanicIfErr(err)
 
@@ -29,12 +41,11 @@ func main() {
 	rCtx := &format.RestoreCtx{
 		//Flags:     format.RestoreKeyWordUppercase | format.RestoreNameBackQuotes | format.RestoreSpacesAroundBinaryOperation,
 		//Flags:     format.RestoreKeyWordUppercase | format.RestoreSpacesAroundBinaryOperation,
-		Flags:     format.DefaultRestoreFlags,
+		Flags:     format.DefaultRestoreFlags | format.RestoreStringWithoutDefaultCharset,
 		In:        buf,
 	}
 	switch v := ast.(type) {
 	case *tast.CreateTableStmt:
-		v.Table.Schema = model.NewCIStr("hello")
 		println(v.Table.Name.L)
 	case *tast.DropTableStmt:
 		for i := range v.Tables {

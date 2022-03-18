@@ -3,6 +3,7 @@ package g
 
 import (
 	hclog "github.com/hashicorp/go-hclog"
+	parsercharset "github.com/pingcap/tidb/parser/charset"
 	"github.com/shirou/gopsutil/v3/mem"
 	"os"
 	"runtime/debug"
@@ -169,4 +170,8 @@ func SubBigTxJob() {
 }
 func BigTxReachMax() bool {
 	return atomic.LoadInt32(&bigTxJobs) >= BigTxMaxJobs
+}
+
+func IsUTF8OrMB4(encodeName string) bool {
+	return encodeName == parsercharset.CharsetUTF8 || encodeName == parsercharset.CharsetUTF8MB4
 }

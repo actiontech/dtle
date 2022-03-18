@@ -7,11 +7,13 @@
 package mysqlconfig
 
 import (
+	"fmt"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/encoding/unicode/utf32"
+	"golang.org/x/text/transform"
 )
 
 var charsetEncodingMap = map[string]encoding.Encoding{
@@ -23,4 +25,27 @@ var charsetEncodingMap = map[string]encoding.Encoding{
 	"utf16": unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM),
 	"utf16le": unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM),
 	"utf32": utf32.UTF32(utf32.BigEndian, utf32.IgnoreBOM),
+}
+
+func ConvertToUTF8(s string, charset string) (string, error) {
+	enc, ok := charsetEncodingMap[charset]
+	if !ok {
+		return "", fmt.Errorf("unknown character set %v", charset)
+	}
+	r, _, err := transform.String(enc.NewDecoder(), s)
+	if err != nil {
+		return "", err
+	}
+	return r, nil
+}
+func ConvertFromUTF8(s string, charset string) (string, error) {
+	enc, ok := charsetEncodingMap[charset]
+	if !ok {
+		return "", fmt.Errorf("unknown character set %v", charset)
+	}
+	r, _, err := transform.String(enc.NewEncoder(), s)
+	if err != nil {
+		return "", err
+	}
+	return r, nil
 }
