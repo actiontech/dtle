@@ -1066,7 +1066,7 @@ func (e *Extractor) StreamEvents() error {
 		if e.shutdown {
 			return nil
 		}
-		return fmt.Errorf("StreamEvents encountered unexpected error: %+v", err)
+		return fmt.Errorf("StreamEvents encountered unexpected error: %v", err)
 	}
 	return nil
 }
