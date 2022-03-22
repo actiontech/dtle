@@ -149,8 +149,10 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		}
 		for i := range allocations {
 			allocation := allocations[i]
-			if _, ok := jobItem.AllocationStatus[allocation.TaskGroup]; !ok {
-				jobItem.AllocationStatus[allocation.TaskGroup] = allocations[i].DesiredStatus
+			if allocation.NextAllocation == "" {
+				if _, ok := jobItem.AllocationStatus[allocation.TaskGroup]; !ok {
+					jobItem.AllocationStatus[allocation.TaskGroup] = allocations[i].DesiredStatus
+				}
 			}
 		}
 
@@ -897,13 +899,10 @@ func getJobDetailFromNomad(logger g.LoggerType, jobId string, jobType DtleJobTyp
 	if jobType != GetJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")) {
 		return false, nomadApi.Job{}, nil, fmt.Errorf("this API is for %v job. but got job type=%v by the provided job id", jobType, GetJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")))
 	}
-	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
-	logger.Info("invoke nomad api begin", "url", url)
-	allocations := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &allocations); nil != err {
-		return false, nomadApi.Job{}, nil, fmt.Errorf("invoke nomad api %v failed: %v", url, err)
+	allocations, err := findAllocations(logger, *nomadJob.ID)
+	if err != nil {
+		return false, nomadApi.Job{}, nil, fmt.Errorf("find job %v allocations err = %v ", nomadJob.ID, err)
 	}
-	logger.Info("invoke nomad api finished")
 
 	for _, tg := range nomadJob.TaskGroups {
 		for _, t := range tg.Tasks {
@@ -1441,14 +1440,10 @@ func PauseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	logger.Info("get allocations of job", "job_id", reqParam.JobId)
-	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadAllocs := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	nomadAllocs, err := findAllocations(logger, reqParam.JobId)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	logger.Info("invoke nomad api finished")
 
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
@@ -1551,14 +1546,10 @@ func ResumeJobV2(c echo.Context, filterJobType DtleJobType) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	logger.Info("get allocations of job", "job_id", reqParam.JobId)
-	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadAllocs := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	nomadAllocs, err := findAllocations(logger, reqParam.JobId)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job %v allocations err = %v ", reqParam.JobId, err)))
 	}
-	logger.Info("invoke nomad api finished")
 
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; can not find allocations of the job", reqParam.JobId)))
@@ -1796,14 +1787,10 @@ func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 
 	// finish wait on job
 	waitOnJob := srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob
-	logger.Info("get allocations of job", "job_id", waitOnJob)
-	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", waitOnJob))
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadAllocs := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	nomadAllocs, err := findAllocations(logger, waitOnJob)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job %v allocations err = %v ", waitOnJob, err)))
 	}
-	logger.Info("invoke nomad api finished")
 
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
