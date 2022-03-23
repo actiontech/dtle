@@ -115,16 +115,17 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 			continue
 		}
 		jobItem := common.JobListItemV2{
-			JobId:           consulJob.JobId,
-			JobStatus:       consulJob.JobStatus,
-			Topic:           consulJob.Topic,
-			JobCreateTime:   consulJob.JobCreateTime,
-			SrcAddrList:     consulJob.SrcAddrList,
-			DstAddrList:     consulJob.DstAddrList,
-			User:            consulJob.User,
-			JobSteps:        consulJob.JobSteps,
-			DstDatabaseType: consulJob.DstDatabaseType,
-			SrcDatabaseType: consulJob.SrcDatabaseType,
+			JobId:            consulJob.JobId,
+			JobStatus:        consulJob.JobStatus,
+			Topic:            consulJob.Topic,
+			JobCreateTime:    consulJob.JobCreateTime,
+			SrcAddrList:      consulJob.SrcAddrList,
+			DstAddrList:      consulJob.DstAddrList,
+			User:             consulJob.User,
+			JobSteps:         consulJob.JobSteps,
+			DstDatabaseType:  consulJob.DstDatabaseType,
+			SrcDatabaseType:  consulJob.SrcDatabaseType,
+			AllocationStatus: map[string]string{},
 		}
 		if nomadItem, ok := nomadJobMap[jobItem.JobId]; !ok {
 			jobItem.JobStatus = common.DtleJobStatusUndefined
@@ -140,6 +141,19 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		if !(filterJobAddr(jobItem.SrcAddrList, reqParam.FilterJobSrcIP, reqParam.FilterJobSrcPort) &&
 			filterJobAddr(jobItem.DstAddrList, reqParam.FilterJobDestIP, reqParam.FilterJobDestPort)) {
 			continue
+		}
+
+		allocations, err := findAllocations(logger, jobItem.JobId)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job %v allocations err = %v ", jobItem.JobId, err)))
+		}
+		for i := range allocations {
+			allocation := allocations[i]
+			if allocation.NextAllocation == "" {
+				if _, ok := jobItem.AllocationStatus[allocation.TaskGroup]; !ok {
+					jobItem.AllocationStatus[allocation.TaskGroup] = allocations[i].DesiredStatus
+				}
+			}
 		}
 
 		jobs = append(jobs, jobItem)
@@ -702,13 +716,13 @@ func getDealy(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog
 	for i := range taskLogs {
 		taskLog := taskLogs[i]
 		allocationId := taskLogs[i].AllocationId
-		if taskLog.Status == nomadApi.AllocDesiredStatusRun && taskLog.Target == "dest" {
+		if taskLog.Status == nomadApi.AllocDesiredStatusRun && taskLog.Target == common.TaskTypeDestString {
 			res := models.GetTaskProgressRespV2{
 				BaseResp: models.BuildBaseResp(nil),
 			}
 			args := map[string]string{
 				"allocation_id": allocationId,
-				"task_name":     "dest",
+				"task_name":     common.TaskTypeDestString,
 			}
 			if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, header); nil != err {
 				logger.Warn("forward api failed", "url", url, "err", err)
@@ -803,7 +817,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 			NodeId:       srcAllocation.NodeId,
 			AllocationId: srcAllocation.AllocationId,
 			Address:      nodeId2Addr[srcAllocation.NodeId],
-			Target:       "src",
+			Target:       common.TaskTypeSrcString,
 			Status:       srcAllocation.DesiredStatus,
 		})
 		if srcAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
@@ -812,7 +826,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeAddr: nodeId2Addr[srcAllocation.NodeId],
 				DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.ConnectionConfig.Host,
 					srcTaskDetail.TaskConfig.ConnectionConfig.Port),
-				Source: "src",
+				Source: common.TaskTypeSrcString,
 			}
 			basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 		}
@@ -833,7 +847,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeId:       destAllocation.NodeId,
 				AllocationId: destAllocation.AllocationId,
 				Address:      nodeId2Addr[destAllocation.NodeId],
-				Target:       "dest",
+				Target:       common.TaskTypeDestString,
 				Status:       destAllocation.DesiredStatus,
 			})
 			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
@@ -842,7 +856,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 					NodeAddr: nodeId2Addr[destAllocation.NodeId],
 					DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.ConnectionConfig.Host,
 						destMySqlTaskDetail.TaskConfig.ConnectionConfig.Port),
-					Source: "dest",
+					Source: common.TaskTypeDestString,
 				}
 				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 			}
@@ -856,7 +870,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeId:       destAllocation.NodeId,
 				AllocationId: destAllocation.AllocationId,
 				Address:      nodeId2Addr[destAllocation.NodeId],
-				Target:       "dest",
+				Target:       common.TaskTypeDestString,
 				Status:       destAllocation.DesiredStatus,
 			})
 			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
@@ -864,7 +878,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 					NodeId:     destAllocation.NodeId,
 					NodeAddr:   nodeId2Addr[destAllocation.NodeId],
 					DataSource: strings.Join(destKafkaTaskDetail.TaskConfig.BrokerAddrs, ","),
-					Source:     "dest",
+					Source:     common.TaskTypeDestString,
 				}
 				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 			}
@@ -885,13 +899,10 @@ func getJobDetailFromNomad(logger g.LoggerType, jobId string, jobType DtleJobTyp
 	if jobType != GetJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")) {
 		return false, nomadApi.Job{}, nil, fmt.Errorf("this API is for %v job. but got job type=%v by the provided job id", jobType, GetJobTypeFromJobId(g.PtrToString(nomadJob.ID, "")))
 	}
-	url = handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", *nomadJob.ID))
-	logger.Info("invoke nomad api begin", "url", url)
-	allocations := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &allocations); nil != err {
-		return false, nomadApi.Job{}, nil, fmt.Errorf("invoke nomad api %v failed: %v", url, err)
+	allocations, err := findAllocations(logger, *nomadJob.ID)
+	if err != nil {
+		return false, nomadApi.Job{}, nil, fmt.Errorf("find job %v allocations err = %v ", nomadJob.ID, err)
 	}
-	logger.Info("invoke nomad api finished")
 
 	for _, tg := range nomadJob.TaskGroups {
 		for _, t := range tg.Tasks {
@@ -1429,14 +1440,10 @@ func PauseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	logger.Info("get allocations of job", "job_id", reqParam.JobId)
-	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadAllocs := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	nomadAllocs, err := findAllocations(logger, reqParam.JobId)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	logger.Info("invoke nomad api finished")
 
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
@@ -1539,14 +1546,10 @@ func ResumeJobV2(c echo.Context, filterJobType DtleJobType) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	logger.Info("get allocations of job", "job_id", reqParam.JobId)
-	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", reqParam.JobId))
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadAllocs := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	nomadAllocs, err := findAllocations(logger, reqParam.JobId)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job %v allocations err = %v ", reqParam.JobId, err)))
 	}
-	logger.Info("invoke nomad api finished")
 
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; can not find allocations of the job", reqParam.JobId)))
@@ -1784,14 +1787,10 @@ func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 
 	// finish wait on job
 	waitOnJob := srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob
-	logger.Info("get allocations of job", "job_id", waitOnJob)
-	url := handler.BuildUrl(fmt.Sprintf("/v1/job/%v/allocations", waitOnJob))
-	logger.Info("invoke nomad api begin", "url", url)
-	nomadAllocs := []nomadApi.Allocation{}
-	if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
+	nomadAllocs, err := findAllocations(logger, waitOnJob)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job %v allocations err = %v ", waitOnJob, err)))
 	}
-	logger.Info("invoke nomad api finished")
 
 	if len(nomadAllocs) == 0 {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
@@ -1813,7 +1812,7 @@ func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 	noRunJob := true
 	// finish job
 	for _, a := range nomadAllocs {
-		if a.DesiredStatus == "run" && a.TaskGroup == "src" { // the allocations will be stop by nomad if it is not desired to run. and there is no need to finish these allocations
+		if a.DesiredStatus == "run" && a.TaskGroup == common.TaskTypeSrcString { // the allocations will be stop by nomad if it is not desired to run. and there is no need to finish these allocations
 			noRunJob = false
 			if err := sentSignalToTask(logger, a.ID, "finish"); nil != err {
 				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("allocation_id=%v; finish task failed:  %v", a.ID, err)))
@@ -1896,7 +1895,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		reverseJobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
 		reverseJobParam.Reverse = true
 		reverseJobParam.SrcTask = &models.SrcTaskConfig{
-			TaskName:           "src",
+			TaskName:           common.TaskTypeSrcString,
 			GroupMaxSize:       originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupMaxSize,
 			ChunkSize:          originalJob.BasicTaskProfile.Configuration.SrcConfig.ChunkSize,
 			DropTableIfExists:  originalJob.BasicTaskProfile.Configuration.SrcConfig.DropTableIfExists,
@@ -1915,7 +1914,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 			},
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{
-			TaskName:         "dest",
+			TaskName:         common.TaskTypeDestString,
 			ConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
 			MysqlDestTaskConfig: &models.MysqlDestTaskConfig{
 				ParallelWorkers:       originalJob.BasicTaskProfile.Configuration.DstConfig.MysqlDestTaskConfig.ParallelWorkers,
@@ -1926,9 +1925,9 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 
 		// the node must be bound to a fixed data source
 		for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
-			if node.Source == "src" {
+			if node.Source == common.TaskTypeSrcString {
 				reverseJobParam.DestTask.NodeId = node.NodeId
-			} else if node.Source == "dest" {
+			} else if node.Source == common.TaskTypeDestString {
 				reverseJobParam.SrcTask.NodeId = node.NodeId
 			}
 		}

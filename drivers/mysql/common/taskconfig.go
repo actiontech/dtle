@@ -25,13 +25,18 @@ const (
 	TaskTypeDest
 )
 
+const (
+	TaskTypeSrcString = "src"
+	TaskTypeDestString = "dest"
+)
+
 type taskType int
 
 func TaskTypeFromString(s string) taskType {
 	switch strings.ToLower(s) {
-	case "src", "source":
+	case TaskTypeSrcString, "source":
 		return TaskTypeSrc
-	case "dst", "dest", "destination":
+	case "dst", TaskTypeDestString, "destination":
 		return TaskTypeDest
 	default:
 		return TaskTypeUnknown
