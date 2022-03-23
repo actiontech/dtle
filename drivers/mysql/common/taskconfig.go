@@ -20,23 +20,16 @@ const (
 	DefaultKafkaMessageGroupTimeout = 100
 	DefaultDependencyHistorySize    = 2500
 
-	TaskTypeUnknown taskType = iota
-	TaskTypeSrc
-	TaskTypeDest
+	TaskTypeSrc     = "src"
+	TaskTypeDest    = "dest"
+	TaskTypeUnknown = "unknown"
 )
 
-const (
-	TaskTypeSrcString = "src"
-	TaskTypeDestString = "dest"
-)
-
-type taskType int
-
-func TaskTypeFromString(s string) taskType {
+func TaskTypeFromString(s string) string {
 	switch strings.ToLower(s) {
-	case TaskTypeSrcString, "source":
+	case "src", "source":
 		return TaskTypeSrc
-	case "dst", TaskTypeDestString, "destination":
+	case "dst", "dest", "destination":
 		return TaskTypeDest
 	default:
 		return TaskTypeUnknown

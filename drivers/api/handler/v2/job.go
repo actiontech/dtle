@@ -716,13 +716,13 @@ func getDealy(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog
 	for i := range taskLogs {
 		taskLog := taskLogs[i]
 		allocationId := taskLogs[i].AllocationId
-		if taskLog.Status == nomadApi.AllocDesiredStatusRun && taskLog.Target == common.TaskTypeDestString {
+		if taskLog.Status == nomadApi.AllocDesiredStatusRun && taskLog.Target == common.TaskTypeDest {
 			res := models.GetTaskProgressRespV2{
 				BaseResp: models.BuildBaseResp(nil),
 			}
 			args := map[string]string{
 				"allocation_id": allocationId,
-				"task_name":     common.TaskTypeDestString,
+				"task_name":     common.TaskTypeDest,
 			}
 			if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, header); nil != err {
 				logger.Warn("forward api failed", "url", url, "err", err)
@@ -817,7 +817,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 			NodeId:       srcAllocation.NodeId,
 			AllocationId: srcAllocation.AllocationId,
 			Address:      nodeId2Addr[srcAllocation.NodeId],
-			Target:       common.TaskTypeSrcString,
+			Target:       common.TaskTypeSrc,
 			Status:       srcAllocation.DesiredStatus,
 		})
 		if srcAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
@@ -826,7 +826,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeAddr: nodeId2Addr[srcAllocation.NodeId],
 				DataSource: fmt.Sprintf("%v:%v", srcTaskDetail.TaskConfig.ConnectionConfig.Host,
 					srcTaskDetail.TaskConfig.ConnectionConfig.Port),
-				Source: common.TaskTypeSrcString,
+				Source: common.TaskTypeSrc,
 			}
 			basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 		}
@@ -847,7 +847,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeId:       destAllocation.NodeId,
 				AllocationId: destAllocation.AllocationId,
 				Address:      nodeId2Addr[destAllocation.NodeId],
-				Target:       common.TaskTypeDestString,
+				Target:       common.TaskTypeDest,
 				Status:       destAllocation.DesiredStatus,
 			})
 			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
@@ -856,7 +856,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 					NodeAddr: nodeId2Addr[destAllocation.NodeId],
 					DataSource: fmt.Sprintf("%v:%v", destMySqlTaskDetail.TaskConfig.ConnectionConfig.Host,
 						destMySqlTaskDetail.TaskConfig.ConnectionConfig.Port),
-					Source: common.TaskTypeDestString,
+					Source: common.TaskTypeDest,
 				}
 				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 			}
@@ -870,7 +870,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				NodeId:       destAllocation.NodeId,
 				AllocationId: destAllocation.AllocationId,
 				Address:      nodeId2Addr[destAllocation.NodeId],
-				Target:       common.TaskTypeDestString,
+				Target:       common.TaskTypeDest,
 				Status:       destAllocation.DesiredStatus,
 			})
 			if destAllocation.DesiredStatus == nomadApi.AllocDesiredStatusRun {
@@ -878,7 +878,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 					NodeId:     destAllocation.NodeId,
 					NodeAddr:   nodeId2Addr[destAllocation.NodeId],
 					DataSource: strings.Join(destKafkaTaskDetail.TaskConfig.BrokerAddrs, ","),
-					Source:     common.TaskTypeDestString,
+					Source:     common.TaskTypeDest,
 				}
 				basicTaskProfile.DtleNodeInfos = append(basicTaskProfile.DtleNodeInfos, dtleNode)
 			}
@@ -1812,7 +1812,7 @@ func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 	noRunJob := true
 	// finish job
 	for _, a := range nomadAllocs {
-		if a.DesiredStatus == "run" && a.TaskGroup == common.TaskTypeSrcString { // the allocations will be stop by nomad if it is not desired to run. and there is no need to finish these allocations
+		if a.DesiredStatus == "run" && a.TaskGroup == common.TaskTypeSrc { // the allocations will be stop by nomad if it is not desired to run. and there is no need to finish these allocations
 			noRunJob = false
 			if err := sentSignalToTask(logger, a.ID, "finish"); nil != err {
 				return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("allocation_id=%v; finish task failed:  %v", a.ID, err)))
@@ -1895,7 +1895,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		reverseJobParam.Failover = &originalJob.BasicTaskProfile.Configuration.FailOver
 		reverseJobParam.Reverse = true
 		reverseJobParam.SrcTask = &models.SrcTaskConfig{
-			TaskName:           common.TaskTypeSrcString,
+			TaskName:           common.TaskTypeSrc,
 			GroupMaxSize:       originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupMaxSize,
 			ChunkSize:          originalJob.BasicTaskProfile.Configuration.SrcConfig.ChunkSize,
 			DropTableIfExists:  originalJob.BasicTaskProfile.Configuration.SrcConfig.DropTableIfExists,
@@ -1914,7 +1914,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 			},
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{
-			TaskName:         common.TaskTypeDestString,
+			TaskName:         common.TaskTypeDest,
 			ConnectionConfig: &originalJob.BasicTaskProfile.ConnectionInfo.SrcDataBase,
 			MysqlDestTaskConfig: &models.MysqlDestTaskConfig{
 				ParallelWorkers:       originalJob.BasicTaskProfile.Configuration.DstConfig.MysqlDestTaskConfig.ParallelWorkers,
@@ -1925,9 +1925,9 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 
 		// the node must be bound to a fixed data source
 		for _, node := range originalJob.BasicTaskProfile.DtleNodeInfos {
-			if node.Source == common.TaskTypeSrcString {
+			if node.Source == common.TaskTypeSrc {
 				reverseJobParam.DestTask.NodeId = node.NodeId
-			} else if node.Source == common.TaskTypeDestString {
+			} else if node.Source == common.TaskTypeDest {
 				reverseJobParam.SrcTask.NodeId = node.NodeId
 			}
 		}
