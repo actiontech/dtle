@@ -329,6 +329,7 @@ func (d *dumper) Dump() error {
 	}
 
 	go func() {
+		defer close(d.resultsChannel)
 		for {
 			select {
 			case <-d.shutdownCh:
@@ -351,7 +352,6 @@ func (d *dumper) Dump() error {
 				break
 			}
 		}
-		close(d.resultsChannel)
 	}()
 
 	return nil
