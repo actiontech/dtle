@@ -21,8 +21,8 @@ import (
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
 
-	gonats "github.com/nats-io/go-nats"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
+	gonats "github.com/nats-io/go-nats"
 
 	"context"
 	"os"
@@ -92,7 +92,7 @@ type Applier struct {
 	event      *eventer.Eventer
 	taskConfig *drivers.TaskConfig
 
-	targetGtid       gomysql.GTIDSet
+	targetGtid gomysql.GTIDSet
 }
 
 func (a *Applier) Finish1() error {
@@ -306,7 +306,7 @@ func (a *Applier) Run() {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Marshal"))
 			}
 			_, err = a.natsConn.Request(fmt.Sprintf("%s_bigtx_ack", a.subject),
-				bs, 1 * time.Minute)
+				bs, 1*time.Minute)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Request"))
 			}
@@ -382,11 +382,13 @@ func (a *Applier) doFullCopy() {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "DecodeDumpEntry"))
 				return
 			}
-			a.dumpEntryQueue <- copyRows
-			atomic.AddInt64(a.memory1, int64(copyRows.Size()))
-
-			atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
-
+			select {
+			case <-a.shutdownCh:
+				stopLoop = true
+			case a.dumpEntryQueue <- copyRows:
+				atomic.AddInt64(a.memory1, int64(copyRows.Size()))
+				atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
+			}
 		case <-a.rowCopyComplete:
 			a.logger.Info("doFullCopy: loop: rowCopyComplete")
 			stopLoop = true
