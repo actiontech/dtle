@@ -29,9 +29,9 @@ func TestParseQueryEventFlags(t *testing.T) {
 			args:    args{bs1},
 			wantR:   common.QueryEventFlags{
 				NoForeignKeyChecks:  false,
-				CharacterSetClient:  45, // utf8mb4_general_ci
-				CollationConnection: 45,
-				CollationServer:     45,
+				CharacterSetClient:  "utf8mb4", // utf8mb4_general_ci
+				CollationConnection: "utf8mb4_general_ci",
+				CollationServer:     "utf8mb4_general_ci",
 			},
 			wantErr: false,
 		},
