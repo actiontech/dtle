@@ -231,7 +231,6 @@ func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, er
 			}
 			r.CharacterSetClient = c.CharsetName
 
-
 			cid = binary.LittleEndian.Uint16(bs[i:])
 			i += 2
 			c, err = parsercharset.GetCollationByID(int(cid))
@@ -276,16 +275,19 @@ func ParseQueryEventFlags(bs []byte, logger g.LoggerType) (r QueryEventFlags, er
 			i += n
 			logger.Debug("Q_INVOKERS", "username", username, "hostname", hostname)
 		case Q_UPDATED_DB_NAMES:
-			count := int(bs[i])
+			count := bs[i]
 			i += 1
-			for j := 0; j < count; j++ {
-				i0 := i
-				for bs[i] != 0 {
-					i += 1
+			const OVER_MAX_DBS_IN_EVENT_MTS = 254 // See #926
+			if count != OVER_MAX_DBS_IN_EVENT_MTS {
+				for j := uint8(0); j < count; j++ {
+					i0 := i
+					for bs[i] != 0 {
+						i += 1
+					}
+					schemaName := string(bs[i0:i])
+					logger.Debug("Q_UPDATED_DB_NAMES", "schema", schemaName, "i", i, "j", j)
+					i += 1 // nul-terminated
 				}
-				schemaName := string(bs[i0:i])
-				logger.Debug("Q_UPDATED_DB_NAMES", "schema", schemaName, "i", i, "j", j)
-				i += 1 // nul-terminated
 			}
 		case Q_MICROSECONDS:
 			i += 3
