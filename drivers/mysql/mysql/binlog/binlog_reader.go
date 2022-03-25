@@ -109,21 +109,24 @@ type BinlogReader struct {
 
 type SqlFilter struct {
 	NoDML       bool
-	NoDMLDelete bool
 	NoDMLInsert bool
+	NoDMLDelete bool
 	NoDMLUpdate bool
 
-	NoDDL            bool
-	NoDDLCreateTable bool
-	NoDDLDropTable   bool
-	NoDDLAlterTable  bool
+	NoDDL             bool
+	NoDDLCreateSchema bool
+	NoDDLCreateTable  bool
+	NoDDLDropSchema   bool
+	NoDDLDropTable    bool
+	NoDDLDropIndex    bool
+	NoDDLAlterTable   bool
+	NoDDLTruncate     bool
 
 	NoDDLAlterTableAddColumn    bool
 	NoDDLAlterTableDropColumn   bool
 	NoDDLAlterTableModifyColumn bool
 	NoDDLAlterTableChangeColumn bool
 	NoDDLAlterTableAlterColumn  bool
-	NoDDLCreateSchema           bool
 }
 
 func parseSqlFilter(strs []string) (*SqlFilter, error) {
@@ -145,8 +148,14 @@ func parseSqlFilter(strs []string) (*SqlFilter, error) {
 			s.NoDDLCreateSchema = true
 		case "noddlcreatetable":
 			s.NoDDLCreateTable = true
+		case "noddldropschema":
+			s.NoDDLDropSchema = true
 		case "noddldroptable":
 			s.NoDDLDropTable = true
+		case "noddldropindex":
+			s.NoDDLDropIndex = true
+		case "noddltruncate":
+			s.NoDDLTruncate = true
 		case "noddlaltertable":
 			s.NoDDLAlterTable = true
 
@@ -1651,12 +1660,24 @@ func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
 		if sqlFilter.NoDDLCreateSchema {
 			return true
 		}
+	case *ast.DropDatabaseStmt:
+		if sqlFilter.NoDDLDropSchema {
+			return true
+		}
 	case *ast.CreateTableStmt:
 		if sqlFilter.NoDDLCreateTable {
 			return true
 		}
 	case *ast.DropTableStmt:
 		if sqlFilter.NoDDLDropTable {
+			return true
+		}
+	case *ast.DropIndexStmt:
+		if sqlFilter.NoDDLDropIndex {
+			return true
+		}
+	case *ast.TruncateTableStmt:
+		if sqlFilter.NoDDLTruncate {
 			return true
 		}
 	case *ast.AlterTableStmt:
