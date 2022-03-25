@@ -147,12 +147,14 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job %v allocations err = %v ", jobItem.JobId, err)))
 		}
+
+		mapAllocation := make(map[string]nomadApi.Allocation, 0)
 		for i := range allocations {
 			allocation := allocations[i]
-			if allocation.NextAllocation == "" {
-				if _, ok := jobItem.AllocationStatus[allocation.TaskGroup]; !ok {
-					jobItem.AllocationStatus[allocation.TaskGroup] = allocations[i].DesiredStatus
-				}
+			if lastAllocation, ok := mapAllocation[allocation.TaskGroup]; !ok ||
+				(ok && allocation.ModifyTime > lastAllocation.ModifyTime) {
+				jobItem.AllocationStatus[allocation.TaskGroup] = allocations[i].ClientStatus
+				mapAllocation[allocation.TaskGroup] = allocation
 			}
 		}
 
