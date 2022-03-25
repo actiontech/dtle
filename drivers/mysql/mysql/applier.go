@@ -339,22 +339,26 @@ func (a *Applier) doFullCopy() {
 
 	a.wg.Add(1)
 	go func() {
-		defer a.wg.Done()
+		var err error
+		defer func() {
+			a.wg.Done()
+			if err != nil {
+				a.onError(common.TaskStateDead, err)
+			}
+		}()
 		for {
 			select {
 			case <-a.shutdownCh:
 				return
 			case copyRows := <-a.dumpEntryQueue:
 				//time.Sleep(20 * time.Second) // #348 stub
-				if err := a.ApplyEventQueries(a.db, copyRows); err != nil {
-					a.onError(common.TaskStateDead, err)
+				if err = a.ApplyEventQueries(a.db, copyRows); err != nil {
 					return
 				}
 				atomic.AddInt64(a.memory1, -int64(copyRows.Size()))
 				if atomic.LoadInt64(&a.nDumpEntry) <= 0 {
-					err := fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
+					err = fmt.Errorf("DTLE_BUG a.nDumpEntry <= 0")
 					a.logger.Error(err.Error())
-					a.onError(common.TaskStateDead, err)
 					return
 				} else {
 					atomic.AddInt64(&a.nDumpEntry, -1)
@@ -739,7 +743,7 @@ func (a *Applier) ValidateGrants() error {
 	return fmt.Errorf("user has insufficient privileges for applier. Needed:ALTER, CREATE, DROP, INDEX, REFERENCES, INSERT, DELETE, UPDATE, SELECT, TRIGGER ON *.*")
 }
 
-func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error {
+func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err error) {
 	a.logger.Debug("ApplyEventQueries", "schema", entry.TableSchema, "table", entry.TableName,
 		"rows", len(entry.ValuesX))
 
@@ -779,10 +783,13 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) error
 	}
 	nRows := int64(len(entry.ValuesX))
 	defer func() {
-		if err := tx.Commit(); err != nil {
-			a.onError(common.TaskStateDead, err)
+		if err != nil {
+			return
 		}
-		atomic.AddInt64(&a.TotalRowsReplayed, nRows)
+		err = tx.Commit()
+		if err == nil {
+			atomic.AddInt64(&a.TotalRowsReplayed, nRows)
+		}
 	}()
 	if _, err := tx.ExecContext(a.ctx, querySetFKChecksOff); err != nil {
 		return err
