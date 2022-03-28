@@ -675,8 +675,9 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				}
 				// mapping
 				schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
-				if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
-					sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast)
+				if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 ||
+					(table != nil && len(table.ColumnMapFrom) > 0) {
+					sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, table.ColumnMapFrom)
 					if nil != err {
 						return fmt.Errorf("ddl mapping failed: %v", err)
 					}
@@ -786,9 +787,9 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContex
 	}
 }
 
-func (b *BinlogReader) loadMapping(sql, currentSchema string,
-	schemasRenameMap map[string]string /* map[oldSchemaName]newSchemaName */, oldSchemaNameToTablesRenameMap map[string]map[string]string, /* map[oldSchemaName]map[oldTableName]newTableName */
-	stmt ast.StmtNode) (string, error) {
+func (b *BinlogReader) loadMapping(sql, currentSchema string, schemasRenameMap map[string]string,
+	oldSchemaNameToTablesRenameMap map[string]map[string]string, stmt ast.StmtNode,
+	columnMap []string) (string, error) {
 
 	logMapping := func(oldName, newName, mappingType string) {
 		msg := fmt.Sprintf("ddl %s mapping", mappingType)
@@ -857,6 +858,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string,
 	case *ast.TruncateTableStmt:
 		renameAstTableFn(v.Table)
 	case *ast.CreateTableStmt:
+		v.Cols = base.BuildCreateTableColsFromMap(v.Cols, columnMap)
 		renameAstTableFn(v.Table)
 		renameAstTableFn(v.ReferTable)
 	case *ast.AlterTableStmt:

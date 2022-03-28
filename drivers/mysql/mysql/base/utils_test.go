@@ -294,3 +294,42 @@ func TestGetTableColumnsSqle(t *testing.T) {
 		})
 	}
 }
+
+func TestRenameCreateTable(t *testing.T) {
+	type args struct {
+		createTable string
+		newSchema   string
+		newTable    string
+		columnMap   []string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "1",
+			args:    args{
+				createTable: "create table s.t (id int primary key, val int)",
+				newSchema:   "s1",
+				newTable:    "t1",
+				columnMap:   []string{"val", "id"},
+			},
+			want:    "CREATE TABLE `s1`.`t1` (`val` INT,`id` INT PRIMARY KEY)",
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenameCreateTable(tt.args.createTable, tt.args.newSchema, tt.args.newTable, tt.args.columnMap)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RenameCreateTable() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("RenameCreateTable() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

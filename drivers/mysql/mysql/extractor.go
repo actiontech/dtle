@@ -1359,7 +1359,8 @@ func (e *Extractor) mysqlDump() error {
 					targetSchema := g.StringElse(db.TableSchemaRename, tb.TableSchema)
 					targetTable := g.StringElse(tb.TableRename, tb.TableName)
 
-					ctStmt, err = base.RenameCreateTable(ctStmt, targetSchema, targetTable)
+					ctStmt, err = base.RenameCreateTable(ctStmt, targetSchema, targetTable,
+						tb.ColumnMapFrom)
 					if err != nil {
 						return err
 					}

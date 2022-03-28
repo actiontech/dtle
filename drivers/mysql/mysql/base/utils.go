@@ -663,7 +663,23 @@ func ParserRestore(stmt ast.Node) (string, error) {
 	}
 	return buf.String(), nil
 }
-func RenameCreateTable(createTable string, newSchema string, newTable string) (string, error) {
+
+func BuildCreateTableColsFromMap(cols []*ast.ColumnDef, columnMap []string) (r []*ast.ColumnDef) {
+	if len(columnMap) > 0 {
+		for _, colName := range columnMap {
+			for _, col := range cols {
+				if colName == col.Name.Name.String() {
+					r = append(r, col)
+				}
+			}
+		}
+		return r
+	} else {
+		return cols
+	}
+}
+
+func RenameCreateTable(createTable string, newSchema string, newTable string, columnMap []string) (string, error) {
 	stmt0, err := parser.New().ParseOneStmt(createTable, "", "")
 	if err != nil {
 		return "", err
@@ -674,6 +690,8 @@ func RenameCreateTable(createTable string, newSchema string, newTable string) (s
 	}
 	stmt.Table.Schema = model.NewCIStr(newSchema)
 	stmt.Table.Name = model.NewCIStr(newTable)
+
+	stmt.Cols = BuildCreateTableColsFromMap(stmt.Cols, columnMap)
 
 	buf := bytes.NewBuffer(nil)
 	err = stmt.Restore(parserformat.NewRestoreCtx(common.ParserRestoreFlag, buf))
