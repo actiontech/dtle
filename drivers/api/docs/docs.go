@@ -2127,6 +2127,12 @@ var doc = `{
         "common.JobListItemV2": {
             "type": "object",
             "properties": {
+                "allocation_status": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "dst_addr_list": {
                     "type": "array",
                     "items": {
@@ -3325,6 +3331,12 @@ var doc = `{
                 },
                 "skip_create_db_table": {
                     "type": "boolean"
+                },
+                "sql_filter": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -3376,6 +3388,12 @@ var doc = `{
                 },
                 "skip_create_db_table": {
                     "type": "boolean"
+                },
+                "sql_filter": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "task_name": {
                     "type": "string"
@@ -3440,6 +3458,9 @@ var doc = `{
                     "type": "string"
                 },
                 "node_id": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 },
                 "target": {

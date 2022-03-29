@@ -575,6 +575,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]inte
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupMaxSize, "GroupMaxSize")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.GroupTimeout, "GroupTimeout")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.SkipCreateDbTable, "SkipCreateDbTable")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.SQLFilter, "SqlFilter")
 
 	// for MySQL
 	if config.MysqlSrcTaskConfig != nil {
@@ -778,6 +779,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 			GroupTimeout:       srcTaskDetail.TaskConfig.GroupTimeout,
 			ReplChanBufferSize: srcTaskDetail.TaskConfig.ReplChanBufferSize,
 			ChunkSize:          srcTaskDetail.TaskConfig.ChunkSize,
+			SQLFilter:          srcTaskDetail.TaskConfig.SQLFilter,
 		}
 		if srcTaskDetail.TaskConfig.MysqlSrcTaskConfig != nil {
 			srcConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
@@ -961,6 +963,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 		ReplicateDoDb:      replicateDoDb,
 		ReplicateIgnoreDb:  replicateIgnoreDb,
 		GroupTimeout:       internalTaskConfig.GroupTimeout,
+		SQLFilter:          internalTaskConfig.SqlFilter,
 	}
 
 	connectionConfig := new(models.DatabaseConnectionConfig)

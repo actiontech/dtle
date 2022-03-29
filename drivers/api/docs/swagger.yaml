@@ -2,6 +2,10 @@ basePath: /
 definitions:
   common.JobListItemV2:
     properties:
+      allocation_status:
+        additionalProperties:
+          type: string
+        type: object
       dst_addr_list:
         items:
           type: string
@@ -792,6 +796,10 @@ definitions:
         type: integer
       skip_create_db_table:
         type: boolean
+      sql_filter:
+        items:
+          type: string
+        type: array
     type: object
   models.SrcTaskConfig:
     properties:
@@ -823,6 +831,10 @@ definitions:
         type: array
       skip_create_db_table:
         type: boolean
+      sql_filter:
+        items:
+          type: string
+        type: array
       task_name:
         type: string
     required:
@@ -867,6 +879,8 @@ definitions:
       allocation_id:
         type: string
       node_id:
+        type: string
+      status:
         type: string
       target:
         type: string
