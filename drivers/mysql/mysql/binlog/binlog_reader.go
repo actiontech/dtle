@@ -673,11 +673,14 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				if table != nil && table.TableRename != "" {
 					queryInfo.table.Table = table.TableRename
 				}
+				var columnMapFrom []string
+				if table != nil {
+					columnMapFrom = table.ColumnMapFrom
+				}
 				// mapping
 				schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
-				if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 ||
-					(table != nil && len(table.ColumnMapFrom) > 0) {
-					sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, table.ColumnMapFrom)
+				if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 {
+					sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, columnMapFrom)
 					if nil != err {
 						return fmt.Errorf("ddl mapping failed: %v", err)
 					}
