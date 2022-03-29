@@ -64,6 +64,7 @@ type SrcConfig struct {
 	GroupTimeout        int                  `json:"group_timeout"`
 	ReplChanBufferSize  int64                `json:"repl_chan_buffer_size"`
 	ChunkSize           int64                `json:"chunk_size"`
+	SQLFilter           []string             `json:"sql_filter"`
 }
 
 type DstConfig struct {
@@ -79,7 +80,7 @@ type TaskLog struct {
 	AllocationId string      `json:"allocation_id"`
 	Address      string      `json:"address"`
 	Target       string      `json:"target"`
-	Status  	 string      `json:"status"`
+	Status       string      `json:"status"`
 }
 
 type BasicTaskProfile struct {
@@ -142,14 +143,15 @@ type SrcTaskConfig struct {
 	ReplChanBufferSize  int64                     `json:"repl_chan_buffer_size"`
 	ChunkSize           int64                     `json:"chunk_size"`
 	ConnectionConfig    *DatabaseConnectionConfig `json:"connection_config" validate:"required"`
+	SQLFilter           []string                  `json:"sql_filter"`
 }
 
 type MysqlSrcTaskConfig struct {
-	ExpandSyntaxSupport   bool                     `json:"expand_syntax_support"`
-	Gtid        string `json:"gtid"`
-	BinlogRelay bool   `json:"binlog_relay"`
-	WaitOnJob   string `json:"wait_on_job"`
-	AutoGtid    bool   `json:"auto_gtid"`
+	ExpandSyntaxSupport bool   `json:"expand_syntax_support"`
+	Gtid                string `json:"gtid"`
+	BinlogRelay         bool   `json:"binlog_relay"`
+	WaitOnJob           string `json:"wait_on_job"`
+	AutoGtid            bool   `json:"auto_gtid"`
 }
 
 type OracleSrcTaskConfig struct {
