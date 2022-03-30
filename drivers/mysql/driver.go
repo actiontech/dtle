@@ -76,7 +76,7 @@ var (
 			hclspec.NewLiteral(`""`)),
 		"key_file_path": hclspec.NewDefault(hclspec.NewAttr("key_file_path", "string", false),
 			hclspec.NewLiteral(`""`)),
-		"memory": hclspec.NewAttr("memory", "string", false),
+		"memory":          hclspec.NewAttr("memory", "string", false),
 		"big_tx_max_jobs": hclspec.NewAttr("big_tx_max_jobs", "number", false),
 	})
 
@@ -107,25 +107,25 @@ var (
 				"TableSchema": hclspec.NewAttr("TableSchema", "string", false),
 			})),
 		})),
-		"DropTableIfExists":                   hclspec.NewAttr("DropTableIfExists", "bool", false),
-		"ExpandSyntaxSupport":                 hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
-		"ReplChanBufferSize":                  hclspec.NewAttr("ReplChanBufferSize", "number", false),
-		"TrafficAgainstLimits":                hclspec.NewAttr("TrafficAgainstLimits", "number", false),
-		"MaxRetries":                          hclspec.NewAttr("MaxRetries", "number", false),
-		"ChunkSize":                           hclspec.NewAttr("ChunkSize", "number", false),
-		"SqlFilter":                           hclspec.NewAttr("SqlFilter", "list(string)", false),
-		"GroupMaxSize":                        hclspec.NewAttr("GroupMaxSize", "number", false),
-		"GroupTimeout":                        hclspec.NewAttr("GroupTimeout", "number", false),
-		"Gtid":                                hclspec.NewAttr("Gtid", "string", false),
-		"BinlogFile":                          hclspec.NewAttr("BinlogFile", "string", false),
-		"BinlogPos":                           hclspec.NewAttr("BinlogPos", "number", false),
-		"GtidStart":                           hclspec.NewAttr("GtidStart", "string", false),
-		"AutoGtid":                            hclspec.NewAttr("AutoGtid", "bool", false),
-		"BinlogRelay":                         hclspec.NewAttr("BinlogRelay", "bool", false),
-		"ParallelWorkers":					   hclspec.NewAttr("ParallelWorkers", "number", false),
-		"SkipCreateDbTable":                   hclspec.NewAttr("SkipCreateDbTable", "bool", false),
-		"SkipPrivilegeCheck":                  hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
-		"SkipIncrementalCopy":                 hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
+		"DropTableIfExists":    hclspec.NewAttr("DropTableIfExists", "bool", false),
+		"ExpandSyntaxSupport":  hclspec.NewAttr("ExpandSyntaxSupport", "bool", false),
+		"ReplChanBufferSize":   hclspec.NewAttr("ReplChanBufferSize", "number", false),
+		"TrafficAgainstLimits": hclspec.NewAttr("TrafficAgainstLimits", "number", false),
+		"MaxRetries":           hclspec.NewAttr("MaxRetries", "number", false),
+		"ChunkSize":            hclspec.NewAttr("ChunkSize", "number", false),
+		"SqlFilter":            hclspec.NewAttr("SqlFilter", "list(string)", false),
+		"GroupMaxSize":         hclspec.NewAttr("GroupMaxSize", "number", false),
+		"GroupTimeout":         hclspec.NewAttr("GroupTimeout", "number", false),
+		"Gtid":                 hclspec.NewAttr("Gtid", "string", false),
+		"BinlogFile":           hclspec.NewAttr("BinlogFile", "string", false),
+		"BinlogPos":            hclspec.NewAttr("BinlogPos", "number", false),
+		"GtidStart":            hclspec.NewAttr("GtidStart", "string", false),
+		"AutoGtid":             hclspec.NewAttr("AutoGtid", "bool", false),
+		"BinlogRelay":          hclspec.NewAttr("BinlogRelay", "bool", false),
+		"ParallelWorkers":      hclspec.NewAttr("ParallelWorkers", "number", false),
+		"SkipCreateDbTable":    hclspec.NewAttr("SkipCreateDbTable", "bool", false),
+		"SkipPrivilegeCheck":   hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
+		"SkipIncrementalCopy":  hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host":     hclspec.NewAttr("Host", "string", true),
 			"Port":     hclspec.NewAttr("Port", "number", true),
@@ -691,6 +691,18 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 		return drivers.ErrTaskNotFound
 	}
 
+	err := d.eventer.EmitEvent(&drivers.TaskEvent{
+		TaskID:      taskID,
+		TaskName:    h.taskConfig.Name,
+		AllocID:     h.taskConfig.AllocID,
+		Timestamp:   time.Now(),
+		Message:     fmt.Sprintf("Task receive signal %v", signal),
+		Annotations: nil,
+		Err:         nil,
+	})
+	if err != nil {
+		d.logger.Error("error at sending task event", "err", err, "signal", signal)
+	}
 	//if h.exitResult == nil {
 	//	return nil
 	//}
