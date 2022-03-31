@@ -1909,8 +1909,8 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 			ReplicateDoDb:      originalJob.BasicTaskProfile.ReplicateDoDb,
 			ReplicateIgnoreDb:  originalJob.BasicTaskProfile.ReplicateIgnoreDb,
 			ConnectionConfig:   &originalJob.BasicTaskProfile.ConnectionInfo.DstDataBase,
-
-			GroupTimeout: originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupTimeout,
+			SQLFilter:          originalJob.BasicTaskProfile.Configuration.SrcConfig.SQLFilter,
+			GroupTimeout:       originalJob.BasicTaskProfile.Configuration.SrcConfig.GroupTimeout,
 			MysqlSrcTaskConfig: &models.MysqlSrcTaskConfig{
 				ExpandSyntaxSupport: originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.ExpandSyntaxSupport,
 				BinlogRelay:         originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.BinlogRelay,
