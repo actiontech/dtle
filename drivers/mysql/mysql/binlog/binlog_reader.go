@@ -1044,6 +1044,8 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		//}
 	case *ast.DropProcedureStmt:
 		result.isExpand = true
+	case *ast.AlterProcedureStmt:
+		result.isExpand = true
 	case *ast.DropTableStmt:
 		var newTables []*ast.TableName
 		for _, t := range v.Tables {

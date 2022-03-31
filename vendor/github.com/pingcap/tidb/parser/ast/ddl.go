@@ -4197,3 +4197,83 @@ func (n *AlterSequenceStmt) Accept(v Visitor) (Node, bool) {
 	n.Name = node.(*TableName)
 	return v.Leave(n)
 }
+
+const (
+	ProcedureCharacteristicContainsSql = iota + 1
+	ProcedureCharacteristicNoSql
+	ProcedureCharacteristicReadsSqlData
+	ProcedureCharacteristicModifiesSqlData
+)
+type ProcedureCharacteristic struct {
+	Comment     string
+	Language    string
+	SqlOp       int
+	SqlSecurity string
+}
+
+type AlterProcedureStmt struct {
+	ddlNode
+
+	IsFunction bool
+	IfExists   bool
+	SpName     *TableName
+
+	Characteristics []*ProcedureCharacteristic
+}
+
+func (n *AlterProcedureStmt) Restore(ctx *format.RestoreCtx) error {
+	if n.IsFunction {
+		ctx.WriteKeyWord("ALTER FUNCTION ")
+	} else {
+		ctx.WriteKeyWord("ALTER PROCEDURE ")
+	}
+	err := n.SpName.Restore(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, c := range n.Characteristics {
+		if c.Comment != "" {
+			ctx.WriteKeyWord("COMMENT ")
+			ctx.WriteString(c.Comment)
+			ctx.WritePlain(" ")
+		}
+		if c.Language != "" {
+			ctx.WriteKeyWord("LANGUAGE ")
+			ctx.WriteKeyWord(c.Language)
+			ctx.WritePlain(" ")
+		}
+		switch c.SqlOp {
+		case ProcedureCharacteristicContainsSql:
+			ctx.WriteKeyWord("CONTAINS SQL ")
+		case ProcedureCharacteristicNoSql:
+			ctx.WriteKeyWord("NO SQL ")
+		case ProcedureCharacteristicReadsSqlData:
+			ctx.WriteKeyWord("READS SQL DATA ")
+		case ProcedureCharacteristicModifiesSqlData:
+			ctx.WriteKeyWord("MODIFIES SQL DATA ")
+		}
+		if c.SqlSecurity != "" {
+			ctx.WriteKeyWord("SQL SECURITY ")
+			ctx.WriteKeyWord(c.SqlSecurity)
+			ctx.WritePlain(" ")
+		}
+	}
+
+	return nil
+}
+
+func (n *AlterProcedureStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*AlterProcedureStmt)
+	node, ok := n.SpName.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.SpName = node.(*TableName)
+
+	return v.Leave(n)
+}

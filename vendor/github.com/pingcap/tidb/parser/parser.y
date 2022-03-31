@@ -437,6 +437,9 @@ import (
     multilinestringType   "MULTILINESTRING"
     multipolygonType      "MULTIPOLYGON"
     geometrycollectionType "GEOMETRYCOLLECTION"
+    contains              "CONTAINS"
+    modifies              "MODIFIES"
+    reads                 "READS"
 	keyBlockSize          "KEY_BLOCK_SIZE"
 	labels                "LABELS"
 	language              "LANGUAGE"
@@ -863,6 +866,7 @@ import (
 	CreateTableStmt            "CREATE TABLE statement"
 	DropTriggerStmt            "DROP TRIGGER statement"
 	DropProcedureStmt          "DROP PROCEDURE or FUNCTION statement"
+	AlterProcedureStmt         "Alter procedure/function statement"
 	CreateViewStmt             "CREATE VIEW  statement"
 	CreateUserStmt             "CREATE User statement"
 	CreateRoleStmt             "CREATE Role statement"
@@ -1038,6 +1042,10 @@ import (
 	IfExists                               "If Exists"
 	ProcedureOrFunction                    "Procedure or Function"
 	TriggerOrEvent                         "Trigger or Event"
+	DefinerOrInvoker                       "Definer or Invoker"
+	ProcedureCharacteristic                "ProcedureCharacteristic"
+	ProcedureCharacteristicList            "ProcedureCharacteristicList"
+	ProcedureSqlSpec                       "ProcedureSqlSpec"
 	IfNotExists                            "If Not Exists"
 	IfNotRunning                           "If Not Running"
 	IfRunning                              "If Running"
@@ -3830,6 +3838,67 @@ DatabaseOptionList:
 |	DatabaseOptionList DatabaseOption
 	{
 		$$ = append($1.([]*ast.DatabaseOption), $2.(*ast.DatabaseOption))
+	}
+
+AlterProcedureStmt:
+	"ALTER" ProcedureOrFunction TableName ProcedureCharacteristicList
+	{
+		$$ = &ast.AlterProcedureStmt{
+			IsFunction: $2.(bool),
+			SpName: $3.(*ast.TableName),
+			Characteristics: $4.([]*ast.ProcedureCharacteristic),
+		}
+	}
+
+ProcedureCharacteristicList:
+	ProcedureCharacteristic
+	{
+		$$ = []*ast.ProcedureCharacteristic{$1.(*ast.ProcedureCharacteristic)}
+	}
+|	ProcedureCharacteristicList ProcedureCharacteristic
+	{
+		$$ = append($1.([]*ast.ProcedureCharacteristic), $2.(*ast.ProcedureCharacteristic))
+	}
+ProcedureCharacteristic:
+	"COMMENT" stringLit
+	{
+		$$ = &ast.ProcedureCharacteristic{
+			Comment: $2,
+		}
+	}
+|	"LANGUAGE" "SQL"
+	{
+		$$ = &ast.ProcedureCharacteristic{
+			Language: "SQL",
+		}
+	}
+|	ProcedureSqlSpec
+	{
+		$$ = &ast.ProcedureCharacteristic{
+			SqlOp: $1.(int),
+		}
+	}
+|	"SQL" "SECURITY" DefinerOrInvoker
+	{
+		$$ = &ast.ProcedureCharacteristic{
+			SqlSecurity: $3.(string),
+		}
+	}
+
+ProcedureSqlSpec:
+	"CONTAINS" "SQL" { $$ = ast.ProcedureCharacteristicContainsSql }
+|	"NO" "SQL" { $$ = ast.ProcedureCharacteristicNoSql }
+|	"READS" "SQL" "DATA" { $$ = ast.ProcedureCharacteristicReadsSqlData }
+|	"MODIFIES" "SQL" "DATA" { $$ = ast.ProcedureCharacteristicModifiesSqlData }
+
+DefinerOrInvoker:
+	"DEFINER"
+	{
+		$$ = "DEFINER"
+	}
+|	"INVOKER"
+	{
+		$$ = "INVOKER"
 	}
 
 DropProcedureStmt:
@@ -11058,6 +11127,7 @@ Statement:
 |	CreateTableStmt
 |   DropTriggerStmt
 |   DropProcedureStmt
+|	AlterProcedureStmt
 |	CreateViewStmt
 |	CreateUserStmt
 |	CreateRoleStmt
