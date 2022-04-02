@@ -562,13 +562,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				return nil
 			}
 
-			skipEvent := false
-
 			b.sqleExecDDL(currentSchema, queryInfo.ast)
-
-			if b.sqlFilter.NoDDL {
-				skipEvent = true
-			}
 
 			sql := queryInfo.sql
 			realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
@@ -592,7 +586,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					table = tableCtx.Table
 				}
 
-				skipEvent = skipBySqlFilter(queryInfo.ast, b.sqlFilter)
+				skipEvent := skipBySqlFilter(queryInfo.ast, b.sqlFilter)
 				switch realAst := queryInfo.ast.(type) {
 				case *ast.CreateDatabaseStmt:
 					b.sqleAfterCreateSchema(queryInfo.table.Schema)
@@ -1663,6 +1657,10 @@ func (b *BinlogReader) generateRenameMaps() (oldSchemaToNewSchema map[string]str
 }
 
 func skipBySqlFilter(ddlAst ast.StmtNode, sqlFilter *SqlFilter) bool {
+	if sqlFilter.NoDDL {
+		return true
+	}
+
 	switch realAst := ddlAst.(type) {
 	case *ast.CreateDatabaseStmt:
 		if sqlFilter.NoDDLCreateSchema {
