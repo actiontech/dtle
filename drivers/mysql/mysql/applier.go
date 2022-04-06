@@ -84,7 +84,7 @@ type Applier struct {
 	gtidSetLock *sync.RWMutex
 
 	storeManager *common.StoreManager
-	gtidCh       chan *common.BinlogCoordinateTx
+	gtidCh       chan *common.MySQLCoordinateTx
 
 	stage      string
 	memory1    *int64
@@ -118,7 +118,7 @@ func NewApplier(
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
 		storeManager:    storeManager,
-		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
+		gtidCh:          make(chan *common.MySQLCoordinateTx, 4096),
 		memory1:         new(int64),
 		memory2:         new(int64),
 		event:           event,
@@ -296,11 +296,11 @@ func (a *Applier) Run() {
 	}
 	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
 		if entry.Final {
-			a.gtidCh <- &entry.Coordinates
+			a.gtidCh <- entry.Coordinates.(*common.MySQLCoordinateTx)
 		}
 		if entry.IsPartOfBigTx() {
 			bs, err := (&common.BigTxAck{
-				GNO:   entry.Coordinates.GNO,
+				GNO:   entry.Coordinates.(*common.MySQLCoordinateTx).GNO,
 				Index: entry.Index,
 			}).Marshal(nil)
 			if err != nil {
