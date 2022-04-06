@@ -592,8 +592,8 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
 	entry := common.NewBinlogEntry()
 	entry.Final = true
-	entry.Coordinates.LogPos = tx.oldestUncommittedScn
-	entry.Coordinates.LastCommitted = tx.endScn
+	entry.Coordinates.(*common.OracleCoordinateTx).OldestUncommittedScn = tx.oldestUncommittedScn
+	entry.Coordinates.(*common.OracleCoordinateTx).EndSCN = tx.endScn
 	for _, row := range tx.records {
 		dataEvent, err := e.parseToDataEvent(row)
 		if err != nil {

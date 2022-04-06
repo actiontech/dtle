@@ -5,20 +5,41 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"reflect"
+
 	"github.com/actiontech/dtle/g"
 	"github.com/go-mysql-org/go-mysql/replication"
 	parsercharset "github.com/pingcap/tidb/parser/charset"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Do not call this frequently. Cache your result.
-func (b *BinlogCoordinateTx) GetSid() string {
+func (b *MySQLCoordinateTx) GetSid() string {
 	return uuid.UUID(b.SID).String()
 }
 
-func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
+func (b *MySQLCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }
+
+func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
+	v := reflect.ValueOf(*b)
+	return v.FieldByName(fieldName)
+ }
+ 
+ func (b *MySQLCoordinateTx)SetField(fieldName string,fieldValue interface{}){
+	v := reflect.ValueOf(&b).Elem().Elem()
+	v.FieldByName(fieldName).Set(reflect.ValueOf(fieldValue)) 
+ }
+
+ func (b *MySQLCoordinateTx)GetLogPos()int64{
+	return b.LogPos
+ }
+
+ func (b *MySQLCoordinateTx)GetLastCommit()int64{
+	return b.LastCommitted
+ }
+
 
 type BinlogEntryContext struct {
 	Entry       *BinlogEntry
