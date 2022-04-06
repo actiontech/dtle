@@ -71,7 +71,7 @@ type Extractor struct {
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
 	initialBinlogCoordinates *common.BinlogCoordinatesX
-	currentBinlogCoordinates *common.BinlogCoordinateTx
+	currentBinlogCoordinates *common.MySQLCoordinateTx
 	rowCopyComplete          chan bool
 	rowCopyCompleteFlag      int64
 	tableCount               int
@@ -985,7 +985,7 @@ func (e *Extractor) StreamEvents() error {
 			var gno int64 = 0
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
-				gno = theEntries.Coordinates.GNO
+				gno = theEntries.Coordinates.(*common.MySQLCoordinateTx).GNO
 				if theEntries.Events != nil && len(theEntries.Events) > 0 {
 					e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
 				}

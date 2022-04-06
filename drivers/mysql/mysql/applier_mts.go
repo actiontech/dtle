@@ -2,10 +2,11 @@ package mysql
 
 import (
 	"container/heap"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/g"
 	"hash/fnv"
 	"sync/atomic"
+
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/g"
 )
 
 // from container/heap/example_intheap_test.go
@@ -74,7 +75,7 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 // block for waiting. return true for can_execute, false for abortion.
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForExecution(binlogEntry *common.BinlogEntry) bool {
-	mm.lastEnqueue = binlogEntry.Coordinates.SeqenceNumber
+	mm.lastEnqueue = binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
 
 	if mm.forceMts {
 		return true
@@ -82,7 +83,7 @@ func (mm *MtsManager) WaitForExecution(binlogEntry *common.BinlogEntry) bool {
 
 	for {
 		currentLC := atomic.LoadInt64(&mm.lastCommitted)
-		if currentLC >= binlogEntry.Coordinates.LastCommitted {
+		if currentLC >= binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted {
 			return true
 		}
 
@@ -132,7 +133,7 @@ func (mm *MtsManager) Executed(binlogEntry *common.BinlogEntry) {
 	select {
 	case <-mm.shutdownCh:
 		return
-	case mm.chExecuted <- binlogEntry.Coordinates.SeqenceNumber:
+	case mm.chExecuted <- binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber:
 	}
 }
 
@@ -148,7 +149,7 @@ func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
 		cols := entryCtx.TableItems[i].Columns
 
 		if len(cols.UniqueKeys) == 0 {
-			g.Logger.Debug("found an event without writesets", "gno", entry.Coordinates.GNO, "i", i)
+			g.Logger.Debug("found an event without writesets", "gno", entry.Coordinates.(*common.MySQLCoordinateTx).GNO, "i", i)
 		}
 
 		for _, uk := range cols.UniqueKeys {
@@ -195,7 +196,7 @@ func NewWritesetManager(historySize int) *WritesetManager {
 }
 func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext, logger g.LoggerType) int64 {
 	entry := entryCtx.Entry
-	lastCommit := entry.Coordinates.LastCommitted
+	lastCommit := entry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted
 
 	hashes := HashTx(entryCtx)
 
@@ -206,7 +207,7 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext, lo
 		for i := range entry.Events {
 			if entry.Events[i].FKParent {
 				canUseWritesets = false
-				logger.Debug("found fk parent", "gno", entryCtx.Entry.Coordinates.GNO)
+				logger.Debug("found fk parent", "gno", entryCtx.Entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
 				break
 			}
 		}
@@ -218,19 +219,19 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext, lo
 		lastCommit = wm.lastCommonParent
 		for _, hash := range hashes {
 			if seq, exist := wm.history[hash]; exist {
-				if seq > lastCommit && seq < entry.Coordinates.SeqenceNumber {
+				if seq > lastCommit && seq < entry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber {
 					lastCommit = seq
 				}
 			}
 			// It might be a big-TX. We strictly limit the size of history.
 			if !exceedsCapacity {
-				wm.history[hash] = entry.Coordinates.SeqenceNumber
+				wm.history[hash] = entry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
 			}
 		}
 	}
 	if exceedsCapacity || !canUseWritesets {
 		wm.history = make(map[uint64]int64)
-		wm.lastCommonParent = entry.Coordinates.SeqenceNumber
+		wm.lastCommonParent = entry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
 	}
 
 	return lastCommit

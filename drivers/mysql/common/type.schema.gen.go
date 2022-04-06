@@ -806,7 +806,7 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 	return i + 8, nil
 }
 
-type BinlogCoordinateTx struct {
+type MySQLCoordinateTx struct {
 	LogFile       string
 	LogPos        int64
 	OSID          string
@@ -816,7 +816,7 @@ type BinlogCoordinateTx struct {
 	SeqenceNumber int64
 }
 
-func (d *BinlogCoordinateTx) Size() (s uint64) {
+func (d *MySQLCoordinateTx) Size() (s uint64) {
 
 	{
 		l := uint64(len(d.LogFile))
@@ -854,7 +854,7 @@ func (d *BinlogCoordinateTx) Size() (s uint64) {
 	s += 32
 	return
 }
-func (d *BinlogCoordinateTx) Marshal(buf []byte) ([]byte, error) {
+func (d *MySQLCoordinateTx) Marshal(buf []byte) ([]byte, error) {
 	size := d.Size()
 	{
 		if uint64(cap(buf)) >= size {
@@ -986,7 +986,7 @@ func (d *BinlogCoordinateTx) Marshal(buf []byte) ([]byte, error) {
 	return buf[:i+32], nil
 }
 
-func (d *BinlogCoordinateTx) Unmarshal(buf []byte) (uint64, error) {
+func (d *MySQLCoordinateTx) Unmarshal(buf []byte) (uint64, error) {
 	i := uint64(0)
 
 	{
@@ -1054,6 +1054,84 @@ func (d *BinlogCoordinateTx) Unmarshal(buf []byte) (uint64, error) {
 
 	}
 	return i + 32, nil
+}
+
+type OracleCoordinateTx struct {
+	OldestUncommittedScn int64
+	EndSCN               int64
+}
+
+func (d *OracleCoordinateTx) Size() (s uint64) {
+
+	s += 16
+	return
+}
+func (d *OracleCoordinateTx) Marshal(buf []byte) ([]byte, error) {
+	size := d.Size()
+	{
+		if uint64(cap(buf)) >= size {
+			buf = buf[:size]
+		} else {
+			buf = make([]byte, size)
+		}
+	}
+	i := uint64(0)
+
+	{
+
+		buf[0+0] = byte(d.OldestUncommittedScn >> 0)
+
+		buf[1+0] = byte(d.OldestUncommittedScn >> 8)
+
+		buf[2+0] = byte(d.OldestUncommittedScn >> 16)
+
+		buf[3+0] = byte(d.OldestUncommittedScn >> 24)
+
+		buf[4+0] = byte(d.OldestUncommittedScn >> 32)
+
+		buf[5+0] = byte(d.OldestUncommittedScn >> 40)
+
+		buf[6+0] = byte(d.OldestUncommittedScn >> 48)
+
+		buf[7+0] = byte(d.OldestUncommittedScn >> 56)
+
+	}
+	{
+
+		buf[0+8] = byte(d.EndSCN >> 0)
+
+		buf[1+8] = byte(d.EndSCN >> 8)
+
+		buf[2+8] = byte(d.EndSCN >> 16)
+
+		buf[3+8] = byte(d.EndSCN >> 24)
+
+		buf[4+8] = byte(d.EndSCN >> 32)
+
+		buf[5+8] = byte(d.EndSCN >> 40)
+
+		buf[6+8] = byte(d.EndSCN >> 48)
+
+		buf[7+8] = byte(d.EndSCN >> 56)
+
+	}
+	return buf[:i+16], nil
+}
+
+func (d *OracleCoordinateTx) Unmarshal(buf []byte) (uint64, error) {
+	i := uint64(0)
+
+	{
+
+		d.OldestUncommittedScn = 0 | (int64(buf[0+0]) << 0) | (int64(buf[1+0]) << 8) | (int64(buf[2+0]) << 16) | (int64(buf[3+0]) << 24) | (int64(buf[4+0]) << 32) | (int64(buf[5+0]) << 40) | (int64(buf[6+0]) << 48) | (int64(buf[7+0]) << 56)
+
+	}
+	{
+
+		d.EndSCN = 0 | (int64(buf[0+8]) << 0) | (int64(buf[1+8]) << 8) | (int64(buf[2+8]) << 16) | (int64(buf[3+8]) << 24) | (int64(buf[4+8]) << 32) | (int64(buf[5+8]) << 40) | (int64(buf[6+8]) << 48) | (int64(buf[7+8]) << 56)
+
+	}
+	return i + 16, nil
 }
 
 type BinlogCoordinatesX struct {
@@ -2568,7 +2646,7 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 }
 
 type BinlogEntry struct {
-	Coordinates BinlogCoordinateTx
+	Coordinates CoordinatesI
 	Events      []DataEvent
 	Index       int32
 	Final       bool
@@ -2577,7 +2655,58 @@ type BinlogEntry struct {
 func (d *BinlogEntry) Size() (s uint64) {
 
 	{
-		s += d.Coordinates.Size()
+		var v uint64
+		switch d.Coordinates.(type) {
+
+		case *MySQLCoordinateTx:
+			v = 0 + 1
+
+		case *OracleCoordinateTx:
+			v = 1 + 1
+
+		}
+
+		{
+
+			t := v
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+		switch tt := d.Coordinates.(type) {
+
+		case *MySQLCoordinateTx:
+
+			{
+				if tt != nil {
+
+					{
+						s += (*tt).Size()
+					}
+					s += 0
+				}
+			}
+
+			s += 1
+
+		case *OracleCoordinateTx:
+
+			{
+				if tt != nil {
+
+					{
+						s += (*tt).Size()
+					}
+					s += 0
+				}
+			}
+
+			s += 1
+
+		}
 	}
 	{
 		l := uint64(len(d.Events))
@@ -2617,11 +2746,75 @@ func (d *BinlogEntry) Marshal(buf []byte) ([]byte, error) {
 	i := uint64(0)
 
 	{
-		nbuf, err := d.Coordinates.Marshal(buf[0:])
-		if err != nil {
-			return nil, err
+		var v uint64
+		switch d.Coordinates.(type) {
+
+		case *MySQLCoordinateTx:
+			v = 0 + 1
+
+		case *OracleCoordinateTx:
+			v = 1 + 1
+
 		}
-		i += uint64(len(nbuf))
+
+		{
+
+			t := uint64(v)
+
+			for t >= 0x80 {
+				buf[i+0] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+0] = byte(t)
+			i++
+
+		}
+		switch tt := d.Coordinates.(type) {
+
+		case *MySQLCoordinateTx:
+
+			{
+				if tt == nil {
+					buf[i+0] = 0
+				} else {
+					buf[i+0] = 1
+
+					{
+						nbuf, err := (*tt).Marshal(buf[i+1:])
+						if err != nil {
+							return nil, err
+						}
+						i += uint64(len(nbuf))
+					}
+					i += 0
+				}
+			}
+
+			i += 1
+
+		case *OracleCoordinateTx:
+
+			{
+				if tt == nil {
+					buf[i+0] = 0
+				} else {
+					buf[i+0] = 1
+
+					{
+						nbuf, err := (*tt).Marshal(buf[i+1:])
+						if err != nil {
+							return nil, err
+						}
+						i += uint64(len(nbuf))
+					}
+					i += 0
+				}
+			}
+
+			i += 1
+
+		}
 	}
 	{
 		l := uint64(len(d.Events))
@@ -2676,11 +2869,79 @@ func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
 	i := uint64(0)
 
 	{
-		ni, err := d.Coordinates.Unmarshal(buf[i+0:])
-		if err != nil {
-			return 0, err
+		v := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+0] & 0x7F)
+			for buf[i+0]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+0]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			v = t
+
 		}
-		i += ni
+		switch v {
+
+		case 0 + 1:
+			var tt *MySQLCoordinateTx
+
+			{
+				if buf[i+0] == 1 {
+					if tt == nil {
+						tt = new(MySQLCoordinateTx)
+					}
+
+					{
+						ni, err := (*tt).Unmarshal(buf[i+1:])
+						if err != nil {
+							return 0, err
+						}
+						i += ni
+					}
+					i += 0
+				} else {
+					tt = nil
+				}
+			}
+
+			i += 1
+
+			d.Coordinates = tt
+
+		case 1 + 1:
+			var tt *OracleCoordinateTx
+
+			{
+				if buf[i+0] == 1 {
+					if tt == nil {
+						tt = new(OracleCoordinateTx)
+					}
+
+					{
+						ni, err := (*tt).Unmarshal(buf[i+1:])
+						if err != nil {
+							return 0, err
+						}
+						i += ni
+					}
+					i += 0
+				} else {
+					tt = nil
+				}
+			}
+
+			i += 1
+
+			d.Coordinates = tt
+
+		default:
+			d.Coordinates = nil
+		}
 	}
 	{
 		l := uint64(0)
