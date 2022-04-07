@@ -63,7 +63,7 @@ type KafkaRunner struct {
 
 	location *time.Location
 
-	chBinlogEntries chan *common.BinlogEntries
+	chBinlogEntries chan *common.DataEntries
 	chDumpEntry     chan *common.DumpEntry
 
 	lastSavedGtid string
@@ -116,7 +116,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		storeManager: storeManager,
 
 		chDumpEntry:     make(chan *common.DumpEntry, 2),
-		chBinlogEntries: make(chan *common.BinlogEntries, 2),
+		chBinlogEntries: make(chan *common.DataEntries, 2),
 
 		location: loc,
 
@@ -426,7 +426,7 @@ func (kr *KafkaRunner) handleIncr() {
 	var err error
 	groupTimeoutDuration := time.Duration(kr.kafkaConfig.MessageGroupTimeout) * time.Millisecond
 	var entriesSize uint64
-	entriesWillBeSent := []*common.BinlogEntry{}
+	entriesWillBeSent := []*common.DataEntry{}
 
 	sendEntriesAndClear := func() error {
 		err = kr.kafkaTransformDMLEventQueries(entriesWillBeSent)
@@ -439,7 +439,7 @@ func (kr *KafkaRunner) handleIncr() {
 		}
 		atomic.AddUint32(&kr.appliedTxCount, 1)
 		entriesSize = 0
-		entriesWillBeSent = []*common.BinlogEntry{}
+		entriesWillBeSent = []*common.DataEntry{}
 
 		return nil
 	}
@@ -462,7 +462,7 @@ func (kr *KafkaRunner) handleIncr() {
 	timer := time.NewTimer(groupTimeoutDuration)
 	defer timer.Stop()
 	for !kr.shutdown {
-		var binlogEntries *common.BinlogEntries
+		var binlogEntries *common.DataEntries
 		select {
 		case <-kr.shutdownCh:
 			return
@@ -604,7 +604,7 @@ func (kr *KafkaRunner) initiateStreaming() error {
 			}
 			kr.logger.Debug("incr. after publish nats reply. intermediate")
 		} else {
-			var binlogEntries common.BinlogEntries
+			var binlogEntries common.DataEntries
 			if err := common.Decode(incrNMM.GetBytes(), &binlogEntries); err != nil {
 				kr.onError(common.TaskStateDead, err)
 				return
@@ -847,7 +847,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 	return nil
 }
 
-func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.BinlogEntry) (err error) {
+func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEntry) (err error) {
 	if len(dmlEntries) <= 0 {
 		return nil
 	}

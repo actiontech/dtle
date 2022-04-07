@@ -589,7 +589,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 	//}
 }
 
-func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.BinlogEntry {
+func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.DataEntry {
 	entry := common.NewBinlogEntry()
 	entry.Final = true
 	entry.Coordinates.(*common.OracleCoordinateTx).OldestUncommittedScn = tx.oldestUncommittedScn

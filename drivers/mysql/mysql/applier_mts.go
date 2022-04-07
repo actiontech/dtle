@@ -74,7 +74,7 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 
 // block for waiting. return true for can_execute, false for abortion.
 //  This function must be called sequentially.
-func (mm *MtsManager) WaitForExecution(binlogEntry *common.BinlogEntry) bool {
+func (mm *MtsManager) WaitForExecution(binlogEntry *common.DataEntry) bool {
 	mm.lastEnqueue = binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
 
 	if mm.forceMts {
@@ -129,7 +129,7 @@ func (mm *MtsManager) LcUpdater() {
 	}
 }
 
-func (mm *MtsManager) Executed(binlogEntry *common.BinlogEntry) {
+func (mm *MtsManager) Executed(binlogEntry *common.DataEntry) {
 	select {
 	case <-mm.shutdownCh:
 		return

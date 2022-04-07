@@ -67,7 +67,7 @@ struct DataEvent {
     DtleFlags uint32
 }
 
-struct BinlogEntry {
+struct DataEntry {
 	Coordinates union CoordinatesI{
         *MySQLCoordinateTx
         *OracleCoordinateTx
@@ -77,8 +77,8 @@ struct BinlogEntry {
     Final       bool
 }
 
-struct BinlogEntries {
-	Entries []*BinlogEntry
+struct DataEntries {
+	Entries []*DataEntry
 }
 
 struct ControlMsg {

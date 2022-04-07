@@ -42,20 +42,20 @@ func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
 
 
 type BinlogEntryContext struct {
-	Entry       *BinlogEntry
+	Entry       *DataEntry
 	// Only a DML has a tableItem. For a DDL, its tableItem is nil.
 	TableItems  []*ApplierTableItem
 	OriginalSize  int // size of binlog entry
 }
 
-func NewBinlogEntry() *BinlogEntry {
-	binlogEntry := &BinlogEntry{
+func NewBinlogEntry() *DataEntry {
+	binlogEntry := &DataEntry{
 		Events:       make([]DataEvent, 0),
 	}
 	return binlogEntry
 }
 
-func (b *BinlogEntry) HasDDL() bool {
+func (b *DataEntry) HasDDL() bool {
 	for i := range b.Events {
 		switch b.Events[i].DML {
 		case NotDML:
@@ -66,12 +66,12 @@ func (b *BinlogEntry) HasDDL() bool {
 	return false
 }
 
-func (b *BinlogEntry) IsPartOfBigTx() bool {
+func (b *DataEntry) IsPartOfBigTx() bool {
 	return !(b.Index == 0 && b.Final)
 }
 
 // Duplicate creates and returns a new binlog entry, with some of the attributes pre-assigned
-func (b *BinlogEntry) String() string {
+func (b *DataEntry) String() string {
 	return fmt.Sprintf("[BinlogEntry at %+v]", b.Coordinates)
 }
 
