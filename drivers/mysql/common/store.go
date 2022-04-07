@@ -309,13 +309,13 @@ func (sm *StoreManager) GetJobStatus(jobId string) (string, error) {
 	return jobInfo.JobStatus, nil
 }
 
-func (sm *StoreManager) FindJobList() ([]*JobListItemV2, error) {
+func (sm *StoreManager) FindJobList() (map[string]*JobListItemV2, error) {
 	key := "dtleJobList/"
 	kps, err := sm.consulStore.List(key)
 	if nil != err && err != store.ErrKeyNotFound {
 		return nil, fmt.Errorf("get %v value from consul failed: %v", key, err)
 	}
-	jobList := make([]*JobListItemV2, 0)
+	jobList := make(map[string]*JobListItemV2, 0)
 
 	for _, kp := range kps {
 		job := new(JobListItemV2)
@@ -323,7 +323,7 @@ func (sm *StoreManager) FindJobList() ([]*JobListItemV2, error) {
 		if err != nil {
 			return nil, fmt.Errorf("get %v from consul, unmarshal err : %v", key, err)
 		}
-		jobList = append(jobList, job)
+		jobList[job.JobId] = job
 	}
 	return jobList, nil
 }
