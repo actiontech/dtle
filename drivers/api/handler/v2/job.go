@@ -100,13 +100,13 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
 	}
 	logger.Info("invoke consul find job list finished")
-	nomadJobMap, err := findJobsFromNomad()
+	nomadJobs, err := findJobsFromNomad()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("find job err %v", err)))
 	}
 	logger.Info("invoke nomad find job list finished")
 	jobs := make([]common.JobListItemV2, 0)
-	for _, nomadItem := range nomadJobMap {
+	for _, nomadItem := range nomadJobs {
 		consulJob, ok := jobList[nomadItem.Name]
 		if !ok {
 			// tenant administrators can view job
@@ -135,7 +135,9 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 			SrcDatabaseType:  consulJob.SrcDatabaseType,
 			AllocationStatus: map[string]string{},
 		}
-		jobItem.JobStatus = nomadItem.Status
+		if consulJob.JobStatus == "" || consulJob.JobStatus == common.DtleJobStatusNonPaused {
+			jobItem.JobStatus = nomadItem.Status
+		}
 		if reqParam.FilterJobStatus != "" && reqParam.FilterJobStatus != jobItem.JobStatus {
 			continue
 		}
@@ -189,7 +191,19 @@ func filterJobAddr(addrList []string, filterHost, filterPort string) bool {
 	return false
 }
 
-func findJobsFromNomad() (map[string]nomadApi.JobListStub, error) {
+func findJobMapFromNomad() (map[string]nomadApi.JobListStub, error) {
+	nomadJobs,err := findJobsFromNomad()
+	if err != nil{
+		return nil, err
+	}
+	nomadJobMap := make(map[string]nomadApi.JobListStub, 0)
+	for _, nomadJob := range nomadJobs {
+		nomadJobMap[nomadJob.ID] = nomadJob
+	}
+	return nomadJobMap, nil
+}
+
+func findJobsFromNomad() ([]nomadApi.JobListStub, error) {
 	url := handler.BuildUrl("/v1/jobs")
 	resp, err := http.Get(url)
 	if err != nil {
@@ -206,11 +220,7 @@ func findJobsFromNomad() (map[string]nomadApi.JobListStub, error) {
 		return nil, err
 	}
 
-	nomadJobMap := make(map[string]nomadApi.JobListStub, 0)
-	for _, nomadJob := range nomadJobs {
-		nomadJobMap[nomadJob.ID] = nomadJob
-	}
-	return nomadJobMap, nil
+	return nomadJobs, nil
 }
 
 type DtleJobType string
@@ -768,7 +778,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 			Delay:             0,
 		}
 
-		nomadJobMap, err := findJobsFromNomad()
+		nomadJobMap, err := findJobMapFromNomad()
 		if err != nil {
 			return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
 		}
