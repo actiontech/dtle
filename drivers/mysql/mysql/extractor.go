@@ -70,7 +70,7 @@ type Extractor struct {
 	dataChannel              chan *common.BinlogEntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
-	initialBinlogCoordinates *common.BinlogCoordinatesX
+	initialBinlogCoordinates *common.MySQLCoordinates
 	currentBinlogCoordinates *common.MySQLCoordinateTx
 	rowCopyComplete          chan bool
 	rowCopyCompleteFlag      int64
@@ -786,7 +786,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
-func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
+func (e *Extractor) initBinlogReader(binlogCoordinates *common.MySQLCoordinates) {
 	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
 		e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
 		e.NetWriteTimeout, e.ctx)
@@ -822,13 +822,13 @@ func (e *Extractor) setInitialBinlogCoordinates() error {
 		if err != nil {
 			return err
 		}
-		e.initialBinlogCoordinates = &common.BinlogCoordinatesX{
+		e.initialBinlogCoordinates = &common.MySQLCoordinates{
 			GtidSet: gtidSet.String(),
 			LogFile: e.mysqlContext.BinlogFile,
 			LogPos:  e.mysqlContext.BinlogPos,
 		}
 	} else if e.mysqlContext.BinlogFile != "" {
-		e.initialBinlogCoordinates = &common.BinlogCoordinatesX{
+		e.initialBinlogCoordinates = &common.MySQLCoordinates{
 			LogFile: e.mysqlContext.BinlogFile,
 			LogPos:  e.mysqlContext.BinlogPos,
 		}

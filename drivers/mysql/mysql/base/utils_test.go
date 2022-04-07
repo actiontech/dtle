@@ -9,11 +9,12 @@ package base
 import (
 	gosql "database/sql"
 	"fmt"
-	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
-	"github.com/pingcap/tidb/parser"
 	"reflect"
 	"testing"
 	"time"
+
+	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
+	"github.com/pingcap/tidb/parser"
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
@@ -73,7 +74,7 @@ func TestGetSelfBinlogCoordinates(t *testing.T) {
 	tests := []struct {
 		name                      string
 		args                      args
-		wantSelfBinlogCoordinates *common.BinlogCoordinatesX
+		wantSelfBinlogCoordinates *common.MySQLCoordinates
 		wantErr                   bool
 	}{
 		//{name: "T1",

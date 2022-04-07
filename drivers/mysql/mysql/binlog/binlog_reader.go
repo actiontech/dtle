@@ -75,7 +75,7 @@ type BinlogReader struct {
 	binlogStreamer dmstreamer.Streamer
 	// for relay
 	binlogReader      *dmstreamer.BinlogReader
-	currentCoord      common.BinlogCoordinatesX
+	currentCoord      common.MySQLCoordinates
 	currentCoordMutex *sync.Mutex
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext *common.MySQLDriverConfig
@@ -194,7 +194,7 @@ func NewBinlogReader(
 		ctx:                  ctx,
 		execCtx:              execCtx,
 		logger:               logger,
-		currentCoord:         common.BinlogCoordinatesX{},
+		currentCoord:         common.MySQLCoordinates{},
 		currentCoordMutex:    &sync.Mutex{},
 		mysqlContext:         cfg,
 		ReMap:                make(map[string]*regexp.Regexp),
@@ -272,7 +272,7 @@ func (b *BinlogReader) getBinlogDir() string {
 	return path.Join(b.execCtx.StateDir, "binlog", b.execCtx.Subject)
 }
 
-func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinatesX) (err error) {
+func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates) (err error) {
 	if coordinates.IsEmpty() {
 		b.logger.Warn("Emptry coordinates at ConnectBinlogStreamer")
 	}
@@ -406,7 +406,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 	return nil
 }
 
-func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinatesX {
+func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.MySQLCoordinates {
 	b.currentCoordMutex.Lock()
 	defer b.currentCoordMutex.Unlock()
 	returnCoordinates := b.currentCoord
