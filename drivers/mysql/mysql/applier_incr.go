@@ -32,7 +32,7 @@ type ApplierIncr struct {
 	mysqlContext *common.MySQLDriverConfig
 
 	incrBytesQueue   chan []byte
-	binlogEntryQueue chan *common.BinlogEntry
+	binlogEntryQueue chan *common.DataEntry
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *common.BinlogEntryContext
 
@@ -56,7 +56,7 @@ type ApplierIncr struct {
 	gtidSet           *gomysql.MysqlGTIDSet
 	gtidSetLock       *sync.RWMutex
 	gtidItemMap       base.GtidItemMap
-	EntryExecutedHook func(entry *common.BinlogEntry)
+	EntryExecutedHook func(entry *common.DataEntry)
 
 	tableItems mapSchemaTableItems
 
@@ -80,7 +80,7 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.My
 		subject:               subject,
 		mysqlContext:          mysqlContext,
 		incrBytesQueue:        make(chan []byte, mysqlContext.ReplChanBufferSize),
-		binlogEntryQueue:      make(chan *common.BinlogEntry, mysqlContext.ReplChanBufferSize * 2),
+		binlogEntryQueue:      make(chan *common.DataEntry, mysqlContext.ReplChanBufferSize * 2),
 		applyBinlogMtsTxQueue: make(chan *common.BinlogEntryContext, mysqlContext.ReplChanBufferSize * 2),
 		db:                    db,
 		dbs:                   dbs,
@@ -392,7 +392,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 			atomic.AddInt64(a.memory2, -int64(len(bs)))
 			hasEntry = true
 
-			binlogEntries := &common.BinlogEntries{}
+			binlogEntries := &common.DataEntries{}
 			if err := common.Decode(bs, binlogEntries); err != nil {
 				a.OnError(common.TaskStateDead, err)
 				return

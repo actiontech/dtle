@@ -2645,14 +2645,14 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 	return i + 26, nil
 }
 
-type BinlogEntry struct {
+type DataEntry struct {
 	Coordinates CoordinatesI
 	Events      []DataEvent
 	Index       int32
 	Final       bool
 }
 
-func (d *BinlogEntry) Size() (s uint64) {
+func (d *DataEntry) Size() (s uint64) {
 
 	{
 		var v uint64
@@ -2734,7 +2734,7 @@ func (d *BinlogEntry) Size() (s uint64) {
 	s += 5
 	return
 }
-func (d *BinlogEntry) Marshal(buf []byte) ([]byte, error) {
+func (d *DataEntry) Marshal(buf []byte) ([]byte, error) {
 	size := d.Size()
 	{
 		if uint64(cap(buf)) >= size {
@@ -2865,7 +2865,7 @@ func (d *BinlogEntry) Marshal(buf []byte) ([]byte, error) {
 	return buf[:i+5], nil
 }
 
-func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
+func (d *DataEntry) Unmarshal(buf []byte) (uint64, error) {
 	i := uint64(0)
 
 	{
@@ -2988,11 +2988,11 @@ func (d *BinlogEntry) Unmarshal(buf []byte) (uint64, error) {
 	return i + 5, nil
 }
 
-type BinlogEntries struct {
-	Entries []*BinlogEntry
+type DataEntries struct {
+	Entries []*DataEntry
 }
 
-func (d *BinlogEntries) Size() (s uint64) {
+func (d *DataEntries) Size() (s uint64) {
 
 	{
 		l := uint64(len(d.Entries))
@@ -3027,7 +3027,7 @@ func (d *BinlogEntries) Size() (s uint64) {
 	}
 	return
 }
-func (d *BinlogEntries) Marshal(buf []byte) ([]byte, error) {
+func (d *DataEntries) Marshal(buf []byte) ([]byte, error) {
 	size := d.Size()
 	{
 		if uint64(cap(buf)) >= size {
@@ -3080,7 +3080,7 @@ func (d *BinlogEntries) Marshal(buf []byte) ([]byte, error) {
 	return buf[:i+0], nil
 }
 
-func (d *BinlogEntries) Unmarshal(buf []byte) (uint64, error) {
+func (d *DataEntries) Unmarshal(buf []byte) (uint64, error) {
 	i := uint64(0)
 
 	{
@@ -3103,14 +3103,14 @@ func (d *BinlogEntries) Unmarshal(buf []byte) (uint64, error) {
 		if uint64(cap(d.Entries)) >= l {
 			d.Entries = d.Entries[:l]
 		} else {
-			d.Entries = make([]*BinlogEntry, l)
+			d.Entries = make([]*DataEntry, l)
 		}
 		for k0 := range d.Entries {
 
 			{
 				if buf[i+0] == 1 {
 					if d.Entries[k0] == nil {
-						d.Entries[k0] = new(BinlogEntry)
+						d.Entries[k0] = new(DataEntry)
 					}
 
 					{
