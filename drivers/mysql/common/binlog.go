@@ -172,16 +172,16 @@ func (ait *ApplierTableItem) Reset() {
 }
 
 // String returns a user-friendly string representation of these coordinates
-func (b BinlogCoordinatesX) String() string {
+func (b MySQLCoordinates) String() string {
 	return fmt.Sprintf("%v", b.GtidSet)
 }
 
 // IsEmpty returns true if the log file is empty, unnamed
-func (b *BinlogCoordinatesX) IsEmpty() bool {
+func (b *MySQLCoordinates) IsEmpty() bool {
 	return b.GtidSet == "" && b.LogFile == ""
 }
 
-func (b *BinlogCoordinatesX) CompareFilePos(other *BinlogCoordinatesX) int {
+func (b *MySQLCoordinates) CompareFilePos(other *MySQLCoordinates) int {
 	if b.LogFile < other.LogFile {
 		return -1
 	} else if b.LogFile == other.LogFile {
@@ -197,6 +197,17 @@ func (b *BinlogCoordinatesX) CompareFilePos(other *BinlogCoordinatesX) int {
 	}
 }
 
+func (b *MySQLCoordinates) GetLogPos() int64 {
+	return b.LogPos
+}
+
+func (b *MySQLCoordinates) GetTxSet() string {
+	return b.GtidSet
+}
+
+func (b *MySQLCoordinates) GetLogFile() string {
+	return b.LogFile
+}
 type QueryEventFlags struct {
 	NoForeignKeyChecks  bool
 

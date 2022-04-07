@@ -49,3 +49,22 @@ func (o *OracleCoordinateTx)GetFieldValue(fieldName string)interface{}{
  func (o *OracleCoordinateTx)GetLastCommit()int64{
 	return o.EndSCN
  }
+
+ type DumpCoordinates interface{
+	GetLogPos() int64
+	GetTxSet() string
+	GetLogFile() string
+}
+
+
+func (b *OracleCoordinates) GetLogPos() int64 {
+	return 0
+}
+
+func (b *OracleCoordinates) GetTxSet() string {
+	return ""
+}
+
+func (b *OracleCoordinates) GetLogFile() string {
+	return ""
+}

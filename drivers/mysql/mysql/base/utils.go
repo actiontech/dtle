@@ -10,13 +10,14 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
+	"regexp"
+	"strings"
+	"time"
+
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/actiontech/dtle/g"
 	parserformat "github.com/pingcap/tidb/parser/format"
 	"github.com/pingcap/tidb/parser/model"
-	"regexp"
-	"strings"
-	"time"
 
 	sqle "github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 
@@ -63,12 +64,12 @@ func StringContainsAll(s string, substrings ...string) bool {
 	return nonEmptyStringsFound
 }
 
-func GetSelfBinlogCoordinates(db usql.QueryAble) (selfBinlogCoordinates *common.BinlogCoordinatesX, err error) {
+func GetSelfBinlogCoordinates(db usql.QueryAble) (selfBinlogCoordinates *common.MySQLCoordinates, err error) {
 	return ParseBinlogCoordinatesFromRow(usql.ShowMasterStatus(db))
 }
 
-func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *common.BinlogCoordinatesX, err error) {
-	r = &common.BinlogCoordinatesX{}
+func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *common.MySQLCoordinates, err error) {
+	r = &common.MySQLCoordinates{}
 	var dummy interface{}
 	err = row.Scan(&r.LogFile, &r.LogPos, &dummy, &dummy, &r.GtidSet)
 	if err != nil {
