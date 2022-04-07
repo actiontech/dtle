@@ -106,7 +106,15 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 	}
 	logger.Info("invoke nomad find job list finished")
 	jobs := make([]common.JobListItemV2, 0)
-	for _, consulJob := range jobList {
+	for _, nomadItem := range nomadJobMap {
+		consulJob, ok := jobList[nomadItem.Name]
+		if !ok {
+			// tenant administrators can view job
+			consulJob = &common.JobListItemV2{
+				JobId: nomadItem.Name,
+				User:  fmt.Sprintf("%s:%s", user.Tenant, common.DefaultAdminUser),
+			}
+		}
 		jobType := GetJobTypeFromJobId(consulJob.JobId)
 		if filterJobType != jobType {
 			continue
@@ -127,11 +135,7 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 			SrcDatabaseType:  consulJob.SrcDatabaseType,
 			AllocationStatus: map[string]string{},
 		}
-		if nomadItem, ok := nomadJobMap[jobItem.JobId]; !ok {
-			jobItem.JobStatus = common.DtleJobStatusUndefined
-		} else if consulJob.JobStatus == common.DtleJobStatusNonPaused {
-			jobItem.JobStatus = nomadItem.Status
-		}
+		jobItem.JobStatus = nomadItem.Status
 		if reqParam.FilterJobStatus != "" && reqParam.FilterJobStatus != jobItem.JobStatus {
 			continue
 		}
@@ -168,6 +172,9 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 }
 
 func filterJobAddr(addrList []string, filterHost, filterPort string) bool {
+	if len(addrList) == 0 {
+		return true
+	}
 	for _, addr := range addrList {
 		host, portStr, err := net.SplitHostPort(addr)
 		if err != nil {
