@@ -671,7 +671,7 @@ func (e *ExtractorOracle) StreamEvents() error {
 			e.wg.Done()
 			e.logger.Debug("StreamEvents goroutine exited")
 		}()
-		entries := common.BinlogEntries{}
+		entries := common.DataEntries{}
 		entriesSize := 0
 		sendEntriesAndClear := func() error {
 			var gno int64 = 0

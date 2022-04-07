@@ -287,8 +287,8 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
-	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
-		err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.LogPos, entry.Coordinates.LastCommitted)
+	a.ai.EntryExecutedHook = func(entry *common.DataEntry) {
+		err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.GetLogPos(), entry.Coordinates.GetLastCommit())
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))
 			return
