@@ -26,14 +26,21 @@ struct OracleCoordinateTx {
 	EndSCN     int64
 }
 
-struct BinlogCoordinatesX {
+struct MySQLCoordinates {
 	LogFile string
 	LogPos  int64
 	GtidSet string
 }
 
+struct OracleCoordinates {
+	
+}
+
 struct DumpStatResult {
-    Coord *BinlogCoordinatesX
+    Coord union DumpCoordinates{
+        *MySQLCoordinates
+        *OracleCoordinates
+    }
     Type  int32
 }
 

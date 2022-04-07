@@ -68,7 +68,7 @@ type ExtractorOracle struct {
 	inspector                *mysql.Inspector
 	binlogReader             *binlog.BinlogReader
 	LogMinerStream           *LogMinerStream
-	initialBinlogCoordinates *common.BinlogCoordinatesX
+	initialBinlogCoordinates *common.OracleCoordinates
 	currentBinlogCoordinates *common.OracleCoordinateTx
 	//rowCopyComplete          chan bool
 	rowCopyCompleteFlag int64

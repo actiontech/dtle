@@ -525,9 +525,9 @@ func (a *Applier) subscribeNats() (err error) {
 			a.logger.Warn("ParallelWorkers > 1 and UseMySQLDependency = false. disabling MySQL session.foreign_key_checks")
 		}
 
-		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GtidSet)
+		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GetTxSet())
 		// Do not re-assign a.gtidSet (#538). Update it.
-		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
+		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GetTxSet())
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
 			return
@@ -536,9 +536,9 @@ func (a *Applier) subscribeNats() (err error) {
 		for _, uuidSet := range gs.Sets {
 			a.gtidSet.AddSet(uuidSet)
 		}
-		a.mysqlContext.Gtid = dumpData.Coord.GtidSet
-		a.mysqlContext.BinlogFile = dumpData.Coord.LogFile
-		a.mysqlContext.BinlogPos = dumpData.Coord.LogPos
+		a.mysqlContext.Gtid = dumpData.Coord.GetTxSet()
+		a.mysqlContext.BinlogFile = dumpData.Coord.GetLogFile()
+		a.mysqlContext.BinlogPos = dumpData.Coord.GetLogPos()
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
