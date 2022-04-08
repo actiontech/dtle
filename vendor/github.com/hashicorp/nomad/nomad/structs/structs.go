@@ -17,7 +17,6 @@ import (
 	"math"
 	"net"
 	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -25,24 +24,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/nomad/lib/cpuset"
-
 	"github.com/hashicorp/cronexpr"
 	"github.com/hashicorp/go-msgpack/codec"
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/go-version"
-	"github.com/mitchellh/copystructure"
-	"golang.org/x/crypto/blake2b"
-
 	"github.com/hashicorp/nomad/acl"
 	"github.com/hashicorp/nomad/command/agent/host"
 	"github.com/hashicorp/nomad/command/agent/pprof"
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/helper/args"
 	"github.com/hashicorp/nomad/helper/constraints/semver"
+	"github.com/hashicorp/nomad/helper/escapingfs"
 	"github.com/hashicorp/nomad/helper/uuid"
+	"github.com/hashicorp/nomad/lib/cpuset"
 	"github.com/hashicorp/nomad/lib/kheap"
 	psstructs "github.com/hashicorp/nomad/plugins/shared/structs"
+	"github.com/miekg/dns"
+	"github.com/mitchellh/copystructure"
+	"golang.org/x/crypto/blake2b"
 )
 
 var (
@@ -384,6 +383,9 @@ type WriteRequest struct {
 
 	// AuthToken is secret portion of the ACL token used for the request
 	AuthToken string
+
+	// IdempotencyToken can be used to ensure the write is idempotent.
+	IdempotencyToken string
 
 	InternalRpcInfo
 }
@@ -1978,19 +1980,19 @@ func (n *Node) Copy() *Node {
 	nn := new(Node)
 	*nn = *n
 	nn.Attributes = helper.CopyMapStringString(nn.Attributes)
-	nn.Resources = nn.Resources.Copy()
-	nn.Reserved = nn.Reserved.Copy()
 	nn.NodeResources = nn.NodeResources.Copy()
 	nn.ReservedResources = nn.ReservedResources.Copy()
+	nn.Resources = nn.Resources.Copy()
+	nn.Reserved = nn.Reserved.Copy()
 	nn.Links = helper.CopyMapStringString(nn.Links)
 	nn.Meta = helper.CopyMapStringString(nn.Meta)
-	nn.Events = copyNodeEvents(n.Events)
 	nn.DrainStrategy = nn.DrainStrategy.Copy()
-	nn.LastDrain = nn.LastDrain.Copy()
+	nn.Events = copyNodeEvents(n.Events)
+	nn.Drivers = copyNodeDrivers(n.Drivers)
 	nn.CSIControllerPlugins = copyNodeCSI(nn.CSIControllerPlugins)
 	nn.CSINodePlugins = copyNodeCSI(nn.CSINodePlugins)
-	nn.Drivers = copyNodeDrivers(n.Drivers)
 	nn.HostVolumes = copyNodeHostVolumes(n.HostVolumes)
+	nn.LastDrain = nn.LastDrain.Copy()
 	return nn
 }
 
@@ -2440,6 +2442,22 @@ func (n *NodeNetworkResource) Equals(o *NodeNetworkResource) bool {
 	return reflect.DeepEqual(n, o)
 }
 
+func (n *NodeNetworkResource) Copy() *NodeNetworkResource {
+	if n == nil {
+		return nil
+	}
+
+	c := new(NodeNetworkResource)
+	*c = *n
+
+	if n.Addresses != nil {
+		c.Addresses = make([]NodeNetworkAddress, len(n.Addresses))
+		copy(c.Addresses, n.Addresses)
+	}
+
+	return c
+}
+
 func (n *NodeNetworkResource) HasAlias(alias string) bool {
 	for _, addr := range n.Addresses {
 		if addr.Alias == alias {
@@ -2529,6 +2547,7 @@ type NetworkResource struct {
 	Device        string     // Name of the device
 	CIDR          string     // CIDR block of addresses
 	IP            string     // Host IP address
+	Hostname      string     `json:",omitempty"` // Hostname of the network namespace
 	MBits         int        // Throughput
 	DNS           *DNSConfig // DNS Configuration
 	ReservedPorts []Port     // Host Reserved ports
@@ -2537,7 +2556,7 @@ type NetworkResource struct {
 
 func (nr *NetworkResource) Hash() uint32 {
 	var data []byte
-	data = append(data, []byte(fmt.Sprintf("%s%s%s%s%d", nr.Mode, nr.Device, nr.CIDR, nr.IP, nr.MBits))...)
+	data = append(data, []byte(fmt.Sprintf("%s%s%s%s%s%d", nr.Mode, nr.Device, nr.CIDR, nr.IP, nr.Hostname, nr.MBits))...)
 
 	for i, port := range nr.ReservedPorts {
 		data = append(data, []byte(fmt.Sprintf("r%d%s%d%d", i, port.Label, port.Value, port.To))...)
@@ -2583,6 +2602,7 @@ func (n *NetworkResource) Copy() *NetworkResource {
 	}
 	newR := new(NetworkResource)
 	*newR = *n
+	newR.DNS = n.DNS.Copy()
 	if n.ReservedPorts != nil {
 		newR.ReservedPorts = make([]Port, len(n.ReservedPorts))
 		copy(newR.ReservedPorts, n.ReservedPorts)
@@ -2797,9 +2817,15 @@ func (n *NodeResources) Copy() *NodeResources {
 
 	newN := new(NodeResources)
 	*newN = *n
-
-	// Copy the networks
+	newN.Cpu = n.Cpu.Copy()
 	newN.Networks = n.Networks.Copy()
+
+	if n.NodeNetworks != nil {
+		newN.NodeNetworks = make([]*NodeNetworkResource, len(n.NodeNetworks))
+		for i, nn := range n.NodeNetworks {
+			newN.NodeNetworks[i] = nn.Copy()
+		}
+	}
 
 	// Copy the devices
 	if n.Devices != nil {
@@ -2983,6 +3009,16 @@ type NodeCpuResources struct {
 	// This value is currently only reported on Linux platforms which support cgroups and is
 	// discovered by inspecting the cpuset of the agent's cgroup.
 	ReservableCpuCores []uint16
+}
+
+func (n NodeCpuResources) Copy() NodeCpuResources {
+	newN := n
+	if n.ReservableCpuCores != nil {
+		newN.ReservableCpuCores = make([]uint16, len(n.ReservableCpuCores))
+		copy(newN.ReservableCpuCores, n.ReservableCpuCores)
+	}
+
+	return newN
 }
 
 func (n *NodeCpuResources) Merge(o *NodeCpuResources) {
@@ -4016,6 +4052,10 @@ type Job struct {
 	// parameterized job.
 	Dispatched bool
 
+	// DispatchIdempotencyToken is optionally used to ensure that a dispatched job does not have any
+	// non-terminal siblings which have the same token value.
+	DispatchIdempotencyToken string
+
 	// Payload is the payload supplied when the job was dispatched.
 	Payload []byte
 
@@ -4073,8 +4113,8 @@ type Job struct {
 }
 
 // NamespacedID returns the namespaced id useful for logging
-func (j *Job) NamespacedID() *NamespacedID {
-	return &NamespacedID{
+func (j *Job) NamespacedID() NamespacedID {
+	return NamespacedID{
 		ID:        j.ID,
 		Namespace: j.Namespace,
 	}
@@ -4295,19 +4335,24 @@ func (j *Job) Warnings() error {
 	var mErr multierror.Error
 
 	// Check the groups
-	ap := 0
+	hasAutoPromote, allAutoPromote := false, true
+
 	for _, tg := range j.TaskGroups {
 		if err := tg.Warnings(j); err != nil {
 			outer := fmt.Errorf("Group %q has warnings: %v", tg.Name, err)
 			mErr.Errors = append(mErr.Errors, outer)
 		}
-		if tg.Update != nil && tg.Update.AutoPromote {
-			ap += 1
+
+		if u := tg.Update; u != nil {
+			hasAutoPromote = hasAutoPromote || u.AutoPromote
+
+			// Having no canaries implies auto-promotion since there are no canaries to promote.
+			allAutoPromote = allAutoPromote && (u.Canary == 0 || u.AutoPromote)
 		}
 	}
 
 	// Check AutoPromote, should be all or none
-	if ap > 0 && ap < len(j.TaskGroups) {
+	if hasAutoPromote && !allAutoPromote {
 		err := fmt.Errorf("auto_promote must be true for all groups to enable automatic promotion")
 		mErr.Errors = append(mErr.Errors, err)
 	}
@@ -5193,7 +5238,7 @@ func (d *DispatchPayloadConfig) Copy() *DispatchPayloadConfig {
 
 func (d *DispatchPayloadConfig) Validate() error {
 	// Verify the destination doesn't escape
-	escaped, err := PathEscapesAllocDir("task/local/", d.File)
+	escaped, err := escapingfs.PathEscapesAllocViaRelative("task/local/", d.File)
 	if err != nil {
 		return fmt.Errorf("invalid destination path: %v", err)
 	} else if escaped {
@@ -6292,7 +6337,18 @@ func (tg *TaskGroup) validateNetworks() error {
 				mErr.Errors = append(mErr.Errors, err)
 			}
 		}
+
+		// Validate the hostname field to be a valid DNS name. If the parameter
+		// looks like it includes an interpolation value, we skip this. It
+		// would be nice to validate additional parameters, but this isn't the
+		// right place.
+		if net.Hostname != "" && !strings.Contains(net.Hostname, "${") {
+			if _, ok := dns.IsDomainName(net.Hostname); !ok {
+				mErr.Errors = append(mErr.Errors, errors.New("Hostname is not a valid DNS name"))
+			}
+		}
 	}
+
 	// Check for duplicate tasks or port labels, and no duplicated static ports
 	for _, task := range tg.Tasks {
 		if task.Resources == nil {
@@ -6331,13 +6387,11 @@ func (tg *TaskGroup) validateNetworks() error {
 	return mErr.ErrorOrNil()
 }
 
-// validateServices runs Service.Validate() on group-level services,
-// checks that group services do not conflict with task services and that
+// validateServices runs Service.Validate() on group-level services, checks
 // group service checks that refer to tasks only refer to tasks that exist.
 func (tg *TaskGroup) validateServices() error {
 	var mErr multierror.Error
 	knownTasks := make(map[string]struct{})
-	knownServices := make(map[string]struct{})
 
 	// Create a map of known tasks and their services so we can compare
 	// vs the group-level services and checks
@@ -6347,15 +6401,11 @@ func (tg *TaskGroup) validateServices() error {
 			continue
 		}
 		for _, service := range task.Services {
-			if _, ok := knownServices[service.Name+service.PortLabel]; ok {
-				mErr.Errors = append(mErr.Errors, fmt.Errorf("Service %s is duplicate", service.Name))
-			}
 			for _, check := range service.Checks {
 				if check.TaskName != "" {
 					mErr.Errors = append(mErr.Errors, fmt.Errorf("Check %s is invalid: only task group service checks can be assigned tasks", check.Name))
 				}
 			}
-			knownServices[service.Name+service.PortLabel] = struct{}{}
 		}
 	}
 	for i, service := range tg.Services {
@@ -6370,10 +6420,7 @@ func (tg *TaskGroup) validateServices() error {
 		if service.AddressMode == AddressModeDriver {
 			mErr.Errors = append(mErr.Errors, fmt.Errorf("service %q cannot use address_mode=\"driver\", only services defined in a \"task\" block can use this mode", service.Name))
 		}
-		if _, ok := knownServices[service.Name+service.PortLabel]; ok {
-			mErr.Errors = append(mErr.Errors, fmt.Errorf("Service %s is duplicate", service.Name))
-		}
-		knownServices[service.Name+service.PortLabel] = struct{}{}
+
 		for _, check := range service.Checks {
 			if check.TaskName != "" {
 				if check.Type != ServiceCheckScript && check.Type != ServiceCheckGRPC {
@@ -7402,7 +7449,7 @@ func (t *Template) Validate() error {
 	}
 
 	// Verify the destination doesn't escape
-	escaped, err := PathEscapesAllocDir("task", t.DestPath)
+	escaped, err := escapingfs.PathEscapesAllocViaRelative("task", t.DestPath)
 	if err != nil {
 		mErr.Errors = append(mErr.Errors, fmt.Errorf("invalid destination path: %v", err))
 	} else if escaped {
@@ -8121,31 +8168,6 @@ func (ta *TaskArtifact) Hash() string {
 	return base64.RawStdEncoding.EncodeToString(h.Sum(nil))
 }
 
-// PathEscapesAllocDir returns if the given path escapes the allocation
-// directory.
-//
-// The prefix is to joined to the path (e.g. "task/local"), and this function
-// checks if path escapes the alloc dir, NOT the prefix directory within the alloc dir.
-// With prefix="task/local", it will return false for "../secret", but
-// true for "../../../../../../root" path; only the latter escapes the alloc dir
-func PathEscapesAllocDir(prefix, path string) (bool, error) {
-	// Verify the destination doesn't escape the tasks directory
-	alloc, err := filepath.Abs(filepath.Join("/", "alloc-dir/", "alloc-id/"))
-	if err != nil {
-		return false, err
-	}
-	abs, err := filepath.Abs(filepath.Join(alloc, prefix, path))
-	if err != nil {
-		return false, err
-	}
-	rel, err := filepath.Rel(alloc, abs)
-	if err != nil {
-		return false, err
-	}
-
-	return strings.HasPrefix(rel, ".."), nil
-}
-
 func (ta *TaskArtifact) Validate() error {
 	// Verify the source
 	var mErr multierror.Error
@@ -8164,7 +8186,7 @@ func (ta *TaskArtifact) Validate() error {
 			ta.GetterMode, GetterModeAny, GetterModeFile, GetterModeDir))
 	}
 
-	escaped, err := PathEscapesAllocDir("task", ta.RelativeDest)
+	escaped, err := escapingfs.PathEscapesAllocViaRelative("task", ta.RelativeDest)
 	if err != nil {
 		mErr.Errors = append(mErr.Errors, fmt.Errorf("invalid destination path: %v", err))
 	} else if escaped {
@@ -8247,10 +8269,9 @@ type Constraint struct {
 	LTarget string // Left-hand target
 	RTarget string // Right-hand target
 	Operand string // Constraint operand (<=, <, =, !=, >, >=), contains, near
-	str     string // Memoized string
 }
 
-// Equals checks if two constraints are equal
+// Equals checks if two constraints are equal.
 func (c *Constraint) Equals(o *Constraint) bool {
 	return c == o ||
 		c.LTarget == o.LTarget &&
@@ -8258,6 +8279,7 @@ func (c *Constraint) Equals(o *Constraint) bool {
 			c.Operand == o.Operand
 }
 
+// Equal is like Equals but with one less s.
 func (c *Constraint) Equal(o *Constraint) bool {
 	return c.Equals(o)
 }
@@ -8266,17 +8288,15 @@ func (c *Constraint) Copy() *Constraint {
 	if c == nil {
 		return nil
 	}
-	nc := new(Constraint)
-	*nc = *c
-	return nc
+	return &Constraint{
+		LTarget: c.LTarget,
+		RTarget: c.RTarget,
+		Operand: c.Operand,
+	}
 }
 
 func (c *Constraint) String() string {
-	if c.str != "" {
-		return c.str
-	}
-	c.str = fmt.Sprintf("%s %s %s", c.LTarget, c.Operand, c.RTarget)
-	return c.str
+	return fmt.Sprintf("%s %s %s", c.LTarget, c.Operand, c.RTarget)
 }
 
 func (c *Constraint) Validate() error {
@@ -8370,10 +8390,9 @@ type Affinity struct {
 	RTarget string // Right-hand target
 	Operand string // Affinity operand (<=, <, =, !=, >, >=), set_contains_all, set_contains_any
 	Weight  int8   // Weight applied to nodes that match the affinity. Can be negative
-	str     string // Memoized string
 }
 
-// Equal checks if two affinities are equal
+// Equals checks if two affinities are equal.
 func (a *Affinity) Equals(o *Affinity) bool {
 	return a == o ||
 		a.LTarget == o.LTarget &&
@@ -8390,17 +8409,16 @@ func (a *Affinity) Copy() *Affinity {
 	if a == nil {
 		return nil
 	}
-	na := new(Affinity)
-	*na = *a
-	return na
+	return &Affinity{
+		LTarget: a.LTarget,
+		RTarget: a.RTarget,
+		Operand: a.Operand,
+		Weight:  a.Weight,
+	}
 }
 
 func (a *Affinity) String() string {
-	if a.str != "" {
-		return a.str
-	}
-	a.str = fmt.Sprintf("%s %s %s %v", a.LTarget, a.Operand, a.RTarget, a.Weight)
-	return a.str
+	return fmt.Sprintf("%s %s %s %v", a.LTarget, a.Operand, a.RTarget, a.Weight)
 }
 
 func (a *Affinity) Validate() error {
@@ -8883,7 +8901,7 @@ func (d *Deployment) HasAutoPromote() bool {
 		return false
 	}
 	for _, group := range d.TaskGroups {
-		if !group.AutoPromote {
+		if group.DesiredCanaries > 0 && !group.AutoPromote {
 			return false
 		}
 	}

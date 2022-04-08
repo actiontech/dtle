@@ -44,24 +44,23 @@ func warningsFormatter(es []error) string {
 
 // RemoveAllocs is used to remove any allocs with the given IDs
 // from the list of allocations
-func RemoveAllocs(alloc []*Allocation, remove []*Allocation) []*Allocation {
+func RemoveAllocs(allocs []*Allocation, remove []*Allocation) []*Allocation {
+	if len(remove) == 0 {
+		return allocs
+	}
 	// Convert remove into a set
 	removeSet := make(map[string]struct{})
 	for _, remove := range remove {
 		removeSet[remove.ID] = struct{}{}
 	}
 
-	n := len(alloc)
-	for i := 0; i < n; i++ {
-		if _, ok := removeSet[alloc[i].ID]; ok {
-			alloc[i], alloc[n-1] = alloc[n-1], nil
-			i--
-			n--
+	r := make([]*Allocation, 0, len(allocs))
+	for _, alloc := range allocs {
+		if _, ok := removeSet[alloc.ID]; !ok {
+			r = append(r, alloc)
 		}
 	}
-
-	alloc = alloc[:n]
-	return alloc
+	return r
 }
 
 // FilterTerminalAllocs filters out all allocations in a terminal state and
@@ -137,8 +136,12 @@ func AllocsFit(node *Node, allocs []*Allocation, netIdx *NetworkIndex, checkDevi
 	if netIdx == nil {
 		netIdx = NewNetworkIndex()
 		defer netIdx.Release()
-		if netIdx.SetNode(node) || netIdx.AddAllocs(allocs) {
-			return false, "reserved port collision", used, nil
+
+		if collision, reason := netIdx.SetNode(node); collision {
+			return false, fmt.Sprintf("reserved node port collision: %v", reason), used, nil
+		}
+		if collision, reason := netIdx.AddAllocs(allocs); collision {
+			return false, fmt.Sprintf("reserved alloc port collision: %v", reason), used, nil
 		}
 	}
 
@@ -205,7 +208,7 @@ func ScoreFitBinPack(node *Node, util *ComparableResources) float64 {
 	return score
 }
 
-// ScoreFitBinSpread computes a fit score to achieve spread behavior.
+// ScoreFitSpread computes a fit score to achieve spread behavior.
 // Score is in [0, 18]
 //
 // This is equivalent to Worst Fit of
@@ -481,6 +484,12 @@ func ParsePortRanges(spec string) ([]uint64, error) {
 				return nil, fmt.Errorf("invalid range: starting value (%v) less than ending (%v) value", end, start)
 			}
 
+			// Full range validation is below but prevent creating
+			// arbitrarily large arrays here
+			if end > maxValidPort {
+				return nil, fmt.Errorf("port must be < %d but found %d", maxValidPort, end)
+			}
+
 			for i := start; i <= end; i++ {
 				ports[i] = struct{}{}
 			}
@@ -491,6 +500,12 @@ func ParsePortRanges(spec string) ([]uint64, error) {
 
 	var results []uint64
 	for port := range ports {
+		if port == 0 {
+			return nil, fmt.Errorf("port must be > 0")
+		}
+		if port > maxValidPort {
+			return nil, fmt.Errorf("port must be < %d but found %d", maxValidPort, port)
+		}
 		results = append(results, port)
 	}
 

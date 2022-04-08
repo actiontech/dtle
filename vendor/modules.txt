@@ -124,6 +124,7 @@ github.com/coocood/freecache
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f
+## explicit
 github.com/coreos/go-systemd/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
@@ -224,7 +225,7 @@ github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/empty
 github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
-# github.com/golang/snappy v0.0.3
+# github.com/golang/snappy v0.0.4
 github.com/golang/snappy
 # github.com/google/btree v1.0.0
 github.com/google/btree
@@ -256,11 +257,11 @@ github.com/grpc-ecosystem/go-grpc-middleware/util/metautils
 github.com/grpc-ecosystem/grpc-gateway/internal
 github.com/grpc-ecosystem/grpc-gateway/runtime
 github.com/grpc-ecosystem/grpc-gateway/utilities
-# github.com/hashicorp/consul/api v1.8.1
+# github.com/hashicorp/consul/api v1.9.1
 github.com/hashicorp/consul/api
 # github.com/hashicorp/cronexpr v1.1.1
 github.com/hashicorp/cronexpr
-# github.com/hashicorp/errwrap v1.0.0
+# github.com/hashicorp/errwrap v1.1.0
 github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.2
 github.com/hashicorp/go-cleanhttp
@@ -271,7 +272,7 @@ github.com/hashicorp/go-hclog
 github.com/hashicorp/go-immutable-radix
 # github.com/hashicorp/go-msgpack v1.1.5
 github.com/hashicorp/go-msgpack/codec
-# github.com/hashicorp/go-multierror v1.1.0
+# github.com/hashicorp/go-multierror v1.1.1
 github.com/hashicorp/go-multierror
 # github.com/hashicorp/go-plugin v1.4.0
 github.com/hashicorp/go-plugin
@@ -297,7 +298,7 @@ github.com/hashicorp/hcl/hcl/token
 github.com/hashicorp/hcl/json/parser
 github.com/hashicorp/hcl/json/scanner
 github.com/hashicorp/hcl/json/token
-# github.com/hashicorp/nomad v1.1.2
+# github.com/hashicorp/nomad v1.1.12
 ## explicit
 github.com/hashicorp/nomad/acl
 github.com/hashicorp/nomad/client/allocdir
@@ -312,6 +313,7 @@ github.com/hashicorp/nomad/drivers/shared/eventer
 github.com/hashicorp/nomad/helper
 github.com/hashicorp/nomad/helper/args
 github.com/hashicorp/nomad/helper/constraints/semver
+github.com/hashicorp/nomad/helper/escapingfs
 github.com/hashicorp/nomad/helper/flatmap
 github.com/hashicorp/nomad/helper/grpc-middleware/logging
 github.com/hashicorp/nomad/helper/mount
@@ -399,9 +401,11 @@ github.com/mattn/go-runewidth
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4
 github.com/mb0/glob
+# github.com/miekg/dns v1.1.26
+github.com/miekg/dns
 # github.com/minio/highwayhash v1.0.1
 github.com/minio/highwayhash
-# github.com/mitchellh/copystructure v1.0.0
+# github.com/mitchellh/copystructure v1.1.1
 github.com/mitchellh/copystructure
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
@@ -409,7 +413,7 @@ github.com/mitchellh/go-homedir
 github.com/mitchellh/go-testing-interface
 # github.com/mitchellh/hashstructure v1.0.0
 github.com/mitchellh/hashstructure
-# github.com/mitchellh/mapstructure v1.3.3
+# github.com/mitchellh/mapstructure v1.4.1
 ## explicit
 github.com/mitchellh/mapstructure
 # github.com/mitchellh/reflectwalk v1.0.1
@@ -423,6 +427,8 @@ github.com/modern-go/reflect2
 github.com/mojocn/base64Captcha
 # github.com/mssola/user_agent v0.5.0
 github.com/mssola/user_agent
+# github.com/nats-io/gnatsd v1.4.1
+## explicit
 # github.com/nats-io/go-nats v1.7.2
 ## explicit
 github.com/nats-io/go-nats
@@ -470,7 +476,7 @@ github.com/opentracing/opentracing-go/log
 github.com/outbrain/golib/tests
 # github.com/pborman/uuid v1.2.0
 github.com/pborman/uuid
-# github.com/pierrec/lz4 v2.4.1+incompatible
+# github.com/pierrec/lz4 v2.5.2+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
 # github.com/pingcap/check v0.0.0-20200212061837-5e12011dc712
@@ -934,6 +940,7 @@ golang.org/x/image/font
 golang.org/x/image/math/fixed
 # golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 ## explicit
+golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/http/httpguts
@@ -942,8 +949,12 @@ golang.org/x/net/http2
 golang.org/x/net/http2/h2c
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
 golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
+golang.org/x/net/ipv4
+golang.org/x/net/ipv6
 golang.org/x/net/proxy
 golang.org/x/net/trace
 golang.org/x/net/webdav
