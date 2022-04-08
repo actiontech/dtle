@@ -2,12 +2,13 @@ package v2
 
 import (
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"net/http"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
-	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/driver/common"
 	"github.com/labstack/echo/v4"
 )
 

@@ -1,6 +1,6 @@
 package models
 
-import "github.com/actiontech/dtle/drivers/mysql/common"
+import "github.com/actiontech/dtle/drivers/driver/common"
 
 type RoleListReq struct {
 	FilterTenant string `query:"filter_tenant"`

@@ -3,14 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/shirou/gopsutil/v3/mem"
 	_ "net/http/pprof"
 	"os"
 	"runtime"
 
+	"github.com/shirou/gopsutil/v3/mem"
+
 	"github.com/actiontech/dtle/drivers/api"
 
-	dtle "github.com/actiontech/dtle/drivers/mysql"
+	dtle "github.com/actiontech/dtle/drivers/driver"
 	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins"

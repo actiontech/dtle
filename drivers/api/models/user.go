@@ -1,6 +1,6 @@
 package models
 
-import "github.com/actiontech/dtle/drivers/mysql/common"
+import "github.com/actiontech/dtle/drivers/driver/common"
 
 type UserListReq struct {
 	FilterUsername string `query:"filter_username"`

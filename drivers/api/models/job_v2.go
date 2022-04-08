@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/driver/common"
 )
 
 type JobListReqV2 struct {
