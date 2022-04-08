@@ -1023,6 +1023,8 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		setTable(v.Table, false)
 	case *ast.CreateTableStmt:
 		setTable(v.Table, false)
+	case *ast.CreateViewStmt:
+		result.isSkip = true
 	case *ast.AlterTableStmt:
 		setTable(v.Table, false)
 	case *ast.RevokeStmt, *ast.RevokeRoleStmt:
@@ -1041,27 +1043,31 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 	case *ast.AlterProcedureStmt:
 		result.isExpand = true
 	case *ast.DropTableStmt:
-		var newTables []*ast.TableName
-		for _, t := range v.Tables {
-			mayLowerTable(t)
-			schema := g.StringElse(t.Schema.String(), currentSchema)
-			if !skipFunc(schema, t.Name.String()) {
-				isExtraTable := len(newTables) > 0
-				setTable(t, isExtraTable)
-				newTables = append(newTables, t)
-				b.logger.Debug("resolveQuery. DropTableStmt. include",
-					"schema", t.Schema, "table", t.Name, "use", currentSchema)
+		if v.IsView {
+			result.isSkip = true
+		} else {
+			var newTables []*ast.TableName
+			for _, t := range v.Tables {
+				mayLowerTable(t)
+				schema := g.StringElse(t.Schema.String(), currentSchema)
+				if !skipFunc(schema, t.Name.String()) {
+					isExtraTable := len(newTables) > 0
+					setTable(t, isExtraTable)
+					newTables = append(newTables, t)
+					b.logger.Debug("resolveQuery. DropTableStmt. include",
+						"schema", t.Schema, "table", t.Name, "use", currentSchema)
+				}
 			}
-		}
 
-		if len(newTables) == 0 {
-			newTables = v.Tables[:1]
-			setTable(v.Tables[0], false)
-		}
+			if len(newTables) == 0 {
+				newTables = v.Tables[:1]
+				setTable(v.Tables[0], false)
+			}
 
-		if len(newTables) != len(v.Tables) {
-			v.Tables = newTables
-			rewrite = true
+			if len(newTables) != len(v.Tables) {
+				v.Tables = newTables
+				rewrite = true
+			}
 		}
 	case *ast.CreateUserStmt, *ast.GrantStmt, *ast.DropUserStmt, *ast.AlterUserStmt:
 		setTable(&ast.TableName{

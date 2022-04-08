@@ -7,9 +7,9 @@ import (
 	tast "github.com/pingcap/tidb/parser/ast"
 	"github.com/pingcap/tidb/parser/format"
 	"github.com/pingcap/tidb/parser/model"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/transform"
-	"strings"
+	//"golang.org/x/text/encoding/simplifiedchinese"
+	//"golang.org/x/text/transform"
+	//"strings"
 
 	"fmt"
 	_ "github.com/pingcap/tidb/types/parser_driver"
@@ -26,14 +26,18 @@ func main() {
 	//sql := "create table b.t1 (id int primary key auto_increment, val timestamp not null default 0)"
 	//sql := "create table b.t1 (id int primary key auto_increment, val varchar(64) not null default 'hello')"
 
-	sb := strings.Builder{}
-	gbkStr, _, err := transform.String(simplifiedchinese.GBK.NewEncoder(),
-		"create table s中文.t中文 (id中文 int primary key auto_increment,\n ")
-	u.PanicIfErr(err)
-	sb.WriteString(gbkStr)
-	sb.WriteString("val varchar(50) default _utf8mb4\"aa中文\")")
-	sql := sb.String()
-	ast, err := p.ParseOneStmt(sql, "gbk", "gbk_chinese_ci")
+	//sb := strings.Builder{}
+	//gbkStr, _, err := transform.String(simplifiedchinese.GBK.NewEncoder(),
+	//	"create table s中文.t中文 (id中文 int primary key auto_increment,\n ")
+	//u.PanicIfErr(err)
+	//sb.WriteString(gbkStr)
+	//sb.WriteString("val varchar(50) default _utf8mb4\"aa中文\")")
+	//sql := sb.String()
+
+	//sql := "drop view a.v1"
+	sql := "alter view a.v1 as select * from a.a"
+
+	ast, err := p.ParseOneStmt(sql, "", "")
 
 	u.PanicIfErr(err)
 
