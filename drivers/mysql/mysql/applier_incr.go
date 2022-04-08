@@ -215,7 +215,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err error) {
 	binlogEntry := entryCtx.Entry
 
-	if binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SID == [16]byte{0} {
+	if binlogEntry.Coordinates.GetSid() == [16]byte{0} {
 		return a.handleEntryOracle(entryCtx)
 	}
 	
@@ -223,23 +223,23 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 		"gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO, "lc", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted,
 		"seq", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber)
 
-	if binlogEntry.Coordinates.(*common.MySQLCoordinateTx).OSID == a.MySQLServerUuid {
-		a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).OSID)
+	if binlogEntry.Coordinates.GetOSID() == a.MySQLServerUuid {
+		a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.GetOSID())
 		a.EntryExecutedHook(binlogEntry) // make gtid continuous
 		return nil
 	}
-	txSid := binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GetSid()
+	txSid := binlogEntry.Coordinates.GetSid()
 
 	// Note: the gtidExecuted will be updated after commit. For a big-tx, we determine
 	// whether to skip for each parts.
 
 	// region TestIfExecuted
 
-	gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SID)
+	gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.GetSid().(uuid.UUID))
 	txExecuted := func() bool {
 		a.gtidSetLock.RLock()
 		defer a.gtidSetLock.RUnlock()
-		intervals := base.GetIntervals(a.gtidSet, txSid)
+		intervals := base.GetIntervals(a.gtidSet, txSid.(string))
 		return base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
 	}()
 	if txExecuted {
@@ -249,16 +249,16 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 	// endregion
 	// this must be after duplication check
 	var rotated bool
-	if a.replayingBinlogFile == binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LogFile {
+	if a.replayingBinlogFile == binlogEntry.Coordinates.GetLogFile() {
 		rotated = false
 	} else {
 		rotated = true
-		a.replayingBinlogFile = binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LogFile
+		a.replayingBinlogFile = binlogEntry.Coordinates.GetLogFile()
 	}
 
 	a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
 	if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-		err = a.cleanGtidExecuted(binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SID, txSid)
+		err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid.(string))
 		if err != nil {
 			return err
 		}

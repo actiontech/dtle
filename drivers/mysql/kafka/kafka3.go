@@ -882,8 +882,8 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 					Source:       DDLSource{},
 					Position:     DDLPosition{
 						TsSec:    int64(dataEvent.Timestamp),
-						File:     dmlEvent.Coordinates.(*common.MySQLCoordinateTx).LogFile,
-						Pos:      dmlEvent.Coordinates.(*common.MySQLCoordinateTx).LogPos,
+						File:     dmlEvent.Coordinates.GetLogFile(),
+						Pos:      dmlEvent.Coordinates.GetLogPos(),
 						Gtids:    kr.Gtid,
 					},
 					DatabaseName: dataEvent.DatabaseName,
@@ -1110,7 +1110,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 					valuePayload.Source.ServerID = 1 // TODO
 					valuePayload.Source.TsSec = time.Now().Unix()
 					valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.(*common.MySQLCoordinateTx).GNO)
-					valuePayload.Source.File = dmlEvent.Coordinates.(*common.MySQLCoordinateTx).LogFile
+					valuePayload.Source.File = dmlEvent.Coordinates.GetLogFile()
 					valuePayload.Source.Pos = dataEvent.LogPos
 					valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
 					valuePayload.Source.Snapshot = false // TODO "whether this event was part of a snapshot"
@@ -1184,10 +1184,10 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 	}
 
 	for _, entry := range dmlEntries {
-		kr.BinlogFile = entry.Coordinates.(*common.MySQLCoordinateTx).LogFile
-		kr.BinlogPos = entry.Coordinates.(*common.MySQLCoordinateTx).LogPos
+		kr.BinlogFile = entry.Coordinates.GetLogFile()
+		kr.BinlogPos = entry.Coordinates.GetLogPos()
 
-		common.UpdateGtidSet(kr.gtidSet, entry.Coordinates.(*common.MySQLCoordinateTx).SID, entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+		common.UpdateGtidSet(kr.gtidSet, entry.Coordinates.GetSid().(uuid.UUID), entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
 	}
 	kr.Gtid = kr.gtidSet.String()
 	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.Gtid)
