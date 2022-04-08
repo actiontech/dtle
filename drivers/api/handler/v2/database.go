@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql/mysqlconfig"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/oracle/config"
+	"github.com/actiontech/dtle/drivers/driver/mysql/mysqlconfig"
+	"github.com/actiontech/dtle/drivers/driver/oracle/config"
 
 	"github.com/hashicorp/go-hclog"
 
@@ -16,7 +16,7 @@ import (
 	"github.com/actiontech/dtle/drivers/api/handler"
 
 	"github.com/actiontech/dtle/drivers/api/models"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
+	"github.com/actiontech/dtle/drivers/driver/mysql/sql"
 )
 
 const (

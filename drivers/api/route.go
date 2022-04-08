@@ -13,13 +13,13 @@ import (
 
 	report "github.com/actiontech/golang-live-coverage-report/pkg"
 
-	"github.com/actiontech/dtle/drivers/mysql"
+	mysql "github.com/actiontech/dtle/drivers/driver"
 
 	"github.com/actiontech/dtle/drivers/api/models"
 
 	middleware "github.com/labstack/echo/v4/middleware"
 
-	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/driver/common"
 
 	_ "github.com/actiontech/dtle/drivers/api/docs"
 	"github.com/actiontech/dtle/drivers/api/handler"

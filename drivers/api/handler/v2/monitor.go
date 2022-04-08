@@ -9,7 +9,7 @@ import (
 
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
-	"github.com/actiontech/dtle/drivers/mysql"
+	mysql "github.com/actiontech/dtle/drivers/driver"
 	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/labstack/echo/v4"
 )

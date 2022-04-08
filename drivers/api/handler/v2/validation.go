@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql"
+	mysql "github.com/actiontech/dtle/drivers/driver/mysql"
 
 	"github.com/actiontech/dtle/drivers/api/handler"
 	"github.com/actiontech/dtle/drivers/api/models"
-	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/driver/common"
 	"github.com/actiontech/dtle/g"
 	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/labstack/echo/v4"

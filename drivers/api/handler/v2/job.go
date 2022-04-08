@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/actiontech/dtle/drivers/mysql/mysql"
+	mysql "github.com/actiontech/dtle/drivers/driver/mysql"
 
 	"github.com/hashicorp/nomad/nomad/structs"
 
-	"github.com/actiontech/dtle/drivers/mysql/kafka"
+	"github.com/actiontech/dtle/drivers/driver/kafka"
 
-	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/driver/common"
 
 	"github.com/actiontech/dtle/g"
 
