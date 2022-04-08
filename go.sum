@@ -140,12 +140,16 @@ github.com/actiontech/tidb v0.0.0-20220221092239-137743364bb1 h1:UoFUIJAbP70cQ/G
 github.com/actiontech/tidb v0.0.0-20220221092239-137743364bb1/go.mod h1:Ol8fbcrb8unIuqAYPJCSNi6uWsjcAGo6useI9SXL67E=
 github.com/actiontech/tidb v0.0.0-20220331132049-ed7e102c6c5f h1:QbINON8ovIiVXcDVSqTvjh70OFkYSaemN2JBNclALfc=
 github.com/actiontech/tidb v0.0.0-20220331132049-ed7e102c6c5f/go.mod h1:Ol8fbcrb8unIuqAYPJCSNi6uWsjcAGo6useI9SXL67E=
+github.com/actiontech/tidb v0.0.0-20220408105833-d696979cd433 h1:BvOMIkj93ejx2wZxWr9DcE+KKgYG1RvEu2YfVnVmF4E=
+github.com/actiontech/tidb v0.0.0-20220408105833-d696979cd433/go.mod h1:Ol8fbcrb8unIuqAYPJCSNi6uWsjcAGo6useI9SXL67E=
 github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f h1:IBUyYmxaiCcStt+0jTfAM8N2wmzpqOscZfnXbkH3u70=
 github.com/actiontech/tidb/parser v0.0.0-20211201045102-50ddce98336f/go.mod h1:MAa22tagoj7nv5b1NBcxPkc5CiUNhqj1wuSQnw4f9WE=
 github.com/actiontech/tidb/parser v0.0.0-20220221092239-137743364bb1 h1:AfpzOeCjQ88x84ujpaWTJpnk+1T0/gUse1nHJ+lCP3M=
 github.com/actiontech/tidb/parser v0.0.0-20220221092239-137743364bb1/go.mod h1:MAa22tagoj7nv5b1NBcxPkc5CiUNhqj1wuSQnw4f9WE=
 github.com/actiontech/tidb/parser v0.0.0-20220331132049-ed7e102c6c5f h1:uv9Rch2fM8u8TeWeAMVUVoZ9sCKJbjTTwkTUlioCW6o=
 github.com/actiontech/tidb/parser v0.0.0-20220331132049-ed7e102c6c5f/go.mod h1:MAa22tagoj7nv5b1NBcxPkc5CiUNhqj1wuSQnw4f9WE=
+github.com/actiontech/tidb/parser v0.0.0-20220408105833-d696979cd433 h1:eeJLINGLJfdaTyHj672YO0ckeZkVyP+NyaFvrUY0qnE=
+github.com/actiontech/tidb/parser v0.0.0-20220408105833-d696979cd433/go.mod h1:MAa22tagoj7nv5b1NBcxPkc5CiUNhqj1wuSQnw4f9WE=
 github.com/agext/levenshtein v1.2.1/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
 github.com/ajg/form v1.5.1/go.mod h1:uL1WgH+h2mgNtvBq0339dVnzXdBETtL2LeUXaIv25UY=
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af/go.mod h1:K08gAheRH3/J6wwsYMMT4xOr94bZjxIelGM0+d/wbFw=

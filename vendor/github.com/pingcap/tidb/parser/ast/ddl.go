@@ -14,6 +14,7 @@
 package ast
 
 import (
+	"fmt"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/parser/auth"
 	"github.com/pingcap/tidb/parser/format"
@@ -4277,3 +4278,19 @@ func (n *AlterProcedureStmt) Accept(v Visitor) (Node, bool) {
 
 	return v.Leave(n)
 }
+
+type AlterViewStmt struct {
+	ddlNode
+
+}
+
+func (n *AlterViewStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("ALTER ")
+	ctx.WriteKeyWord("VIEW ")
+	return fmt.Errorf("not implemented")
+}
+
+func (n *AlterViewStmt) Accept(v Visitor) (Node, bool) {
+	return v.Leave(n)
+}
+
