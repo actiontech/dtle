@@ -14,8 +14,8 @@ import (
 )
 
 // Do not call this frequently. Cache your result.
-func (b *MySQLCoordinateTx) GetSid() string {
-	return uuid.UUID(b.SID).String()
+func (b *MySQLCoordinateTx) GetSid() interface{} {
+	return uuid.UUID(b.SID)
 }
 
 func (b *MySQLCoordinateTx) GetGtidForThisTx() string {
@@ -40,7 +40,17 @@ func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
 	return b.LastCommitted
  }
 
+ func (o *MySQLCoordinateTx)GetGNO()int64{
+	return o.GNO
+ }
 
+ func (b *MySQLCoordinateTx)GetLogFile()string{
+	return b.LogFile
+ }
+
+ func (b *MySQLCoordinateTx)GetOSID()string{
+	return b.OSID
+ }
 type BinlogEntryContext struct {
 	Entry       *DataEntry
 	// Only a DML has a tableItem. For a DDL, its tableItem is nil.

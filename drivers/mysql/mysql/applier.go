@@ -20,6 +20,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
+	uuid "github.com/satori/go.uuid"
 
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	gonats "github.com/nats-io/go-nats"
@@ -84,7 +85,7 @@ type Applier struct {
 	gtidSetLock *sync.RWMutex
 
 	storeManager *common.StoreManager
-	gtidCh       chan *common.MySQLCoordinateTx
+	gtidCh       chan common.CoordinatesI
 
 	stage      string
 	memory1    *int64
@@ -118,7 +119,7 @@ func NewApplier(
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
 		storeManager:    storeManager,
-		gtidCh:          make(chan *common.MySQLCoordinateTx, 4096),
+		gtidCh:          make(chan common.CoordinatesI, 4096),
 		memory1:         new(int64),
 		memory2:         new(int64),
 		event:           event,
@@ -231,14 +232,13 @@ func (a *Applier) updateGtidLoop() {
 				}
 			} else {
 				a.gtidSetLock.Lock()
-				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				common.UpdateGtidSet(a.gtidSet, coord.GetSid().(uuid.UUID), coord.GetGNO())
 				if a.targetGtid != nil {
 					testTargetGtid()
 				}
 				a.gtidSetLock.Unlock()
-				file = coord.LogFile
-				pos = coord.LogPos
-				lastCommitted = coord.LastCommitted
+				file = coord.GetLogFile()
+				pos = coord.GetLogPos()
 			}
 		}
 	}
@@ -302,11 +302,11 @@ func (a *Applier) Run() {
 		}
 
 		if entry.Final {
-			a.gtidCh <- entry.Coordinates.(*common.MySQLCoordinateTx)
+			a.gtidCh <- entry.Coordinates
 		}
 		if entry.IsPartOfBigTx() {
 			bs, err := (&common.BigTxAck{
-				GNO:   entry.Coordinates.(*common.MySQLCoordinateTx).GNO,
+				GNO:   entry.Coordinates.GetGNO(),
 				Index: entry.Index,
 			}).Marshal(nil)
 			if err != nil {
