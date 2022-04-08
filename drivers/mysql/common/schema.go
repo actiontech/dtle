@@ -3,12 +3,15 @@ package common
 import "reflect"
 
 type CoordinatesI interface{
-	GetSid()string
+	GetSid()interface{}
 	GetGtidForThisTx()string
 	GetFieldValue(fieldName string)interface{}
 	SetField(fieldName string,fieldValue interface{})
 	GetLogPos()int64
 	GetLastCommit()int64
+	GetGNO()int64
+	GetLogFile()string
+	GetOSID()string
 }
 
 // todo Support key value general settings  
@@ -24,7 +27,7 @@ func SetField(fieldName string,fieldValue interface{}){
 
 // Oracle CoordinateTx
 
-func (o *OracleCoordinateTx)GetSid() string {
+func (o *OracleCoordinateTx)GetSid() interface{} {
 	return ""
 }
 
@@ -50,6 +53,17 @@ func (o *OracleCoordinateTx)GetFieldValue(fieldName string)interface{}{
 	return o.EndSCN
  }
 
+ func (o *OracleCoordinateTx)GetGNO()int64{
+	return 0
+ }
+
+ func (o *OracleCoordinateTx)GetLogFile()string{
+	return ""
+ }
+
+ func (o *OracleCoordinateTx)GetOSID()string{
+	return ""
+ }
  type DumpCoordinates interface{
 	GetLogPos() int64
 	GetTxSet() string
