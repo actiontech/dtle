@@ -868,6 +868,7 @@ import (
 	DropProcedureStmt          "DROP PROCEDURE or FUNCTION statement"
 	AlterProcedureStmt         "Alter procedure/function statement"
 	CreateViewStmt             "CREATE VIEW  statement"
+	AlterViewStmt              "ALTER VIEW  statement"
 	CreateUserStmt             "CREATE User statement"
 	CreateRoleStmt             "CREATE Role statement"
 	CreateDatabaseStmt         "Create Database Statement"
@@ -4411,6 +4412,13 @@ LikeTableWithOrWithoutParen:
 |	'(' "LIKE" TableName ')'
 	{
 		$$ = $3
+	}
+
+AlterViewStmt:
+	"ALTER" ViewAlgorithm ViewDefiner ViewSQLSecurity "VIEW" ViewName ViewFieldList "AS" CreateViewSelectOpt ViewCheckOption
+	{
+		$$ = &ast.AlterViewStmt{
+		}
 	}
 
 /*******************************************************************
@@ -11129,6 +11137,7 @@ Statement:
 |   DropProcedureStmt
 |	AlterProcedureStmt
 |	CreateViewStmt
+|	AlterViewStmt
 |	CreateUserStmt
 |	CreateRoleStmt
 |	CreateBindingStmt

@@ -1025,6 +1025,8 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		setTable(v.Table, false)
 	case *ast.CreateViewStmt:
 		result.isSkip = true
+	case *ast.AlterViewStmt:
+		result.isSkip = true
 	case *ast.AlterTableStmt:
 		setTable(v.Table, false)
 	case *ast.RevokeStmt, *ast.RevokeRoleStmt:
