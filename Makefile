@@ -34,13 +34,13 @@ build-coverage-report-tool:
 coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
 	    -pre-build -raw-code-build-dir ./coverage-report-raw-code -raw-code-deploy-dir ./coverage-report-raw-code \
-	    -bootstrap-outfile ./drivers/api/coverage_report_bootstrap.go -bootstrap-package-name api \
-	   ./drivers/api ./drivers/api/handler ./drivers/api/handler/v1 ./drivers/api/handler/v2 ./drivers/api/models ./drivers/mysql ./drivers/mysql/common ./drivers/mysql/kafka ./drivers/mysql/mysql ./drivers/mysql/mysql/base ./drivers/mysql/mysql/binlog ./drivers/mysql/mysql/mysqlconfig ./drivers/mysql/mysql/sql ./drivers/mysql/mysql/sqle/g ./drivers/mysql/mysql/sqle/inspector ./drivers/mysql/mysql/util ./g
+	    -bootstrap-outfile ./api/coverage_report_bootstrap.go -bootstrap-package-name api \
+	   ./api ./api/handler ./api/handler/v1 ./api/handler/v2 ./api/models ./mysql ./mysql/common ./mysql/kafka ./mysql/mysql ./mysql/mysql/base ./mysql/mysql/binlog ./mysql/mysql/mysqlconfig ./mysql/mysql/sql ./mysql/mysql/sqle/g ./mysql/mysql/sqle/inspector ./mysql/mysql/util ./g
 
 coverage-report-post-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
-	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./drivers/api/coverage_report_bootstrap.go \
-	    ./drivers/api ./drivers/api/handler ./drivers/api/handler/v1 ./drivers/api/handler/v2 ./drivers/api/models ./drivers/mysql ./drivers/mysql/common ./drivers/mysql/kafka ./drivers/mysql/mysql ./drivers/mysql/mysql/base ./drivers/mysql/mysql/binlog ./drivers/mysql/mysql/mysqlconfig ./drivers/mysql/mysql/sql ./drivers/mysql/mysql/sqle/g ./drivers/mysql/mysql/sqle/inspector ./drivers/mysql/mysql/util ./g
+	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./api/coverage_report_bootstrap.go \
+	    ./api ./api/handler ./api/handler/v1 ./api/handler/v2 ./api/models ./mysql ./mysql/common ./mysql/kafka ./mysql/mysql ./mysql/mysql/base ./mysql/mysql/binlog ./mysql/mysql/mysqlconfig ./mysql/mysql/sql ./mysql/mysql/sqle/g ./mysql/mysql/sqle/inspector ./mysql/mysql/util ./g
 
 package-common: driver
 	rm -rf dist/install
@@ -77,10 +77,10 @@ fmt:
 	gofmt -s -w .
 
 docker_test:
-	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle/drivers && go test -cover -v -mod=vendor ./..."
+	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle/driver && go test -cover -v -mod=vendor ./..."
 
 test:
-	cd drivers && go test -cover -v -mod=vendor ./...
+	cd driver && go test -cover -v -mod=vendor ./...
 
 mtswatcher: helper/mtswatcher/mtswatcher.go
 	go build $(GOFLAGS) -o dist/mtswatcher ./helper/mtswatcher/mtswatcher.go
@@ -92,7 +92,7 @@ docker_rpm_with_coverage_report:
 	$(DOCKER) run -v $(shell pwd)/:/universe/src/github.com/actiontech/dtle --rm -e PROJECT_NAME=$(PROJECT_NAME) $(DOCKER_IMAGE) -c "cd /universe/src/github.com/actiontech/dtle; GOPATH=/universe make RELEASE_FTPD_HOST=${RELEASE_FTPD_HOST} build_with_coverage_report ;chmod -R ugo+rw dist;"
 
 generate_swagger_docs:
-	swag init -g ./drivers/api/route.go -o ./drivers/api/docs
+	swag init -g ./api/route.go -o ./api/docs
 
 upload:
 	curl --ftp-create-dirs -T $(shell pwd)/dist/*.rpm ftp://${RELEASE_FTPD_HOST}/actiontech-${PROJECT_NAME}/qa/${VERSION}/${PROJECT_NAME}-${VERSION}.x86_64.rpm
