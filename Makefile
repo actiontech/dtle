@@ -35,12 +35,12 @@ coverage-report-pre-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
 	    -pre-build -raw-code-build-dir ./coverage-report-raw-code -raw-code-deploy-dir ./coverage-report-raw-code \
 	    -bootstrap-outfile ./api/coverage_report_bootstrap.go -bootstrap-package-name api \
-	   ./api ./api/handler ./api/handler/v1 ./api/handler/v2 ./api/models ./mysql ./mysql/common ./mysql/kafka ./mysql/mysql ./mysql/mysql/base ./mysql/mysql/binlog ./mysql/mysql/mysqlconfig ./mysql/mysql/sql ./mysql/mysql/sqle/g ./mysql/mysql/sqle/inspector ./mysql/mysql/util ./g
+	   ./api ./api/handler ./api/handler/v1 ./api/handler/v2 ./api/models ./driver ./driver/common ./driver/kafka ./driver/mysql ./driver/mysql/base ./driver/mysql/binlog ./driver/mysql/mysqlconfig ./driver/mysql/sql ./driver/mysql/sqle/g ./driver/mysql/sqle/inspector ./driver/mysql/util ./g
 
 coverage-report-post-build:
 	PATH=${GOPATH}/bin:$$PATH golang-live-coverage-report \
 	    -post-build -raw-code-build-dir ./coverage-report-raw-code -bootstrap-outfile ./api/coverage_report_bootstrap.go \
-	    ./api ./api/handler ./api/handler/v1 ./api/handler/v2 ./api/models ./mysql ./mysql/common ./mysql/kafka ./mysql/mysql ./mysql/mysql/base ./mysql/mysql/binlog ./mysql/mysql/mysqlconfig ./mysql/mysql/sql ./mysql/mysql/sqle/g ./mysql/mysql/sqle/inspector ./mysql/mysql/util ./g
+	    ./api ./api/handler ./api/handler/v1 ./api/handler/v2 ./api/models ./driver ./driver/common ./driver/kafka ./driver/mysql ./driver/mysql/base ./driver/mysql/binlog ./driver/mysql/mysqlconfig ./driver/mysql/sql ./driver/mysql/sqle/g ./driver/mysql/sqle/inspector ./driver/mysql/util ./g
 
 package-common: driver
 	rm -rf dist/install
