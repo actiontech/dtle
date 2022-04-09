@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/actiontech/dtle/drivers/driver/mysql/base"
-	"github.com/actiontech/dtle/drivers/driver/mysql/sqle/inspector"
+	"github.com/actiontech/dtle/driver/mysql/base"
+	"github.com/actiontech/dtle/driver/mysql/sqle/inspector"
 
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/sqle/inspector"

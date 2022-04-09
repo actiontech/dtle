@@ -9,9 +9,9 @@ import (
 
 	"github.com/shirou/gopsutil/v3/mem"
 
-	"github.com/actiontech/dtle/drivers/api"
+	"github.com/actiontech/dtle/api"
 
-	dtle "github.com/actiontech/dtle/drivers/driver"
+	dtle "github.com/actiontech/dtle/driver"
 	"github.com/actiontech/dtle/g"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins"
