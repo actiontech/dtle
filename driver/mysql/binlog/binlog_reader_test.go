@@ -545,7 +545,7 @@ func Test_matchTable(t *testing.T) {
 	}
 
 	binlogReader := &BinlogReader{
-		mysqlContext: &common.MySQLDriverConfig{},
+		mysqlContext: &common.DriverConfig{},
 	}
 
 	for _, tt := range tests {
@@ -740,7 +740,7 @@ func Test_skipQueryDDL(t *testing.T) {
 	}
 
 	binlogReader := &BinlogReader{
-		mysqlContext: &common.MySQLDriverConfig{},
+		mysqlContext: &common.DriverConfig{},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

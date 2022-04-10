@@ -50,7 +50,7 @@ const (
 type Applier struct {
 	logger       g.LoggerType
 	subject      string
-	mysqlContext *common.MySQLDriverConfig
+	mysqlContext *common.DriverConfig
 
 	NatsAddr            string
 	MySQLVersion        string
@@ -101,7 +101,7 @@ func (a *Applier) Finish1() error {
 }
 
 func NewApplier(
-	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
+	execCtx *common.ExecContext, cfg *common.DriverConfig, logger g.LoggerType,
 	storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, event *eventer.Eventer, taskConfig *drivers.TaskConfig, ctx context.Context) (a *Applier, err error) {
 
 	logger.Info("NewApplier", "job", execCtx.Subject)
@@ -880,8 +880,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		totalDeltaCopied = a.ai.TotalDeltaCopied
 		lenApplierMsgQueue = len(a.ai.incrBytesQueue)
 		capApplierMsgQueue = cap(a.ai.incrBytesQueue)
-		lenApplierTxQueue = len(a.ai.binlogEntryQueue)
-		capApplierTxQueue = cap(a.ai.binlogEntryQueue)
+		lenApplierTxQueue = len(a.ai.dataEntryQueue)
+		capApplierTxQueue = cap(a.ai.dataEntryQueue)
 		delay = a.ai.timestampCtx.GetDelay()
 	}
 	totalRowsReplay := a.TotalRowsReplayed

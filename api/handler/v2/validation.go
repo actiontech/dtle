@@ -111,7 +111,7 @@ func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.De
 			TaskName: apiSrcTask.TaskName,
 		}
 
-		srcTaskInspector := mysql.NewInspector(&common.MySQLDriverConfig{
+		srcTaskInspector := mysql.NewInspector(&common.DriverConfig{
 			DtleTaskConfig: srcTaskConfig,
 		}, g.Logger.Named("http api: validateTaskConfig"))
 		defer srcTaskInspector.Close()
@@ -162,7 +162,7 @@ func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.De
 		}
 		destTaskInspector, err := mysql.NewApplier(
 			&common.ExecContext{},
-			&common.MySQLDriverConfig{
+			&common.DriverConfig{
 				DtleTaskConfig: destTaskConfig,
 			},
 			g.Logger.Named("http api: validateTaskConfig"),

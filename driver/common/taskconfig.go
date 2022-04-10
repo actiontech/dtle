@@ -103,7 +103,7 @@ func (d *DtleTaskConfig) SetDefaultForEmpty() {
 	}
 }
 
-type MySQLDriverConfig struct {
+type DriverConfig struct {
 	DtleTaskConfig
 
 	RowsEstimate     int64
@@ -116,17 +116,17 @@ type MySQLDriverConfig struct {
 }
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows
-func (m *MySQLDriverConfig) MarkRowCopyEndTime() {
+func (m *DriverConfig) MarkRowCopyEndTime() {
 	m.RowCopyEndTime = time.Now()
 }
 
 // MarkRowCopyStartTime
-func (m *MySQLDriverConfig) MarkRowCopyStartTime() {
+func (m *DriverConfig) MarkRowCopyStartTime() {
 	m.RowCopyStartTime = time.Now()
 }
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows
-func (m *MySQLDriverConfig) ElapsedRowCopyTime() time.Duration {
+func (m *DriverConfig) ElapsedRowCopyTime() time.Duration {
 	if m.RowCopyStartTime.IsZero() {
 		// Row copy hasn't started yet
 		return 0

@@ -517,7 +517,7 @@ func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err e
 	}
 	// first start
 	if committedSCN == 0 {
-		return e.mysqlContext.OracleConfig.Scn, 0, nil
+		return e.driverContext.OracleConfig.Scn, 0, nil
 	}
 	// all tx has been committed
 	if oldestUncommittedScn == 0 {
@@ -528,7 +528,7 @@ func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err e
 	return
 }
 
-func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
+func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.EntryContext) error {
 	e.logger.Debug("start oracle. DataStreamEvents")
 
 	if e.LogMinerStream.startScn == 0 {
@@ -549,7 +549,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogE
 		}
 		atomic.AddUint32(&e.LogMinerStream.OracleTxNum, 1)
 		Entry := e.handleSQLs(tx)
-		entriesChannel <- &common.BinlogEntryContext{
+		entriesChannel <- &common.EntryContext{
 			Entry:        Entry,
 			TableItems:   nil,
 			OriginalSize: 0,
@@ -759,7 +759,7 @@ func (e *ExtractorOracle) LoopLogminerRecord() error {
 				if !ok {
 					continue
 				}
-				atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+				atomic.AddInt64(&e.driverContext.DeltaEstimate, 1)
 				switch r.Operation {
 				case OperationCodeStart:
 					l.txCache.startTx(r.TxId(), r.SCN)

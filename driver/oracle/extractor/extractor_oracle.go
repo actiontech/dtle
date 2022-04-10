@@ -7,7 +7,6 @@
 package extractor
 
 import (
-	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/actiontech/dtle/driver/oracle/config"
 
-	mysql "github.com/actiontech/dtle/driver/mysql"
 	"github.com/actiontech/dtle/driver/mysql/base"
 	"github.com/actiontech/dtle/driver/mysql/binlog"
 	"github.com/actiontech/dtle/driver/mysql/mysqlconfig"
@@ -43,12 +41,9 @@ type ExtractorOracle struct {
 	execCtx      *common.ExecContext
 	logger       g.LoggerType
 	subject      string
-	mysqlContext *common.MySQLDriverConfig
+	driverContext *common.DriverConfig
 
-	systemVariables       map[string]string
-	sqlMode               string
 	lowerCaseTableNames   mysqlconfig.LowerCaseTableNamesValue
-	MySQLVersion          string
 	TotalTransferredBytes int
 	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
@@ -56,20 +51,13 @@ type ExtractorOracle struct {
 	TotalRowsCopied int64
 	natsAddr        string
 
-	mysqlVersionDigit int
 	oracleDB          *config.OracleDB
-	db                *gosql.DB
-	singletonDB       *gosql.DB
-	//dumpers           []*mysql.dumper
-	// db.tb exists when creating the job, for full-copy.
-	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*common.DataSource
-	dataChannel              chan *common.BinlogEntryContext
-	inspector                *mysql.Inspector
+	dataChannel              chan *common.EntryContext
 	binlogReader             *binlog.BinlogReader
 	LogMinerStream           *LogMinerStream
-	initialBinlogCoordinates *common.OracleCoordinates
-	currentBinlogCoordinates *common.OracleCoordinateTx
+	initialCoordinates *common.OracleCoordinates
+	currentCoordinates *common.OracleCoordinateTx
 	//rowCopyComplete          chan bool
 	rowCopyCompleteFlag int64
 	tableCount          int
@@ -98,7 +86,6 @@ type ExtractorOracle struct {
 
 	memory1   *int64
 	memory2   *int64
-	finishing bool
 
 	// we need to close all data channel while pausing task runner. and these data channel will be recreate when restart the runner.
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
@@ -119,14 +106,14 @@ type OracleSchemaInfo struct {
 	Tables map[string]*ast.CreateTableStmt
 }
 
-func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*ExtractorOracle, error) {
+func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.DriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*ExtractorOracle, error) {
 	logger.Info("NewExtractorOracle", "job", execCtx.Subject)
 
 	e := &ExtractorOracle{
 		logger:       logger.Named("ExtractorOracle").With("job", execCtx.Subject),
 		execCtx:      execCtx,
 		subject:      execCtx.Subject,
-		mysqlContext: cfg,
+		driverContext: cfg,
 		//rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
@@ -140,7 +127,7 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConf
 		memory2:         new(int64),
 		OracleContext:   new(OracleContext),
 	}
-	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
+	e.dataChannel = make(chan *common.EntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -214,7 +201,7 @@ func (e *ExtractorOracle) Run() {
 	e.initDBConnections()
 	e.getSchemaTablesAndMeta()
 
-	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
+	e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.driverContext.ReplicateDoDb, e.driverContext.ReplicateIgnoreDb,
 		startSCN, committedSCN, 100000)
 	//e.logger.Info("CheckAndApplyLowerCaseTableNames")
 	//e.CheckAndApplyLowerCaseTableNames()
@@ -249,8 +236,8 @@ func (e *ExtractorOracle) Run() {
 
 func (e *ExtractorOracle) Stats() (*common.TaskStatistics, error) {
 	totalRowsCopied := atomic.LoadInt64(&e.TotalRowsCopied)
-	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsEstimate)
-	deltaEstimate := atomic.LoadInt64(&e.mysqlContext.DeltaEstimate)
+	rowsEstimate := atomic.LoadInt64(&e.driverContext.RowsEstimate)
+	deltaEstimate := atomic.LoadInt64(&e.driverContext.DeltaEstimate)
 	if atomic.LoadInt64(&e.rowCopyCompleteFlag) == 1 {
 		// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 		// and there is no further need to keep updating the value.
@@ -269,9 +256,9 @@ func (e *ExtractorOracle) Stats() (*common.TaskStatistics, error) {
 
 	if progressPct >= 100.0 {
 		eta = "0s"
-		e.mysqlContext.Stage = common.StageMasterHasSentAllBinlogToSlave
+		e.driverContext.Stage = common.StageMasterHasSentAllBinlogToSlave
 	} else if progressPct >= 1.0 {
-		elapsedRowCopySeconds := e.mysqlContext.ElapsedRowCopyTime().Seconds()
+		elapsedRowCopySeconds := e.driverContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
 		if etaSeconds >= 0 {
@@ -295,7 +282,7 @@ func (e *ExtractorOracle) Stats() (*common.TaskStatistics, error) {
 		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 1, 64),
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
-		Stage:              e.mysqlContext.Stage,
+		Stage:              e.driverContext.Stage,
 		BufferStat: common.BufferStat{
 			BinlogEventQueueSize: e.binlogReader.GetQueueSize(),
 			ExtractorTxQueueSize: len(e.dataChannel),
@@ -318,8 +305,8 @@ func (e *ExtractorOracle) Stats() (*common.TaskStatistics, error) {
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
 		e.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
-		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.mysqlContext.TrafficAgainstLimits {
-			e.onError(common.TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
+		if e.driverContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.driverContext.TrafficAgainstLimits {
+			e.onError(common.TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.driverContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
 		}
 	}
 
@@ -372,29 +359,6 @@ func (e *ExtractorOracle) Shutdown() error {
 func (e *ExtractorOracle) Finish1() (err error) {
 	// TODO shutdown job on error
 
-	if e.finishing {
-		return nil
-	}
-	e.finishing = true
-
-	coord, err := base.GetSelfBinlogCoordinates(e.db)
-	if err != nil {
-		return errors.Wrap(err, "GetSelfBinlogCoordinates")
-	}
-	e.targetGtid = coord.GtidSet
-
-	e.logger.Info("Finish. got target GTIDSet", "gs", e.targetGtid)
-
-	err = e.storeManager.PutTargetGtid(e.subject, e.targetGtid)
-	if err != nil {
-		return errors.Wrap(err, "PutTargetGtid")
-	}
-
-	err = e.binlogReader.SetTargetGtid(e.targetGtid)
-	if err != nil {
-		return errors.Wrap(err, "afterGetTargetGtid")
-	}
-
 	return nil
 }
 
@@ -439,16 +403,16 @@ func (e *ExtractorOracle) inspectTables() (err error) {
 	}
 	dbsFiltered := []string{}
 	for _, db := range dbsExisted {
-		if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db) {
+		if len(e.driverContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.driverContext.ReplicateIgnoreDb, db) {
 			continue
 		}
 		dbsFiltered = append(dbsFiltered, db)
 	}
 
-	if len(e.mysqlContext.ReplicateDoDb) > 0 {
+	if len(e.driverContext.ReplicateDoDb) > 0 {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
-		for _, doDb := range e.mysqlContext.ReplicateDoDb {
+		for _, doDb := range e.driverContext.ReplicateDoDb {
 			var regex string
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
 				regex = doDb.TableSchemaRegex
@@ -494,7 +458,7 @@ func (e *ExtractorOracle) inspectTables() (err error) {
 			}
 			tbsFiltered := []*common.Table{}
 			for _, tb := range existedTables {
-				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db.TableSchema, tb) {
+				if len(e.driverContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.driverContext.ReplicateIgnoreDb, db.TableSchema, tb) {
 					continue
 				}
 				tbsFiltered = append(tbsFiltered, &common.Table{
@@ -580,7 +544,7 @@ func (e *ExtractorOracle) inspectTables() (err error) {
 			}
 
 			for _, tb := range tbs {
-				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, dbName, tb) {
+				if len(e.driverContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.driverContext.ReplicateIgnoreDb, dbName, tb) {
 					continue
 				}
 				//if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
@@ -636,7 +600,7 @@ func (e *ExtractorOracle) initiateStreaming() error {
 }
 
 func (e *ExtractorOracle) initDBConnections() {
-	oracleDB, err := config.NewDB(e.mysqlContext.OracleConfig)
+	oracleDB, err := config.NewDB(e.driverContext.OracleConfig)
 	if err != nil {
 		e.onError(common.TaskStateDead, err)
 	}
@@ -703,7 +667,7 @@ func (e *ExtractorOracle) StreamEvents() error {
 			return nil
 		}
 
-		groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
+		groupTimeoutDuration := time.Duration(e.driverContext.GroupTimeout) * time.Millisecond
 		timer := time.NewTimer(groupTimeoutDuration)
 		defer timer.Stop()
 
@@ -716,10 +680,10 @@ func (e *ExtractorOracle) StreamEvents() error {
 				entries.Entries = append(entries.Entries, binlogEntry)
 				entriesSize += entryCtx.OriginalSize
 
-				if entriesSize >= e.mysqlContext.GroupMaxSize {
+				if entriesSize >= e.driverContext.GroupMaxSize {
 					e.logger.Debug("incr. send by GroupLimit",
 						"entriesSize", entriesSize,
-						"groupMaxSize", e.mysqlContext.GroupMaxSize,
+						"groupMaxSize", e.driverContext.GroupMaxSize,
 						"Entries.len", len(entries.Entries))
 
 					e.sendBySizeFullCounter += 1
@@ -739,7 +703,7 @@ func (e *ExtractorOracle) StreamEvents() error {
 				nEntries := len(entries.Entries)
 				if nEntries > 0 {
 					e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
-						"timeout", e.mysqlContext.GroupTimeout)
+						"timeout", e.driverContext.GroupTimeout)
 					e.sendByTimeoutCounter += 1
 					err := sendEntriesAndClear()
 					if err != nil {
@@ -749,8 +713,8 @@ func (e *ExtractorOracle) StreamEvents() error {
 				}
 				timer.Reset(groupTimeoutDuration)
 			}
-			e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
-			atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+			e.driverContext.Stage = common.StageSendingBinlogEventToSlave
+			atomic.AddInt64(&e.driverContext.DeltaEstimate, 1)
 		} // end for keepGoing && !e.shutdown
 	}()
 	// The next should block and execute forever, unless there's a serious error
@@ -824,7 +788,7 @@ func (e *ExtractorOracle) onError(state int, err error) {
 
 func (e *ExtractorOracle) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
-		Coord: e.initialBinlogCoordinates,
+		Coord: e.initialCoordinates,
 	})
 	if err != nil {
 		return err
@@ -849,7 +813,7 @@ func (e *ExtractorOracle) CheckAndApplyLowerCaseTableNames() {
 				}
 			}
 		}
-		lowerConfigItem(e.mysqlContext.ReplicateDoDb)
-		lowerConfigItem(e.mysqlContext.ReplicateIgnoreDb)
+		lowerConfigItem(e.driverContext.ReplicateDoDb)
+		lowerConfigItem(e.driverContext.ReplicateIgnoreDb)
 	}
 }

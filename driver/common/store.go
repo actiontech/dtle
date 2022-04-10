@@ -251,7 +251,7 @@ func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{})
 	}
 }
 
-func GetGtidFromConsul(sm *StoreManager, subject string, logger g.LoggerType, mysqlContext *MySQLDriverConfig) error {
+func GetGtidFromConsul(sm *StoreManager, subject string, logger g.LoggerType, mysqlContext *DriverConfig) error {
 	gtid, err := sm.GetGtidForJob(subject)
 	if err != nil {
 		return errors.Wrap(err, "GetGtidForJob")

@@ -38,7 +38,7 @@ type taskHandle struct {
 	waitCh     chan *drivers.ExitResult
 	stats      *common.TaskStatistics
 
-	driverConfig *common.MySQLDriverConfig
+	driverConfig *common.DriverConfig
 }
 
 func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {

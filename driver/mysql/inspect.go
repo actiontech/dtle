@@ -30,10 +30,10 @@ const startSlavePostWaitMilliseconds = 500 * time.Millisecond
 type Inspector struct {
 	logger       g.LoggerType
 	db           *gosql.DB
-	mysqlContext *common.MySQLDriverConfig
+	mysqlContext *common.DriverConfig
 }
 
-func NewInspector(ctx *common.MySQLDriverConfig, logger g.LoggerType) *Inspector {
+func NewInspector(ctx *common.DriverConfig, logger g.LoggerType) *Inspector {
 	return &Inspector{
 		logger:       logger,
 		mysqlContext: ctx,

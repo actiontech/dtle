@@ -139,7 +139,7 @@ func (mm *MtsManager) Executed(binlogEntry *common.DataEntry) {
 
 // HashTx returns an empty slice if there is no row events (DDL TX),
 // or there is a row event refering to a no-PK table.
-func HashTx(entryCtx *common.BinlogEntryContext) (hashes []uint64) {
+func HashTx(entryCtx *common.EntryContext) (hashes []uint64) {
 	entry := entryCtx.Entry
 	for i := range entry.Events {
 		event := &entry.Events[i]
@@ -194,7 +194,7 @@ func NewWritesetManager(historySize int) *WritesetManager {
 		dependencyHistorySize: historySize,
 	}
 }
-func (wm *WritesetManager) GatLastCommit(entryCtx *common.BinlogEntryContext, logger g.LoggerType) int64 {
+func (wm *WritesetManager) GatLastCommit(entryCtx *common.EntryContext, logger g.LoggerType) int64 {
 	entry := entryCtx.Entry
 	lastCommit := entry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted
 

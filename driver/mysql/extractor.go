@@ -46,7 +46,7 @@ type Extractor struct {
 	execCtx      *common.ExecContext
 	logger       g.LoggerType
 	subject      string
-	mysqlContext *common.MySQLDriverConfig
+	driverContext *common.DriverConfig
 
 	systemVariables       map[string]string
 	sqlMode               string
@@ -67,7 +67,7 @@ type Extractor struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            map[string]*common.SchemaContext
-	dataChannel              chan *common.BinlogEntryContext
+	dataChannel              chan *common.EntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
 	initialBinlogCoordinates *common.MySQLCoordinates
@@ -109,7 +109,7 @@ type Extractor struct {
 	targetGtid string
 }
 
-func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
+func NewExtractor(execCtx *common.ExecContext, cfg *common.DriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
 	logger.Info("NewExtractor", "job", execCtx.Subject)
 
 	e := &Extractor{
@@ -117,7 +117,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		logger:          logger.Named("extractor").With("job", execCtx.Subject),
 		execCtx:         execCtx,
 		subject:         execCtx.Subject,
-		mysqlContext:    cfg,
+		driverContext:    cfg,
 		rowCopyComplete: make(chan bool),
 		waitCh:          waitCh,
 		shutdownCh:      make(chan struct{}),
@@ -131,7 +131,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		memory2:         new(int64),
 		replicateDoDb:   map[string]*common.SchemaContext{},
 	}
-	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
+	e.dataChannel = make(chan *common.EntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -169,7 +169,7 @@ func (e *Extractor) Run() {
 
 	}
 
-	if e.mysqlContext.WaitOnJob != "" {
+	if e.driverContext.WaitOnJob != "" {
 		jobStatus, err := e.storeManager.GetJobStatus(e.subject)
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
@@ -183,14 +183,14 @@ func (e *Extractor) Run() {
 		firstWait := jobStatus == common.DtleJobStatusReverseInit
 		if firstWait {
 			// the first time to wait
-			e.logger.Info("waiting for another job to finish", "job2", e.mysqlContext.WaitOnJob)
-			err = e.storeManager.WaitOnJob(e.subject, e.mysqlContext.WaitOnJob, e.shutdownCh)
+			e.logger.Info("waiting for another job to finish", "job2", e.driverContext.WaitOnJob)
+			err = e.storeManager.WaitOnJob(e.subject, e.driverContext.WaitOnJob, e.shutdownCh)
 			if err != nil {
 				e.onError(common.TaskStateDead, err)
 				return
 			}
 		}
-		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", firstWait)
+		e.logger.Info("after WaitOnJob", "job2", e.driverContext.WaitOnJob, "firstWait", firstWait)
 	}
 
 	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
@@ -201,13 +201,13 @@ func (e *Extractor) Run() {
 		return
 	}
 
-	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
+	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.driverContext)
 	if err != nil {
 		e.onError(common.TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
 		return
 	}
 
-	e.logger.Info("Extract binlog events", "mysql", e.mysqlContext.ConnectionConfig.GetAddr())
+	e.logger.Info("Extract binlog events", "mysql", e.driverContext.ConnectionConfig.GetAddr())
 
 	// Validate job arguments
 	/*	{
@@ -238,20 +238,20 @@ func (e *Extractor) Run() {
 
 	fullCopy := true
 
-	if e.mysqlContext.Gtid == "" {
-		if e.mysqlContext.AutoGtid {
+	if e.driverContext.Gtid == "" {
+		if e.driverContext.AutoGtid {
 			e.logger.Info("using AutoGtid (latest position)")
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
 				e.onError(common.TaskStateDead, err)
 				return
 			}
-			e.mysqlContext.Gtid = coord.GtidSet
+			e.driverContext.Gtid = coord.GtidSet
 			e.logger.Debug("use auto gtid", "gtidset", coord.GtidSet)
 			fullCopy = false
 		}
 
-		if e.mysqlContext.GtidStart != "" {
+		if e.driverContext.GtidStart != "" {
 			e.logger.Info("calculating Gtid from GtidStart")
 			coord, err := base.GetSelfBinlogCoordinates(e.db)
 			if err != nil {
@@ -260,27 +260,27 @@ func (e *Extractor) Run() {
 			}
 			e.logger.Info("got mysql gtidset", "gtidset", coord.GtidSet)
 
-			e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
+			e.driverContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.driverContext.GtidStart)
 			if err != nil {
 				e.onError(common.TaskStateDead, err)
 				return
 			}
-			e.logger.Info("got Gtid", "Gtid", e.mysqlContext.Gtid)
+			e.logger.Info("got Gtid", "Gtid", e.driverContext.Gtid)
 			fullCopy = false
 		}
 
-		if e.mysqlContext.BinlogFile != "" {
+		if e.driverContext.BinlogFile != "" {
 			fullCopy = false
 		}
 
-		err = e.storeManager.SaveGtidForJob(e.subject, e.mysqlContext.Gtid)
+		err = e.storeManager.SaveGtidForJob(e.subject, e.driverContext.Gtid)
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
 		}
 	} else {
 		fullCopy = false
-		if e.mysqlContext.BinlogRelay {
-			if e.mysqlContext.BinlogFile == "" {
+		if e.driverContext.BinlogRelay {
+			if e.driverContext.BinlogFile == "" {
 				err := fmt.Errorf("the a job is incr-only (with GTID) and has BinlogRelay enabled," +
 					" but BinlogFile,Pos is not provided")
 				e.logger.Error("job config error")
@@ -300,11 +300,11 @@ func (e *Extractor) Run() {
 	go func() {
 		<-e.gotCoordinateCh
 
-		if e.mysqlContext.SkipIncrementalCopy {
+		if e.driverContext.SkipIncrementalCopy {
 			e.logger.Warn("SkipIncrementalCopy is true. Make sure it is intended.")
 			// empty
 		} else {
-			if !e.mysqlContext.BinlogRelay {
+			if !e.driverContext.BinlogRelay {
 				// This must be after `<-e.gotCoordinateCh` or there will be a deadlock
 				<-e.fullCopyDone
 			}
@@ -315,7 +315,7 @@ func (e *Extractor) Run() {
 
 	if fullCopy {
 		e.logger.Debug("mysqlDump. before")
-		e.mysqlContext.MarkRowCopyStartTime()
+		e.driverContext.MarkRowCopyStartTime()
 		if err := e.mysqlDump(); err != nil {
 			e.onError(common.TaskStateDead, err)
 			return
@@ -343,11 +343,11 @@ func (e *Extractor) Run() {
 		}
 		e.gotCoordinateCh <- struct{}{}
 	}
-	if !e.mysqlContext.BinlogRelay {
+	if !e.driverContext.BinlogRelay {
 		e.fullCopyDone <- struct{}{}
 	}
 
-	if e.mysqlContext.SkipIncrementalCopy {
+	if e.driverContext.SkipIncrementalCopy {
 		e.logger.Info("SkipIncrementalCopy")
 	} else {
 		err := <-e.streamerReadyCh
@@ -370,7 +370,7 @@ func (e *Extractor) Run() {
 // - table row count
 // - schema validation
 func (e *Extractor) initiateInspector() (err error) {
-	e.inspector = NewInspector(e.mysqlContext, e.logger.ResetNamed("inspector"))
+	e.inspector = NewInspector(e.driverContext, e.logger.ResetNamed("inspector"))
 	if err := e.inspector.InitDBConnections(); err != nil {
 		return err
 	}
@@ -386,16 +386,16 @@ func (e *Extractor) inspectTables() (err error) {
 	}
 	dbsFiltered := []string{}
 	for _, db := range dbsExisted {
-		if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, db) {
+		if len(e.driverContext.ReplicateIgnoreDb) > 0 && common.IgnoreDbByReplicateIgnoreDb(e.driverContext.ReplicateIgnoreDb, db) {
 			continue
 		}
 		dbsFiltered = append(dbsFiltered, db)
 	}
 
-	if len(e.mysqlContext.ReplicateDoDb) > 0 {
+	if len(e.driverContext.ReplicateDoDb) > 0 {
 		var doDbs []*common.DataSource
 		// Get all db from TableSchemaRegex regex and get all tableSchemaRename
-		for _, doDb := range e.mysqlContext.ReplicateDoDb {
+		for _, doDb := range e.driverContext.ReplicateDoDb {
 			if doDb.TableSchemaRegex != "" && doDb.TableSchemaRename != "" {
 				regex := doDb.TableSchemaRegex
 				schemaRenameRegex := doDb.TableSchemaRename
@@ -436,14 +436,14 @@ func (e *Extractor) inspectTables() (err error) {
 			if err != nil {
 				return err
 			}
-			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.mysqlContext.ExpandSyntaxSupport)
+			existedTables, err := sql.ShowTables(e.db, doDb.TableSchema, e.driverContext.ExpandSyntaxSupport)
 			if err != nil {
 				return err
 			}
 			tbsFiltered := []*common.Table{}
 			for _, tb := range existedTables {
-				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 &&
-					common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, doDb.TableSchema, tb.TableName) {
+				if len(e.driverContext.ReplicateIgnoreDb) > 0 &&
+					common.IgnoreTbByReplicateIgnoreDb(e.driverContext.ReplicateIgnoreDb, doDb.TableSchema, tb.TableName) {
 					continue
 				}
 				tbsFiltered = append(tbsFiltered, tb)
@@ -530,13 +530,13 @@ func (e *Extractor) inspectTables() (err error) {
 				return err
 			}
 
-			tbs, err := sql.ShowTables(e.db, dbName, e.mysqlContext.ExpandSyntaxSupport)
+			tbs, err := sql.ShowTables(e.db, dbName, e.driverContext.ExpandSyntaxSupport)
 			if err != nil {
 				return err
 			}
 
 			for _, tb := range tbs {
-				if len(e.mysqlContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.mysqlContext.ReplicateIgnoreDb, dbName, tb.TableName) {
+				if len(e.driverContext.ReplicateIgnoreDb) > 0 && common.IgnoreTbByReplicateIgnoreDb(e.driverContext.ReplicateIgnoreDb, dbName, tb.TableName) {
 					continue
 				}
 				if err := e.inspector.ValidateOriginalTable(dbName, tb.TableName, tb); err != nil {
@@ -696,7 +696,7 @@ func (e *Extractor) initiateStreaming() error {
 
 //--EventsStreamer--
 func (e *Extractor) initDBConnections() (err error) {
-	eventsStreamerUri := e.mysqlContext.ConnectionConfig.GetDBUri()
+	eventsStreamerUri := e.driverContext.ConnectionConfig.GetDBUri()
 	if e.db, err = sql.CreateDB(eventsStreamerUri); err != nil {
 		return err
 	}
@@ -706,7 +706,7 @@ func (e *Extractor) initDBConnections() (err error) {
 		return someSysVars.Err
 	}
 	e.logger.Info("Connection validated", "on",
-		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
+		hclog.Fmt("%s:%d", e.driverContext.ConnectionConfig.Host, e.driverContext.ConnectionConfig.Port))
 
 	e.MySQLVersion = someSysVars.Version
 	e.NetWriteTimeout = someSysVars.NetWriteTimeout
@@ -725,7 +725,7 @@ func (e *Extractor) initDBConnections() (err error) {
 			}
 		}
 		// https://github.com/go-sql-driver/mysql#system-variables
-		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.ConnectionConfig.GetSingletonDBUri(),
+		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.driverContext.ConnectionConfig.GetSingletonDBUri(),
 			getTxIsolationVarName(e.mysqlVersionDigit))
 		if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
 			return err
@@ -787,7 +787,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.MySQLCoordinates) {
-	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
+	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.driverContext, e.logger.ResetNamed("reader"),
 		e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
 		e.NetWriteTimeout, e.ctx)
 	if err != nil {
@@ -817,20 +817,20 @@ func (e *Extractor) selectSqlMode() error {
 }
 
 func (e *Extractor) setInitialBinlogCoordinates() error {
-	if e.mysqlContext.Gtid != "" {
-		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.mysqlContext.Gtid)
+	if e.driverContext.Gtid != "" {
+		gtidSet, err := gomysql.ParseMysqlGTIDSet(e.driverContext.Gtid)
 		if err != nil {
 			return err
 		}
 		e.initialBinlogCoordinates = &common.MySQLCoordinates{
 			GtidSet: gtidSet.String(),
-			LogFile: e.mysqlContext.BinlogFile,
-			LogPos:  e.mysqlContext.BinlogPos,
+			LogFile: e.driverContext.BinlogFile,
+			LogPos:  e.driverContext.BinlogPos,
 		}
-	} else if e.mysqlContext.BinlogFile != "" {
+	} else if e.driverContext.BinlogFile != "" {
 		e.initialBinlogCoordinates = &common.MySQLCoordinates{
-			LogFile: e.mysqlContext.BinlogFile,
-			LogPos:  e.mysqlContext.BinlogPos,
+			LogFile: e.driverContext.BinlogFile,
+			LogPos:  e.driverContext.BinlogPos,
 		}
 	} else {
 		return fmt.Errorf("neither Gtid nor BinlogFile is assigned")
@@ -854,9 +854,9 @@ func (e *Extractor) CountTableRows(table *common.Table) (int64, error) {
 			"schema", table.TableSchema, "table", table.TableName)
 		rowsEstimate = 0
 	}
-	atomic.AddInt64(&e.mysqlContext.RowsEstimate, rowsEstimate)
+	atomic.AddInt64(&e.driverContext.RowsEstimate, rowsEstimate)
 
-	e.mysqlContext.Stage = common.StageSearchingRowsForUpdate
+	e.driverContext.Stage = common.StageSearchingRowsForUpdate
 	e.logger.Debug("Estimated number of rows", "schema", table.TableSchema, "table", table.TableName, "n", rowsEstimate)
 	return rowsEstimate, nil
 }
@@ -1011,7 +1011,7 @@ func (e *Extractor) StreamEvents() error {
 			return nil
 		}
 
-		groupTimeoutDuration := time.Duration(e.mysqlContext.GroupTimeout) * time.Millisecond
+		groupTimeoutDuration := time.Duration(e.driverContext.GroupTimeout) * time.Millisecond
 		timer := time.NewTimer(groupTimeoutDuration)
 		defer timer.Stop()
 
@@ -1024,10 +1024,10 @@ func (e *Extractor) StreamEvents() error {
 				entries.Entries = append(entries.Entries, binlogEntry)
 				entriesSize += entryCtx.OriginalSize
 
-				if entriesSize >= e.mysqlContext.GroupMaxSize {
+				if entriesSize >= e.driverContext.GroupMaxSize {
 					e.logger.Debug("incr. send by GroupLimit",
 						"entriesSize", entriesSize,
-						"groupMaxSize", e.mysqlContext.GroupMaxSize,
+						"groupMaxSize", e.driverContext.GroupMaxSize,
 						"Entries.len", len(entries.Entries))
 
 					e.sendBySizeFullCounter += 1
@@ -1047,7 +1047,7 @@ func (e *Extractor) StreamEvents() error {
 				nEntries := len(entries.Entries)
 				if nEntries > 0 {
 					e.logger.Debug("incr. send by timeout.", "entriesSize", entriesSize,
-						"timeout", e.mysqlContext.GroupTimeout)
+						"timeout", e.driverContext.GroupTimeout)
 					e.sendByTimeoutCounter += 1
 					err := sendEntriesAndClear()
 					if err != nil {
@@ -1057,8 +1057,8 @@ func (e *Extractor) StreamEvents() error {
 				}
 				timer.Reset(groupTimeoutDuration)
 			}
-			e.mysqlContext.Stage = common.StageSendingBinlogEventToSlave
-			atomic.AddInt64(&e.mysqlContext.DeltaEstimate, 1)
+			e.driverContext.Stage = common.StageSendingBinlogEventToSlave
+			atomic.AddInt64(&e.driverContext.DeltaEstimate, 1)
 		} // end for keepGoing && !e.shutdown
 	}()
 	// The next should block and execute forever, unless there's a serious error
@@ -1309,7 +1309,7 @@ func (e *Extractor) mysqlDump() error {
 
 	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
 	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-	if !e.mysqlContext.SkipCreateDbTable {
+	if !e.driverContext.SkipCreateDbTable {
 		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas",
 			"replicateDoDb", e.replicateDoDb)
 
@@ -1329,7 +1329,7 @@ func (e *Extractor) mysqlDump() error {
 			entry := &common.DumpEntry{
 				DbSQL: dbSQL,
 			}
-			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
+			atomic.AddInt64(&e.driverContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.TotalRowsCopied, 1)
 			if err := e.encodeAndSendDumpEntry(entry); err != nil {
 				e.onError(common.TaskStateRestart, err)
@@ -1365,7 +1365,7 @@ func (e *Extractor) mysqlDump() error {
 						return err
 					}
 
-					if e.mysqlContext.DropTableIfExists {
+					if e.driverContext.DropTableIfExists {
 						tbSQL = append(tbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s.%s",
 							mysqlconfig.EscapeName(targetSchema), mysqlconfig.EscapeName(targetTable)))
 					}
@@ -1375,7 +1375,7 @@ func (e *Extractor) mysqlDump() error {
 					TbSQL:      tbSQL,
 					TotalCount: tb.Counter,
 				}
-				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
+				atomic.AddInt64(&e.driverContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.TotalRowsCopied, 1)
 				if err := e.encodeAndSendDumpEntry(entry); err != nil {
 					e.onError(common.TaskStateRestart, err)
@@ -1405,7 +1405,7 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Info("Step n: - scanning table (i of N tables)",
 				"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 
-			d := NewDumper(tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
+			d := NewDumper(tx, t, e.driverContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
 			if err := d.Dump(); err != nil {
 				e.onError(common.TaskStateDead, err)
 			}
@@ -1463,14 +1463,14 @@ func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
 	if err := e.publish(fmt.Sprintf("%s_full", e.subject), txMsg, 0); err != nil {
 		return err
 	}
-	e.mysqlContext.Stage = common.StageSendingData
+	e.driverContext.Stage = common.StageSendingData
 	return nil
 }
 
 func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 	totalRowsCopied := atomic.LoadInt64(&e.TotalRowsCopied)
-	rowsEstimate := atomic.LoadInt64(&e.mysqlContext.RowsEstimate)
-	deltaEstimate := atomic.LoadInt64(&e.mysqlContext.DeltaEstimate)
+	rowsEstimate := atomic.LoadInt64(&e.driverContext.RowsEstimate)
+	deltaEstimate := atomic.LoadInt64(&e.driverContext.DeltaEstimate)
 	if atomic.LoadInt64(&e.rowCopyCompleteFlag) == 1 {
 		// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 		// and there is no further need to keep updating the value.
@@ -1489,9 +1489,9 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 
 	if progressPct >= 100.0 {
 		eta = "0s"
-		e.mysqlContext.Stage = common.StageMasterHasSentAllBinlogToSlave
+		e.driverContext.Stage = common.StageMasterHasSentAllBinlogToSlave
 	} else if progressPct >= 1.0 {
-		elapsedRowCopySeconds := e.mysqlContext.ElapsedRowCopyTime().Seconds()
+		elapsedRowCopySeconds := e.driverContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsCopied)
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
 		if etaSeconds >= 0 {
@@ -1511,7 +1511,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 1, 64),
 		ETA:                eta,
 		Backlog:            fmt.Sprintf("%d/%d", len(e.dataChannel), cap(e.dataChannel)),
-		Stage:              e.mysqlContext.Stage,
+		Stage:              e.driverContext.Stage,
 		BufferStat: common.BufferStat{
 			BinlogEventQueueSize: e.binlogReader.GetQueueSize(),
 			ExtractorTxQueueSize: len(e.dataChannel),
@@ -1534,8 +1534,8 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
 		e.TotalTransferredBytes = int(taskResUsage.MsgStat.OutBytes)
-		if e.mysqlContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.mysqlContext.TrafficAgainstLimits {
-			e.onError(common.TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.mysqlContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
+		if e.driverContext.TrafficAgainstLimits > 0 && int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024 >= e.driverContext.TrafficAgainstLimits {
+			e.onError(common.TaskStateDead, fmt.Errorf("traffic limit exceeded : %d/%d", e.driverContext.TrafficAgainstLimits, int(taskResUsage.MsgStat.OutBytes)/1024/1024/1024))
 		}
 	}
 
@@ -1674,7 +1674,7 @@ func (e *Extractor) CheckAndApplyLowerCaseTableNames() {
 				}
 			}
 		}
-		lowerConfigItem(e.mysqlContext.ReplicateDoDb)
-		lowerConfigItem(e.mysqlContext.ReplicateIgnoreDb)
+		lowerConfigItem(e.driverContext.ReplicateDoDb)
+		lowerConfigItem(e.driverContext.ReplicateIgnoreDb)
 	}
 }

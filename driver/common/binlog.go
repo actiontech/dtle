@@ -51,7 +51,7 @@ func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
  func (b *MySQLCoordinateTx)GetOSID()string{
 	return b.OSID
  }
-type BinlogEntryContext struct {
+type EntryContext struct {
 	Entry       *DataEntry
 	// Only a DML has a tableItem. For a DDL, its tableItem is nil.
 	TableItems  []*ApplierTableItem

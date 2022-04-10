@@ -29,12 +29,12 @@ const (
 type ApplierIncr struct {
 	logger       g.LoggerType
 	subject      string
-	mysqlContext *common.MySQLDriverConfig
+	mysqlContext *common.DriverConfig
 
 	incrBytesQueue   chan []byte
-	binlogEntryQueue chan *common.DataEntry
+	dataEntryQueue chan *common.DataEntry
 	// only TX can be executed should be put into this chan
-	applyBinlogMtsTxQueue chan *common.BinlogEntryContext
+	applyDataMtsTxQueue chan *common.EntryContext
 
 	mtsManager *MtsManager
 	wsManager  *WritesetManager
@@ -69,7 +69,7 @@ type ApplierIncr struct {
 	SkipGtidExecutedTable bool
 }
 
-func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.MySQLDriverConfig,
+func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.DriverConfig,
 	logger g.LoggerType, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
 	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{},
 	gtidSetLock *sync.RWMutex) (*ApplierIncr, error) {
@@ -80,8 +80,8 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.My
 		subject:               subject,
 		mysqlContext:          mysqlContext,
 		incrBytesQueue:        make(chan []byte, mysqlContext.ReplChanBufferSize),
-		binlogEntryQueue:      make(chan *common.DataEntry, mysqlContext.ReplChanBufferSize * 2),
-		applyBinlogMtsTxQueue: make(chan *common.BinlogEntryContext, mysqlContext.ReplChanBufferSize * 2),
+		dataEntryQueue:      make(chan *common.DataEntry, mysqlContext.ReplChanBufferSize * 2),
+		applyDataMtsTxQueue: make(chan *common.EntryContext, mysqlContext.ReplChanBufferSize * 2),
 		db:                    db,
 		dbs:                   dbs,
 		shutdownCh:            shutdownCh,
@@ -97,7 +97,7 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.My
 	}
 
 	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
-		return len(a.binlogEntryQueue) == 0 && len(a.applyBinlogMtsTxQueue) == 0
+		return len(a.dataEntryQueue) == 0 && len(a.applyDataMtsTxQueue) == 0
 		// TODO need a more reliable method to determine queue.empty.
 	})
 
@@ -188,7 +188,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 		select {
 		case <-a.shutdownCh:
 			keepLoop = false
-		case entryContext := <-a.applyBinlogMtsTxQueue:
+		case entryContext := <-a.applyDataMtsTxQueue:
 			hasEntry = true
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
 			if err := a.ApplyBinlogEvent(workerIndex, entryContext); err != nil {
@@ -212,7 +212,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 	}
 }
 
-func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err error) {
+func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	binlogEntry := entryCtx.Entry
 
 	if binlogEntry.Coordinates.GetSid() == [16]byte{0} {
@@ -348,7 +348,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.BinlogEntryContext) (err erro
 				return nil // shutdown
 			}
 			a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
-			a.applyBinlogMtsTxQueue <- entryCtx
+			a.applyDataMtsTxQueue <- entryCtx
 		}
 	}
 	return nil
@@ -365,8 +365,8 @@ func (a *ApplierIncr) heterogeneousReplay() {
 			case <-a.shutdownCh:
 				a.wg.Done()
 				return
-			case entry := <-a.binlogEntryQueue:
-				err := a.handleEntry(&common.BinlogEntryContext{
+			case entry := <-a.dataEntryQueue:
+				err := a.handleEntry(&common.EntryContext{
 					Entry:       entry,
 					TableItems:  nil,
 				})
@@ -402,7 +402,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 				select {
 				case <-a.shutdownCh:
 					return
-				case a.binlogEntryQueue <- entry:
+				case a.dataEntryQueue <- entry:
 					atomic.AddInt64(a.memory2, int64(entry.Size()))
 				}
 			}
@@ -489,7 +489,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.BinlogEntryContext) error {
+func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.EntryContext) error {
 	logger := a.logger.Named("ApplyBinlogEvent")
 	binlogEntry := binlogEntryCtx.Entry
 
@@ -702,7 +702,7 @@ func (a *ApplierIncr) getTableItem(schema string, table string) *common.ApplierT
 
 type mapSchemaTableItems map[string](map[string](*common.ApplierTableItem))
 
-func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntryContext) error {
+func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.EntryContext) error {
 	var err error
 	binlogEntry.TableItems = make([]*common.ApplierTableItem, len(binlogEntry.Entry.Events))
 
@@ -741,7 +741,7 @@ func (a *ApplierIncr) setTableItemForBinlogEntry(binlogEntry *common.BinlogEntry
 	return nil
 }
 
-func (a *ApplierIncr) handleEntryOracle(entryCtx *common.BinlogEntryContext) (err error) {
+func (a *ApplierIncr) handleEntryOracle(entryCtx *common.EntryContext) (err error) {
 	err = a.setTableItemForBinlogEntry(entryCtx)
 	if err != nil {
 		return err
