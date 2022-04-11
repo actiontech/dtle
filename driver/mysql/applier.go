@@ -300,7 +300,7 @@ func (a *Applier) Run() {
 		}
 		if entry.IsPartOfBigTx() {
 			bs, err := (&common.BigTxAck{
-				GNO:   entry.Coordinates.(*common.MySQLCoordinateTx).GNO,
+				GNO:   entry.Coordinates.GetGNO(),
 				Index: entry.Index,
 			}).Marshal(nil)
 			if err != nil {

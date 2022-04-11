@@ -190,14 +190,14 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 			keepLoop = false
 		case entryContext := <-a.applyDataMtsTxQueue:
 			hasEntry = true
-			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GetGNO())
 			if err := a.ApplyBinlogEvent(workerIndex, entryContext); err != nil {
 				a.OnError(common.TaskStateDead, err) // TODO coordinate with other goroutine
 				keepLoop = false
 			} else {
 				// do nothing
 			}
-			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.GetGNO())
 		case <-t.C:
 			if !hasEntry {
 				err := a.dbs[workerIndex].Db.PingContext(a.ctx)
@@ -215,13 +215,13 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	binlogEntry := entryCtx.Entry
 
-	if binlogEntry.Coordinates.GetSid() == [16]byte{0} {
+	if binlogEntry.Coordinates.GetSid() == uuid.UUID([16]byte{0}) {
 		return a.handleEntryOracle(entryCtx)
 	}
 	
 	a.logger.Debug("a binlogEntry.", "remaining", len(a.incrBytesQueue),
-		"gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO, "lc", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted,
-		"seq", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber)
+		"gno", binlogEntry.Coordinates.GetGNO(), "lc", binlogEntry.Coordinates.GetLastCommit(),
+		"seq", binlogEntry.Coordinates.GetSequenceNumber())
 
 	if binlogEntry.Coordinates.GetOSID() == a.MySQLServerUuid {
 		a.logger.Debug("skipping a dtle tx.", "osid", binlogEntry.Coordinates.GetOSID())
@@ -240,10 +240,10 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 		a.gtidSetLock.RLock()
 		defer a.gtidSetLock.RUnlock()
 		intervals := base.GetIntervals(a.gtidSet, txSid.(uuid.UUID).String())
-		return base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+		return base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GetGNO())
 	}()
 	if txExecuted {
-		a.logger.Info("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+		a.logger.Info("skip an executed tx", "sid", txSid, "gno", binlogEntry.Coordinates.GetGNO())
 		return nil
 	}
 	// endregion
@@ -266,7 +266,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	}
 
 	gtidSetItem.NRow += 1
-	if binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber == 0 {
+	if binlogEntry.Coordinates.GetSequenceNumber() == 0 {
 		// MySQL 5.6: non mts
 		err := a.setTableItemForBinlogEntry(entryCtx)
 		if err != nil {
@@ -289,17 +289,17 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 				nPending := len(a.mtsManager.m)
 				if nPending != 0 {
 					a.logger.Warn("DTLE_BUG: lcPendingTx should be 0", "nPending", nPending,
-						"file", a.replayingBinlogFile, "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+						"file", a.replayingBinlogFile, "gno", binlogEntry.Coordinates.GetGNO())
 				}
 			}
 
 			// If there are TXs skipped by udup source-side
-			if a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber {
+			if a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.GetSequenceNumber() {
 				a.logger.Info("found skipping seq_num",
-					"lastEnqueue", a.mtsManager.lastEnqueue, "seqNum", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber,
-					"uuid", txSid, "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+					"lastEnqueue", a.mtsManager.lastEnqueue, "seqNum", binlogEntry.Coordinates.GetSequenceNumber(),
+					"uuid", txSid, "gno", binlogEntry.Coordinates.GetGNO())
 			}
-			for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber {
+			for a.mtsManager.lastEnqueue+1 < binlogEntry.Coordinates.GetSequenceNumber() {
 				a.mtsManager.lastEnqueue += 1
 				a.mtsManager.chExecuted <- a.mtsManager.lastEnqueue
 			}
@@ -308,7 +308,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 			// DDL must be executed separatedly
 			if hasDDL || a.prevDDL {
 				a.logger.Debug("MTS found DDL. WaitForAllCommitted",
-					"gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO, "hasDDL", hasDDL, "prevDDL", a.prevDDL)
+					"gno", binlogEntry.Coordinates.GetGNO(), "hasDDL", hasDDL, "prevDDL", a.prevDDL)
 				if !a.mtsManager.WaitForAllCommitted() {
 					return nil // shutdown
 				}
@@ -319,7 +319,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 				if !a.mtsManager.WaitForAllCommitted() {
 					return nil // shutdown
 				}
-				a.wsManager.resetCommonParent(binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber)
+				a.wsManager.resetCommonParent(binlogEntry.Coordinates.GetSequenceNumber())
 			}
 		}
 
@@ -331,13 +331,13 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 		if !binlogEntry.IsPartOfBigTx() && !a.mysqlContext.UseMySQLDependency {
 			newLC := a.wsManager.GatLastCommit(entryCtx, a.logger)
 			binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted = newLC
-			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber,
-				"gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.GetSequenceNumber(),
+				"gno", binlogEntry.Coordinates.GetGNO())
 		}
 
 		if binlogEntry.IsPartOfBigTx() {
 			if binlogEntry.Index == 0 {
-				a.mtsManager.lastEnqueue = binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
+				a.mtsManager.lastEnqueue = binlogEntry.Coordinates.GetSequenceNumber()
 			}
 			err = a.ApplyBinlogEvent(0, entryCtx)
 			if err != nil {
@@ -347,7 +347,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 			if !a.mtsManager.WaitForExecution(binlogEntry) {
 				return nil // shutdown
 			}
-			a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+			a.logger.Debug("a binlogEntry MTS enqueue.", "gno", binlogEntry.Coordinates.GetGNO())
 			a.applyDataMtsTxQueue <- entryCtx
 		}
 	}
@@ -498,7 +498,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 	var totalDelta int64
 	var err error
 	var timestamp uint32
-	txSid := binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GetSid()
+	txSid := binlogEntry.Coordinates.GetSid()
 
 	dbApplier.DbMutex.Lock()
 	if dbApplier.Tx == nil {
@@ -512,7 +512,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
 	for i, event := range binlogEntry.Events {
-		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO, "event", i)
+		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GetGNO(), "event", i)
 		switch event.DML {
 		case common.NotDML:
 			var err error
@@ -523,7 +523,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				_, err = dbApplier.Tx.ExecContext(a.ctx, query)
 				if err != nil {
 					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
-						binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO, i, g.StrLim(query, 10), workerIdx)
+						binlogEntry.Coordinates.GetGNO(), i, g.StrLim(query, 10), workerIdx)
 					if sql.IgnoreError(err) {
 						logger.Warn("Ignore error", "err", errCtx)
 						return nil
@@ -628,16 +628,16 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			}
 
 			if err != nil {
-				logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO),
+				logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GetGNO()),
 					"err", err)
 				return err
 			}
 
 			nr, err := r.RowsAffected()
 			if err != nil {
-				logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO, "event", i, "err", err)
+				logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "err", err)
 			} else {
-				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO, "event", i, "nr", nr)
+				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "nr", nr)
 			}
 			totalDelta += rowDelta
 
@@ -653,9 +653,9 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 	if binlogEntry.Final {
 		if !a.SkipGtidExecutedTable {
-			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GetGNO())
 			_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
-			a.subject, uuid.UUID(binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SID).Bytes(), binlogEntry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+			a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), binlogEntry.Coordinates.GetGNO())
 			if err != nil {
 				return errors.Wrap(err, "insert gno")
 			}

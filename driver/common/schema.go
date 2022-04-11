@@ -1,6 +1,10 @@
 package common
 
-import "reflect"
+import (
+	"reflect"
+
+	uuid "github.com/satori/go.uuid"
+)
 
 type CoordinatesI interface{
 	GetSid()interface{}
@@ -10,6 +14,7 @@ type CoordinatesI interface{
 	GetLogPos()int64
 	GetLastCommit()int64
 	GetGNO()int64
+	GetSequenceNumber()int64
 	GetLogFile()string
 	GetOSID()string
 }
@@ -28,7 +33,7 @@ func SetField(fieldName string,fieldValue interface{}){
 // Oracle CoordinateTx
 
 func (o *OracleCoordinateTx)GetSid() interface{} {
-	return ""
+	return uuid.UUID([16]byte{0})
 }
 
 func (o *OracleCoordinateTx) GetGtidForThisTx() string {
@@ -54,6 +59,10 @@ func (o *OracleCoordinateTx)GetFieldValue(fieldName string)interface{}{
  }
 
  func (o *OracleCoordinateTx)GetGNO()int64{
+	return 0
+ }
+
+ func (b *OracleCoordinateTx)GetSequenceNumber()int64{
 	return 0
  }
 

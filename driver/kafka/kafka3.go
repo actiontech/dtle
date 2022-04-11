@@ -857,7 +857,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 	realTopics := []string{}
 
 	for _, dmlEvent := range dmlEntries {
-		kr.logger.Debug("kafkaTransformDMLEventQueries", "gno", dmlEvent.Coordinates.(*common.MySQLCoordinateTx).GNO)
+		kr.logger.Debug("kafkaTransformDMLEventQueries", "gno", dmlEvent.Coordinates.GetGNO())
 		txSid := dmlEvent.Coordinates.(*common.MySQLCoordinateTx).GetSid()
 
 		for i, _ := range dmlEvent.Events {
@@ -899,7 +899,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 				valuesBs = append(valuesBs, vBs)
 			} else {
 				if tableItem == nil {
-					err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v gno %v", realSchema, dataEvent.TableName, dmlEvent.Coordinates.(*common.MySQLCoordinateTx).GNO)
+					err = fmt.Errorf("DTLE_BUG: table meta is nil %v.%v gno %v", realSchema, dataEvent.TableName, dmlEvent.Coordinates.GetGNO())
 					kr.logger.Error("table meta is nil", "err", err)
 					return err
 				}
@@ -1109,7 +1109,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 					valuePayload.Source.Name = kr.kafkaMgr.Cfg.Topic
 					valuePayload.Source.ServerID = 1 // TODO
 					valuePayload.Source.TsSec = time.Now().Unix()
-					valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.(*common.MySQLCoordinateTx).GNO)
+					valuePayload.Source.Gtid = fmt.Sprintf("%s:%d", txSid, dmlEvent.Coordinates.GetGNO())
 					valuePayload.Source.File = dmlEvent.Coordinates.GetLogFile()
 					valuePayload.Source.Pos = dataEvent.LogPos
 					valuePayload.Source.Row = 0          // TODO "the row within the event (if there is more than one)".
@@ -1151,7 +1151,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 				keysBs = append(keysBs, kBs)
 				valuesBs = append(valuesBs, vBs)
 				kr.logger.Debug("appended an event", "schema", table.TableSchema, "table", table.TableName,
-					"gno", dmlEvent.Coordinates.(*common.MySQLCoordinateTx).GNO)
+					"gno", dmlEvent.Coordinates.GetGNO())
 
 				// tombstone event for DELETE
 				if dataEvent.DML == common.DeleteDML {
@@ -1187,7 +1187,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 		kr.BinlogFile = entry.Coordinates.GetLogFile()
 		kr.BinlogPos = entry.Coordinates.GetLogPos()
 
-		common.UpdateGtidSet(kr.gtidSet, entry.Coordinates.GetSid().(uuid.UUID), entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+		common.UpdateGtidSet(kr.gtidSet, entry.Coordinates.GetSid().(uuid.UUID), entry.Coordinates.GetGNO())
 	}
 	kr.Gtid = kr.gtidSet.String()
 	kr.logger.Debug("kafka. updateGtidString", "gtid", kr.Gtid)

@@ -40,8 +40,8 @@ func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
 	return b.LastCommitted
  }
 
- func (o *MySQLCoordinateTx)GetGNO()int64{
-	return o.GNO
+ func (b *MySQLCoordinateTx)GetGNO()int64{
+	return b.GNO
  }
 
  func (b *MySQLCoordinateTx)GetLogFile()string{
@@ -50,6 +50,10 @@ func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
 
  func (b *MySQLCoordinateTx)GetOSID()string{
 	return b.OSID
+ }
+
+ func (b *MySQLCoordinateTx)GetSequenceNumber()int64{
+	return b.SeqenceNumber
  }
 type EntryContext struct {
 	Entry       *DataEntry

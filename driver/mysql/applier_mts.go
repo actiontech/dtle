@@ -75,7 +75,7 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 // block for waiting. return true for can_execute, false for abortion.
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForExecution(binlogEntry *common.DataEntry) bool {
-	mm.lastEnqueue = binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
+	mm.lastEnqueue = binlogEntry.Coordinates.GetSequenceNumber()
 
 	if mm.forceMts {
 		return true
@@ -133,7 +133,7 @@ func (mm *MtsManager) Executed(binlogEntry *common.DataEntry) {
 	select {
 	case <-mm.shutdownCh:
 		return
-	case mm.chExecuted <- binlogEntry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber:
+	case mm.chExecuted <- binlogEntry.Coordinates.GetSequenceNumber():
 	}
 }
 
@@ -149,7 +149,7 @@ func HashTx(entryCtx *common.EntryContext) (hashes []uint64) {
 		cols := entryCtx.TableItems[i].Columns
 
 		if len(cols.UniqueKeys) == 0 {
-			g.Logger.Debug("found an event without writesets", "gno", entry.Coordinates.(*common.MySQLCoordinateTx).GNO, "i", i)
+			g.Logger.Debug("found an event without writesets", "gno", entry.Coordinates.GetGNO(), "i", i)
 		}
 
 		for _, uk := range cols.UniqueKeys {
@@ -207,7 +207,7 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.EntryContext, logger g
 		for i := range entry.Events {
 			if entry.Events[i].FKParent {
 				canUseWritesets = false
-				logger.Debug("found fk parent", "gno", entryCtx.Entry.Coordinates.(*common.MySQLCoordinateTx).GNO)
+				logger.Debug("found fk parent", "gno", entryCtx.Entry.Coordinates.GetGNO())
 				break
 			}
 		}
@@ -219,19 +219,19 @@ func (wm *WritesetManager) GatLastCommit(entryCtx *common.EntryContext, logger g
 		lastCommit = wm.lastCommonParent
 		for _, hash := range hashes {
 			if seq, exist := wm.history[hash]; exist {
-				if seq > lastCommit && seq < entry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber {
+				if seq > lastCommit && seq < entry.Coordinates.GetSequenceNumber() {
 					lastCommit = seq
 				}
 			}
 			// It might be a big-TX. We strictly limit the size of history.
 			if !exceedsCapacity {
-				wm.history[hash] = entry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
+				wm.history[hash] = entry.Coordinates.GetSequenceNumber()
 			}
 		}
 	}
 	if exceedsCapacity || !canUseWritesets {
 		wm.history = make(map[uint64]int64)
-		wm.lastCommonParent = entry.Coordinates.(*common.MySQLCoordinateTx).SeqenceNumber
+		wm.lastCommonParent = entry.Coordinates.GetSequenceNumber()
 	}
 
 	return lastCommit
