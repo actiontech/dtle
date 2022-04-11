@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/base"
 	"github.com/actiontech/dtle/drivers/mysql/mysql/sqle/inspector"
 	//"github.com/actiontech/dtle/internal/client/driver/mysql/base"
@@ -28,7 +29,7 @@ func main() {
 	//ctx.LoadTables("a", nil)
 	//ctx.UseSchema("a")
 
-	case7()
+	case8()
 	//case6()
 	//case5()
 	//case4()
@@ -40,6 +41,23 @@ func main() {
 func panicIfErr(err interface{}, args ...interface{}) {
 	if err != nil {
 		log.Panicf("will panic. err %v, args: %v", err, args)
+	}
+}
+
+func case8() { // #939
+	do("create schema a")
+	ctx.LoadTables("a", nil)
+	ctx.UseSchema("a")
+
+	do(`create table a.a939 (id int primary key auto_increment,
+  val1 varchar(50) not null default 'aaa',
+  val2 varchar(50) not null default '',
+  val3 varchar(50) not null);`)
+
+	colList, _, err := base.GetTableColumnsSqle(ctx, "a", "a939")
+	panicIfErr(err)
+	for _, col := range colList.Columns {
+		fmt.Printf("%v default '%v'\n", col.RawName, col.Default)
 	}
 }
 

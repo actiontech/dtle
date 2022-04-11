@@ -1246,9 +1246,6 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 	for i, _ := range cols {
 		var field *Schema
 		defaultValue := cols[i].Default
-		if defaultValue == "" {
-			defaultValue = nil
-		}
 		optional := cols[i].Nullable
 		fieldName := cols[i].RawName
 		switch cols[i].Type {

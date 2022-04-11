@@ -17,8 +17,8 @@ import (
 
 	"github.com/actiontech/dtle/drivers/mysql/common"
 
-	test "github.com/outbrain/golib/tests"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
+	test "github.com/outbrain/golib/tests"
 )
 
 func TestStringContainsAll(t *testing.T) {
@@ -174,6 +174,20 @@ func TestGetTableColumns(t *testing.T) {
 		})
 	}
 }
+
+//func TestGetTableColumns2(t *testing.T) {
+//	db, err := sql.CreateDB(fmt.Sprintf("%s@(%s)/?timeout=5s&tls=false&autocommit=true&charset=utf8mb4,utf8,latin1&multiStatements=true", "root:password", "10.186.62.40:3307"))
+//	if err != nil {
+//		t.Error(err)
+//	}
+//	cl, err := GetTableColumns(db, "a", "a939")
+//	if err != nil {
+//		t.Error(err)
+//	}
+//	for _, col := range cl.Columns {
+//		fmt.Printf("%v default '%v'\n", col.RawName, col.Default)
+//	}
+//}
 
 func TestApplyColumnTypes(t *testing.T) {
 	type args struct {

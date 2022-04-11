@@ -77,7 +77,6 @@ func ParseBinlogCoordinatesFromRow(row *sql.Row) (r *common.BinlogCoordinatesX, 
 	return r, nil
 }
 
-// GetTableColumns reads column list from given table
 func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common.ColumnList, error) {
 	databaseNameEscaped := umconf.EscapeName(databaseName)
 	tableNameEscaped := umconf.EscapeName(tableName)
@@ -88,9 +87,13 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common
 		aColumn := umconf.Column{
 			RawName:    rowMap.GetString("Field"),
 			ColumnType: rowMap.GetString("Type"),
-			Default:    rowMap.GetString("Default"),
 			Key:        strings.ToUpper(rowMap.GetString("Key")),
 			Nullable:   strings.ToUpper(rowMap.GetString("Null")) == "YES",
+		}
+		if d, ok := rowMap["Default"]; ok {
+			if d.Valid {
+				aColumn.Default = d.String
+			}
 		}
 		aColumn.EscapedName = umconf.EscapeName(aColumn.RawName)
 		columns = append(columns, aColumn)
