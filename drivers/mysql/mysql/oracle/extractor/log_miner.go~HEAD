@@ -529,7 +529,7 @@ func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err e
 	return
 }
 
-func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.EntryContext) error {
+func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
 	e.logger.Debug("start oracle. DataStreamEvents")
 
 	if e.LogMinerStream.startScn == 0 {
@@ -550,7 +550,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.EntryCo
 		}
 		atomic.AddUint32(&e.LogMinerStream.OracleTxNum, 1)
 		Entry := e.handleSQLs(tx)
-		entriesChannel <- &common.EntryContext{
+		entriesChannel <- &common.BinlogEntryContext{
 			Entry:        Entry,
 			TableItems:   nil,
 			OriginalSize: 0,
@@ -591,10 +591,10 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.EntryCo
 
 func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.DataEntry {
 	entry := common.NewBinlogEntry()
-	entry.Final = true	
+	entry.Final = true
 	oracleCoordinateTx := &common.OracleCoordinateTx{
 		OldestUncommittedScn:	tx.oldestUncommittedScn,
-		EndSCN:					tx.endScn,
+		EndSCN:tx.endScn,
 	}
 	entry.Coordinates = oracleCoordinateTx
 	for _, row := range tx.records {

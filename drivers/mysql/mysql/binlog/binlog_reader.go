@@ -83,7 +83,7 @@ type BinlogReader struct {
 	tables map[string]*common.SchemaContext
 
 	hasBeginQuery bool
-	entryContext  *common.BinlogEntryContext
+	entryContext  *common.EntryContext
 	ReMap         map[string]*regexp.Regexp // This is a cache for regexp.
 
 	ctx          context.Context
@@ -424,7 +424,7 @@ type parseQueryResult struct {
 	isSkip      bool
 }
 
-func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntryContext) error {
+func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.EntryContext) error {
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
 		evt := ev.Event.(*replication.GTIDEvent)
@@ -446,7 +446,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		entry.Final = true
 
 		b.hasBeginQuery = false
-		b.entryContext = &common.BinlogEntryContext{
+		b.entryContext = &common.EntryContext{
 			Entry:        entry,
 			TableItems:   nil,
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
@@ -484,7 +484,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 }
 
 func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
-	entriesChannel chan<- *common.BinlogEntryContext) error {
+	entriesChannel chan<- *common.EntryContext) error {
     mysqlCoordinateTx := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	gno := mysqlCoordinateTx.GNO
 	evt := ev.Event.(*replication.QueryEvent)
@@ -770,7 +770,7 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 	}
 }
 
-func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
+func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 	isBig := b.entryContext.Entry.IsPartOfBigTx()
 	if isBig {
 		newVal := atomic.AddInt32(&b.BigTxCount, 1)
@@ -902,7 +902,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string, schemasRenameMap m
 	return bs.String(), nil
 }
 
-func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
+func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryContext) error {
 	for {
 
 		// Check for shutdown
@@ -1756,7 +1756,7 @@ func (b *BinlogReader) onMeetTarget() {
 }
 
 func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *replication.RowsEvent,
-	entriesChannel chan<- *common.BinlogEntryContext) error {
+	entriesChannel chan<- *common.EntryContext) error {
 
 	schemaName := string(rowsEvent.Table.Schema)
 	tableName := string(rowsEvent.Table.Table)
@@ -1926,7 +1926,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 			entry.Coordinates = b.entryContext.Entry.Coordinates
 			entry.Index = b.entryContext.Entry.Index + 1
 			entry.Final = true
-			b.entryContext = &common.BinlogEntryContext{
+			b.entryContext = &common.EntryContext{
 				Entry:        entry,
 				TableItems:   nil,
 				OriginalSize: 1,

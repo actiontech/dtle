@@ -64,7 +64,7 @@ type ExtractorOracle struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*common.DataSource
-	dataChannel              chan *common.BinlogEntryContext
+	dataChannel              chan *common.EntryContext
 	inspector                *mysql.Inspector
 	binlogReader             *binlog.BinlogReader
 	LogMinerStream           *LogMinerStream
@@ -140,7 +140,7 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConf
 		memory2:         new(int64),
 		OracleContext:   new(OracleContext),
 	}
-	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
+	e.dataChannel = make(chan *common.EntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.

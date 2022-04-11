@@ -67,7 +67,7 @@ type Extractor struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            map[string]*common.SchemaContext
-	dataChannel              chan *common.BinlogEntryContext
+	dataChannel              chan *common.EntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
 	initialBinlogCoordinates *common.MySQLCoordinates
@@ -131,7 +131,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		memory2:         new(int64),
 		replicateDoDb:   map[string]*common.SchemaContext{},
 	}
-	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
+	e.dataChannel = make(chan *common.EntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -985,7 +985,7 @@ func (e *Extractor) StreamEvents() error {
 			var gno int64 = 0
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
-				gno = theEntries.Coordinates.(*common.MySQLCoordinateTx).GNO
+				gno = theEntries.Coordinates.GetGNO()
 				if theEntries.Events != nil && len(theEntries.Events) > 0 {
 					e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
 				}
