@@ -150,7 +150,6 @@ func (a *Applier) updateGtidLoop() {
 
 	var file string
 	var pos int64
-	var sid [16]byte
 	var lastCommitted int64
 
 	updated := false
@@ -172,16 +171,13 @@ func (a *Applier) updateGtidLoop() {
 	doUpload := func() {
 		if needUpload {
 			needUpload = false
-			if sid == [16]byte{0} {
-				a.logger.Debug("SaveOracleSCNPos", "job", a.subject, "oldUncommitted",pos,"lastCommitted", lastCommitted)
-				err := a.storeManager.SaveOracleSCNPos(a.subject,pos,lastCommitted)
-				if err != nil {
-					a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))	
-				}
-				return
+			a.logger.Debug("SaveOracleSCNPos", "job", a.subject, "oldUncommitted",pos,"lastCommitted", lastCommitted)
+			err := a.storeManager.SaveOracleSCNPos(a.subject,pos,lastCommitted)
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))	
 			}
 			a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
-			err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
+			err = a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
 				return
