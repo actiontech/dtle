@@ -150,6 +150,7 @@ func (a *Applier) updateGtidLoop() {
 
 	var file string
 	var pos int64
+	var lastCommitted int64
 
 	updated := false
 	doUpdate := func() {
@@ -170,8 +171,13 @@ func (a *Applier) updateGtidLoop() {
 	doUpload := func() {
 		if needUpload {
 			needUpload = false
+			a.logger.Debug("SaveOracleSCNPos", "job", a.subject, "oldUncommitted",pos,"lastCommitted", lastCommitted)
+			err := a.storeManager.SaveOracleSCNPos(a.subject,pos,lastCommitted)
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))	
+			}
 			a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
-			err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
+			err = a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
 				return
@@ -232,6 +238,7 @@ func (a *Applier) updateGtidLoop() {
 				a.gtidSetLock.Unlock()
 				file = coord.LogFile
 				pos = coord.LogPos
+				lastCommitted = coord.LastCommitted
 			}
 		}
 	}
@@ -288,12 +295,6 @@ func (a *Applier) Run() {
 		return
 	}
 	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
-		err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.LogPos, entry.Coordinates.LastCommitted)
-		if err != nil {
-			a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))
-			return
-		}
-
 		if entry.Final {
 			a.gtidCh <- &entry.Coordinates
 		}
