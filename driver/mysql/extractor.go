@@ -151,6 +151,12 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 func (e *Extractor) Run() {
 	var err error
 
+	err = e.storeManager.PutSourceType(e.subject, "mysql")
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "PutSourceType"))
+		return
+	}
+
 	{
 		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
 		if jobStatus == common.TargetGtidFinished {
@@ -192,7 +198,6 @@ func (e *Extractor) Run() {
 		}
 		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", firstWait)
 	}
-
 	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
 		e.onError(common.TaskStateDead, err)
 	})
@@ -572,10 +577,10 @@ func (e *Extractor) readTableColumns() (err error) {
 			doTb.OriginalTableColumns = tableColumns
 			doTb.ColumnMap = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
 
-			childST := common.SchemaTable{doTb.TableSchema, doTb.TableName}
+			childST := common.SchemaTable{Schema: doTb.TableSchema, Table: doTb.TableName}
 			for _, fkpt := range fkParentTables {
 				schema := g.StringElse(fkpt.Schema.String(), doTb.TableSchema)
-				parentST := common.SchemaTable{schema, fkpt.Name.String()}
+				parentST := common.SchemaTable{Schema: schema, Table: fkpt.Name.String()}
 				if m, ok := fkParentMap[parentST]; ok {
 					m[childST] = struct{}{}
 				} else {
@@ -590,7 +595,7 @@ func (e *Extractor) readTableColumns() (err error) {
 	for _, db := range e.replicateDoDb {
 		for _, tbCtx := range db.TableMap {
 			tb := tbCtx.Table
-			st := common.SchemaTable{tb.TableSchema, tb.TableName}
+			st := common.SchemaTable{Schema: tb.TableSchema, Table: tb.TableName}
 			if m, ok := fkParentMap[st]; ok {
 				tbCtx.FKChildren = m
 				e.logger.Info("fk parent", "len", len(m), "schema", tb.TableSchema, "table", tb.TableName)

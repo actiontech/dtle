@@ -36,9 +36,6 @@ type ApplierIncr struct {
 	// only TX can be executed should be put into this chan
 	applyBinlogMtsTxQueue chan *common.EntryContext
 
-	mtsManager *MtsManager
-	wsManager  *WritesetManager
-
 	db              *gosql.DB
 	dbs             []*sql.Conn
 	MySQLServerUuid string
@@ -53,9 +50,6 @@ type ApplierIncr struct {
 	timestampCtx     *TimestampContext
 	TotalDeltaCopied int64
 
-	gtidSet           *gomysql.MysqlGTIDSet
-	gtidSetLock       *sync.RWMutex
-	gtidItemMap       base.GtidItemMap
 	EntryExecutedHook func(entry *common.DataEntry)
 
 	tableItems mapSchemaTableItems
@@ -67,29 +61,34 @@ type ApplierIncr struct {
 
 	wg                    sync.WaitGroup
 	SkipGtidExecutedTable bool
+
+	mtsManager  *MtsManager
+	wsManager   *WritesetManager
+	gtidSet     *gomysql.MysqlGTIDSet
+	gtidSetLock *sync.RWMutex
+	gtidItemMap base.GtidItemMap
+	sourceType  string
 }
 
-func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.MySQLDriverConfig,
-	logger g.LoggerType, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
-	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{},
-	gtidSetLock *sync.RWMutex) (*ApplierIncr, error) {
-
+func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
+	driverContext := applier.mysqlContext
 	a := &ApplierIncr{
-		ctx:                   ctx,
-		logger:                logger,
-		subject:               subject,
-		mysqlContext:          mysqlContext,
-		incrBytesQueue:        make(chan []byte, mysqlContext.ReplChanBufferSize),
-		binlogEntryQueue:      make(chan *common.DataEntry, mysqlContext.ReplChanBufferSize * 2),
-		applyBinlogMtsTxQueue: make(chan *common.EntryContext, mysqlContext.ReplChanBufferSize * 2),
-		db:                    db,
-		dbs:                   dbs,
-		shutdownCh:            shutdownCh,
-		memory2:               memory2,
+		ctx:                   applier.ctx,
+		logger:                applier.logger,
+		subject:               applier.subject,
+		mysqlContext:          driverContext,
+		incrBytesQueue:        make(chan []byte, driverContext.ReplChanBufferSize),
+		binlogEntryQueue:      make(chan *common.DataEntry, driverContext.ReplChanBufferSize*2),
+		applyBinlogMtsTxQueue: make(chan *common.EntryContext, driverContext.ReplChanBufferSize*2),
+		db:                    applier.db,
+		dbs:                   applier.dbs,
+		shutdownCh:            applier.shutdownCh,
+		memory2:               applier.memory2,
 		printTps:              g.EnvIsTrue(g.ENV_PRINT_TPS),
-		gtidSet:               gtidSet,
-		gtidSetLock:           gtidSetLock,
+		gtidSet:               applier.gtidSet,
+		gtidSetLock:           applier.gtidSetLock,
 		tableItems:            make(mapSchemaTableItems),
+		sourceType:            sourcetype,
 	}
 
 	if g.EnvIsTrue(g.ENV_SKIP_GTID_EXECUTED_TABLE) {
@@ -116,38 +115,40 @@ func (a *ApplierIncr) Run() (err error) {
 		return err
 	}
 
-	err = (&GtidExecutedCreater{
-		db:     a.db,
-		logger: a.logger,
-	}).createTableGtidExecutedV4()
-	if err != nil {
-		return err
-	}
-	a.logger.Debug("after createTableGtidExecutedV4")
-
-	for i := range a.dbs {
-		a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(a.ctx,
-			fmt.Sprintf("delete from %v.%v where job_name = ? and hex(source_uuid) = ?",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
+	if a.sourceType == "mysql" {
+		err = (&GtidExecutedCreater{
+			db:     a.db,
+			logger: a.logger,
+		}).createTableGtidExecutedV4()
 		if err != nil {
 			return err
 		}
-		a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(a.ctx,
-			fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
-				g.DtleSchemaName, g.GtidExecutedTableV4))
+		a.logger.Debug("after createTableGtidExecutedV4")
+
+		for i := range a.dbs {
+			a.dbs[i].PsDeleteExecutedGtid, err = a.dbs[i].Db.PrepareContext(a.ctx,
+				fmt.Sprintf("delete from %v.%v where job_name = ? and hex(source_uuid) = ?",
+					g.DtleSchemaName, g.GtidExecutedTableV4))
+			if err != nil {
+				return err
+			}
+			a.dbs[i].PsInsertExecutedGtid, err = a.dbs[i].Db.PrepareContext(a.ctx,
+				fmt.Sprintf("replace into %v.%v (job_name,source_uuid,gtid,gtid_set) values (?, ?, ?, null)",
+					g.DtleSchemaName, g.GtidExecutedTableV4))
+			if err != nil {
+				return err
+			}
+
+		}
+		a.logger.Debug("after prepare stmt for gtid_executed table")
+
+		a.gtidItemMap, err = SelectAllGtidExecuted(a.db, a.subject, a.gtidSet)
 		if err != nil {
 			return err
 		}
 
+		a.logger.Debug("after SelectAllGtidExecuted")
 	}
-	a.logger.Debug("after prepare stmt for gtid_executed table")
-
-	a.gtidItemMap, err = SelectAllGtidExecuted(a.db, a.subject, a.gtidSet)
-	if err != nil {
-		return err
-	}
-
-	a.logger.Debug("after SelectAllGtidExecuted")
 
 	for i := 0; i < a.mysqlContext.ParallelWorkers; i++ {
 		go a.MtsWorker(i)
@@ -218,7 +219,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	if binlogEntry.Coordinates.GetSid() == uuid.UUID([16]byte{0}) {
 		return a.handleEntryOracle(entryCtx)
 	}
-	
+
 	a.logger.Debug("a binlogEntry.", "remaining", len(a.incrBytesQueue),
 		"gno", binlogEntry.Coordinates.GetGNO(), "lc", binlogEntry.Coordinates.GetLastCommit(),
 		"seq", binlogEntry.Coordinates.GetSequenceNumber())
@@ -367,8 +368,8 @@ func (a *ApplierIncr) heterogeneousReplay() {
 				return
 			case entry := <-a.binlogEntryQueue:
 				err := a.handleEntry(&common.EntryContext{
-					Entry:       entry,
-					TableItems:  nil,
+					Entry:      entry,
+					TableItems: nil,
 				})
 				if err != nil {
 					a.wg.Done()
@@ -535,7 +536,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				return nil
 			}
 
-			if event.DtleFlags & common.DtleFlagCreateSchemaIfNotExists != 0 {
+			if event.DtleFlags&common.DtleFlagCreateSchemaIfNotExists != 0 {
 				// TODO CHARACTER SET & COLLATE
 				query := fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", mysqlconfig.EscapeName(event.DatabaseName))
 				err := execQuery(query)
@@ -603,7 +604,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			} else {
 				// Oracle
 			}
-			noFKCheckFlag := flag &common.RowsEventFlagNoForeignKeyChecks != 0
+			noFKCheckFlag := flag&common.RowsEventFlagNoForeignKeyChecks != 0
 			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
 				if err != nil {
@@ -652,10 +653,10 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 	}
 
 	if binlogEntry.Final {
-		if !a.SkipGtidExecutedTable {
+		if !a.SkipGtidExecutedTable && a.sourceType == "mysql" {
 			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GetGNO())
 			_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
-			a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), binlogEntry.Coordinates.GetGNO())
+				a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), binlogEntry.Coordinates.GetGNO())
 			if err != nil {
 				return errors.Wrap(err, "insert gno")
 			}
@@ -755,4 +756,3 @@ func (a *ApplierIncr) handleEntryOracle(entryCtx *common.EntryContext) (err erro
 	}
 	return nil
 }
-
