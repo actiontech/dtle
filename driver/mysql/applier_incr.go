@@ -29,16 +29,11 @@ const (
 type ApplierIncr struct {
 	logger       g.LoggerType
 	subject      string
-	mysqlContext *common.DriverConfig
-
+	driverContext *common.DriverConfig
 	incrBytesQueue   chan []byte
 	dataEntryQueue chan *common.DataEntry
 	// only TX can be executed should be put into this chan
 	applyDataMtsTxQueue chan *common.EntryContext
-
-	mtsManager *MtsManager
-	wsManager  *WritesetManager
-
 	db              *gosql.DB
 	dbs             []*sql.Conn
 	MySQLServerUuid string
@@ -53,9 +48,6 @@ type ApplierIncr struct {
 	timestampCtx     *TimestampContext
 	TotalDeltaCopied int64
 
-	gtidSet           *gomysql.MysqlGTIDSet
-	gtidSetLock       *sync.RWMutex
-	gtidItemMap       base.GtidItemMap
 	EntryExecutedHook func(entry *common.DataEntry)
 
 	tableItems mapSchemaTableItems
@@ -67,9 +59,15 @@ type ApplierIncr struct {
 
 	wg                    sync.WaitGroup
 	SkipGtidExecutedTable bool
+
+	mtsManager *MtsManager
+	wsManager  *WritesetManager
+	gtidSet           *gomysql.MysqlGTIDSet
+	gtidSetLock       *sync.RWMutex
+	gtidItemMap       base.GtidItemMap
 }
 
-func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.DriverConfig,
+func NewApplierIncr(ctx context.Context, subject string, driverContext *common.DriverConfig,
 	logger g.LoggerType, gtidSet *gomysql.MysqlGTIDSet, memory2 *int64,
 	db *gosql.DB, dbs []*sql.Conn, shutdownCh chan struct{},
 	gtidSetLock *sync.RWMutex) (*ApplierIncr, error) {
@@ -78,10 +76,10 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.Dr
 		ctx:                   ctx,
 		logger:                logger,
 		subject:               subject,
-		mysqlContext:          mysqlContext,
-		incrBytesQueue:        make(chan []byte, mysqlContext.ReplChanBufferSize),
-		dataEntryQueue:      make(chan *common.DataEntry, mysqlContext.ReplChanBufferSize * 2),
-		applyDataMtsTxQueue: make(chan *common.EntryContext, mysqlContext.ReplChanBufferSize * 2),
+		driverContext:          driverContext,
+		incrBytesQueue:        make(chan []byte, driverContext.ReplChanBufferSize),
+		dataEntryQueue:      make(chan *common.DataEntry, driverContext.ReplChanBufferSize * 2),
+		applyDataMtsTxQueue: make(chan *common.EntryContext, driverContext.ReplChanBufferSize * 2),
 		db:                    db,
 		dbs:                   dbs,
 		shutdownCh:            shutdownCh,
@@ -102,7 +100,7 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.Dr
 	})
 
 	a.mtsManager = NewMtsManager(a.shutdownCh, a.logger)
-	a.wsManager = NewWritesetManager(a.mysqlContext.DependencyHistorySize)
+	a.wsManager = NewWritesetManager(a.driverContext.DependencyHistorySize)
 
 	go a.mtsManager.LcUpdater()
 
@@ -149,7 +147,7 @@ func (a *ApplierIncr) Run() (err error) {
 
 	a.logger.Debug("after SelectAllGtidExecuted")
 
-	for i := 0; i < a.mysqlContext.ParallelWorkers; i++ {
+	for i := 0; i < a.driverContext.ParallelWorkers; i++ {
 		go a.MtsWorker(i)
 	}
 
@@ -328,7 +326,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 			return err
 		}
 
-		if !binlogEntry.IsPartOfBigTx() && !a.mysqlContext.UseMySQLDependency {
+		if !binlogEntry.IsPartOfBigTx() && !a.driverContext.UseMySQLDependency {
 			newLC := a.wsManager.GatLastCommit(entryCtx, a.logger)
 			binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted = newLC
 			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.GetSequenceNumber(),
@@ -375,7 +373,7 @@ func (a *ApplierIncr) heterogeneousReplay() {
 					a.OnError(common.TaskStateDead, err)
 					return
 				}
-				atomic.AddInt64(&a.mysqlContext.DeltaEstimate, 1)
+				atomic.AddInt64(&a.driverContext.DeltaEstimate, 1)
 			}
 		}
 	}()
@@ -577,7 +575,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			if err != nil {
 				return err
 			}
-			if flag.NoForeignKeyChecks && a.mysqlContext.ForeignKeyChecks {
+			if flag.NoForeignKeyChecks && a.driverContext.ForeignKeyChecks {
 				err = execQuery(querySetFKChecksOff)
 				if err != nil {
 					return err
@@ -590,7 +588,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			}
 			logger.Debug("Exec.after", "query", event.Query)
 
-			if flag.NoForeignKeyChecks && a.mysqlContext.ForeignKeyChecks {
+			if flag.NoForeignKeyChecks && a.driverContext.ForeignKeyChecks {
 				err = execQuery(querySetFKChecksOn)
 				if err != nil {
 					return err
@@ -604,7 +602,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				// Oracle
 			}
 			noFKCheckFlag := flag &common.RowsEventFlagNoForeignKeyChecks != 0
-			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
+			if noFKCheckFlag && a.driverContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
 				if err != nil {
 					return errors.Wrap(err, "querySetFKChecksOff")
@@ -641,7 +639,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			}
 			totalDelta += rowDelta
 
-			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
+			if noFKCheckFlag && a.driverContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOn)
 				if err != nil {
 					return errors.Wrap(err, "querySetFKChecksOn")
@@ -675,7 +673,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 	a.EntryExecutedHook(binlogEntry)
 
 	// no error
-	a.mysqlContext.Stage = common.StageWaitingForGtidToBeCommitted
+	a.driverContext.Stage = common.StageWaitingForGtidToBeCommitted
 	atomic.AddInt64(&a.TotalDeltaCopied, 1)
 	logger.Debug("event delay time", "timestamp", timestamp)
 	if timestamp != 0 {
@@ -693,7 +691,7 @@ func (a *ApplierIncr) getTableItem(schema string, table string) *common.ApplierT
 
 	tableItem, ok := schemaItem[table]
 	if !ok {
-		tableItem = common.NewApplierTableItem(a.mysqlContext.ParallelWorkers)
+		tableItem = common.NewApplierTableItem(a.driverContext.ParallelWorkers)
 		schemaItem[table] = tableItem
 	}
 

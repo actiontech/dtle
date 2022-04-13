@@ -50,7 +50,7 @@ const (
 type Applier struct {
 	logger       g.LoggerType
 	subject      string
-	mysqlContext *common.DriverConfig
+	driverContext *common.DriverConfig
 
 	NatsAddr            string
 	MySQLVersion        string
@@ -81,11 +81,9 @@ type Applier struct {
 
 	stubFullApplyDelay time.Duration
 
-	gtidSet     *gomysql.MysqlGTIDSet
-	gtidSetLock *sync.RWMutex
 
 	storeManager *common.StoreManager
-	gtidCh       chan common.CoordinatesI
+	coordinatesCh       chan common.CoordinatesI
 
 	stage      string
 	memory1    *int64
@@ -93,6 +91,9 @@ type Applier struct {
 	event      *eventer.Eventer
 	taskConfig *drivers.TaskConfig
 
+	
+	gtidSet     *gomysql.MysqlGTIDSet
+	gtidSetLock *sync.RWMutex
 	targetGtid gomysql.GTIDSet
 }
 
@@ -110,7 +111,7 @@ func NewApplier(
 		ctx:             ctx,
 		logger:          logger.Named("applier").With("job", execCtx.Subject),
 		subject:         execCtx.Subject,
-		mysqlContext:    cfg,
+		driverContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
 		fullBytesQueue:  make(chan []byte, 16),
@@ -119,7 +120,7 @@ func NewApplier(
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
 		storeManager:    storeManager,
-		gtidCh:          make(chan common.CoordinatesI, 4096),
+		coordinatesCh:          make(chan common.CoordinatesI, 4096),
 		memory1:         new(int64),
 		memory2:         new(int64),
 		event:           event,
@@ -156,13 +157,13 @@ func (a *Applier) updateGtidLoop() {
 	doUpdate := func() {
 		if updated { // catch by reference
 			updated = false
-			a.mysqlContext.Gtid = a.gtidSet.String()
+			a.driverContext.Gtid = a.gtidSet.String()
 			if file != "" {
-				if a.mysqlContext.BinlogFile != file {
-					a.mysqlContext.BinlogFile = file
+				if a.driverContext.BinlogFile != file {
+					a.driverContext.BinlogFile = file
 					a.publishProgress()
 				}
-				a.mysqlContext.BinlogPos = pos
+				a.driverContext.BinlogPos = pos
 			}
 		}
 	}
@@ -171,15 +172,15 @@ func (a *Applier) updateGtidLoop() {
 	doUpload := func() {
 		if needUpload {
 			needUpload = false
-			a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.mysqlContext.Gtid)
-			err := a.storeManager.SaveGtidForJob(a.subject, a.mysqlContext.Gtid)
+			a.logger.Debug("SaveGtidForJob", "job", a.subject, "gtid", a.driverContext.Gtid)
+			err := a.storeManager.SaveGtidForJob(a.subject, a.driverContext.Gtid)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveGtidForJob"))
 				return
 			}
 
 			err = a.storeManager.SaveBinlogFilePosForJob(a.subject,
-				a.mysqlContext.BinlogFile, int(a.mysqlContext.BinlogPos))
+				a.driverContext.BinlogFile, int(a.driverContext.BinlogPos))
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
 				return
@@ -212,7 +213,7 @@ func (a *Applier) updateGtidLoop() {
 			doUpload()
 		case <-t0.C:
 			doUpdate()
-		case coord := <-a.gtidCh:
+		case coord := <-a.coordinatesCh:
 			updated = true
 			needUpload = true
 			if coord == nil {
@@ -245,13 +246,13 @@ func (a *Applier) Run() {
 	a.checkJobFinish()
 	go a.watchTargetGtid()
 
-	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.mysqlContext)
+	err = common.GetGtidFromConsul(a.storeManager, a.subject, a.logger, a.driverContext)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "GetGtidFromConsul"))
 		return
 	}
 
-	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
+	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.driverContext.Gtid)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
 		return
@@ -282,7 +283,7 @@ func (a *Applier) Run() {
 		return
 	}
 
-	a.ai, err = NewApplierIncr(a.ctx, a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
+	a.ai, err = NewApplierIncr(a.ctx, a.subject, a.driverContext, a.logger, a.gtidSet, a.memory2,
 		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
@@ -296,7 +297,7 @@ func (a *Applier) Run() {
 		}
 
 		if entry.Final {
-			a.gtidCh <- entry.Coordinates
+			a.coordinatesCh <- entry.Coordinates
 		}
 		if entry.IsPartOfBigTx() {
 			bs, err := (&common.BigTxAck{
@@ -335,7 +336,7 @@ func (a *Applier) doFullCopy() {
 	a.wg.Add(1)
 	defer a.wg.Done()
 
-	a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+	a.driverContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 	a.logger.Info("Operating until row copy is complete")
 
 	a.wg.Add(1)
@@ -392,7 +393,7 @@ func (a *Applier) doFullCopy() {
 				stopLoop = true
 			case a.dumpEntryQueue <- copyRows:
 				atomic.AddInt64(a.memory1, int64(copyRows.Size()))
-				atomic.AddInt64(&a.mysqlContext.RowsEstimate, copyRows.TotalCount)
+				atomic.AddInt64(&a.driverContext.RowsEstimate, copyRows.TotalCount)
 			}
 		case <-a.rowCopyComplete:
 			a.logger.Info("doFullCopy: loop: rowCopyComplete")
@@ -434,7 +435,7 @@ func (a *Applier) sendEvent(status string) {
 
 // initiateStreaming begins treaming of binary log events and registers listeners for such events
 func (a *Applier) subscribeNats() (err error) {
-	a.mysqlContext.MarkRowCopyStartTime()
+	a.driverContext.MarkRowCopyStartTime()
 	a.logger.Debug("nats subscribe")
 
 	fullNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "full"))
@@ -474,7 +475,7 @@ func (a *Applier) subscribeNats() (err error) {
 			case a.fullBytesQueue <- bs:
 				atomic.AddInt64(a.memory1, int64(len(bs)))
 				a.logger.Debug("full. enqueue", "nDumpEntry", a.nDumpEntry)
-				a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+				a.driverContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 				fullNMM.Reset()
 
 				vacancy := cap(a.fullBytesQueue) - len(a.fullBytesQueue)
@@ -516,7 +517,7 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
-		if a.mysqlContext.ForeignKeyChecks {
+		if a.driverContext.ForeignKeyChecks {
 			err = a.enableForeignKeyChecks()
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
@@ -537,12 +538,12 @@ func (a *Applier) subscribeNats() (err error) {
 		for _, uuidSet := range gs.Sets {
 			a.gtidSet.AddSet(uuidSet)
 		}
-		a.mysqlContext.Gtid = dumpData.Coord.GetTxSet()
-		a.mysqlContext.BinlogFile = dumpData.Coord.GetLogFile()
-		a.mysqlContext.BinlogPos = dumpData.Coord.GetLogPos()
-		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
+		a.driverContext.Gtid = dumpData.Coord.GetTxSet()
+		a.driverContext.BinlogFile = dumpData.Coord.GetLogFile()
+		a.driverContext.BinlogPos = dumpData.Coord.GetLogPos()
+		a.coordinatesCh <- nil // coord == nil is a flag for update/upload gtid
 
-		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
+		a.driverContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 		if a.stage != JobIncrCopy {
 			a.stage = JobIncrCopy
 			a.sendEvent(JobIncrCopy)
@@ -592,7 +593,7 @@ func (a *Applier) subscribeNats() (err error) {
 				}
 				a.logger.Debug("incr. after publish nats reply.")
 
-				a.mysqlContext.Stage = common.StageWaitingForMasterToSendEvent
+				a.driverContext.Stage = common.StageWaitingForMasterToSendEvent
 			}
 		}
 	})
@@ -608,16 +609,16 @@ func (a *Applier) publishProgress() {
 	retry := 0
 	keep := true
 	for keep {
-		logger.Debug("Request.before", "retry", retry, "file", a.mysqlContext.BinlogFile)
-		_, err := a.natsConn.Request(fmt.Sprintf("%s_progress", a.subject), []byte(a.mysqlContext.BinlogFile), 10*time.Second)
+		logger.Debug("Request.before", "retry", retry, "file", a.driverContext.BinlogFile)
+		_, err := a.natsConn.Request(fmt.Sprintf("%s_progress", a.subject), []byte(a.driverContext.BinlogFile), 10*time.Second)
 		if err == nil {
 			keep = false
 		} else {
 			if err == gonats.ErrTimeout {
-				logger.Debug("timeout", "retry", retry, "file", a.mysqlContext.BinlogFile)
+				logger.Debug("timeout", "retry", retry, "file", a.driverContext.BinlogFile)
 				break
 			} else {
-				a.logger.Debug("unknown error", "retry", retry, "file", a.mysqlContext.BinlogFile, "err", err)
+				a.logger.Debug("unknown error", "retry", retry, "file", a.driverContext.BinlogFile, "err", err)
 
 			}
 			retry += 1
@@ -631,7 +632,7 @@ func (a *Applier) publishProgress() {
 }
 
 func (a *Applier) InitDB() (err error) {
-	applierUri := a.mysqlContext.ConnectionConfig.GetDBUri()
+	applierUri := a.driverContext.ConnectionConfig.GetDBUri()
 	if a.db, err = sql.CreateDB(applierUri); err != nil {
 		return err
 	}
@@ -642,9 +643,9 @@ func (a *Applier) initDBConnections() (err error) {
 	if err := a.InitDB(); nil != err {
 		return err
 	}
-	a.db.SetMaxOpenConns(10 + a.mysqlContext.ParallelWorkers)
-	a.logger.Debug("CreateConns", "ParallelWorkers", a.mysqlContext.ParallelWorkers)
-	if a.dbs, err = sql.CreateConns(a.db, a.mysqlContext.ParallelWorkers); err != nil {
+	a.db.SetMaxOpenConns(10 + a.driverContext.ParallelWorkers)
+	a.logger.Debug("CreateConns", "ParallelWorkers", a.driverContext.ParallelWorkers)
+	if a.dbs, err = sql.CreateConns(a.db, a.driverContext.ParallelWorkers); err != nil {
 		a.logger.Debug("beging connetion mysql 2 create conns err")
 		return err
 	}
@@ -654,13 +655,13 @@ func (a *Applier) initDBConnections() (err error) {
 		return someSysVars.Err
 	}
 	a.logger.Debug("Connection validated", "on",
-		hclog.Fmt("%s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port))
+		hclog.Fmt("%s:%d", a.driverContext.ConnectionConfig.Host, a.driverContext.ConnectionConfig.Port))
 
 	a.MySQLVersion = someSysVars.Version
 	a.lowerCaseTableNames = someSysVars.LowerCaseTableNames
 
 	if strings.HasPrefix(a.MySQLVersion, "5.6") {
-		a.mysqlContext.ParallelWorkers = 1
+		a.driverContext.ParallelWorkers = 1
 	}
 
 	a.logger.Debug("beging connetion mysql 5 validate  grants")
@@ -670,7 +671,7 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("after ValidateGrants")
 
-	a.logger.Info("Initiated", "mysql", a.mysqlContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
+	a.logger.Info("Initiated", "mysql", a.driverContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
 
 	return nil
 }
@@ -687,7 +688,7 @@ func (a *Applier) ValidateConnection() error {
 // ValidateGrants verifies the user by which we're executing has necessary grants
 // to do its thang.
 func (a *Applier) ValidateGrants() error {
-	if a.mysqlContext.SkipPrivilegeCheck {
+	if a.driverContext.SkipPrivilegeCheck {
 		a.logger.Debug("skipping priv check")
 		return nil
 	}
@@ -724,7 +725,7 @@ func (a *Applier) ValidateGrants() error {
 		return nil
 	}
 
-	if a.mysqlContext.ExpandSyntaxSupport {
+	if a.driverContext.ExpandSyntaxSupport {
 		if _, err := a.db.ExecContext(a.ctx, `use mysql`); err != nil {
 			msg := fmt.Sprintf(`"mysql" schema is expected to be access when ExpandSyntaxSupport=true`)
 			a.logger.Info(msg, "error", err)
@@ -885,8 +886,8 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		delay = a.ai.timestampCtx.GetDelay()
 	}
 	totalRowsReplay := a.TotalRowsReplayed
-	rowsEstimate := atomic.LoadInt64(&a.mysqlContext.RowsEstimate)
-	deltaEstimate := atomic.LoadInt64(&a.mysqlContext.DeltaEstimate)
+	rowsEstimate := atomic.LoadInt64(&a.driverContext.RowsEstimate)
+	deltaEstimate := atomic.LoadInt64(&a.driverContext.DeltaEstimate)
 
 	var progressPct float64
 	var backlog, eta string
@@ -894,7 +895,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		progressPct = 0.0
 	} else {
 		progressPct = 100.0 * float64(totalDeltaCopied+totalRowsReplay) / float64(deltaEstimate+rowsEstimate)
-		if a.mysqlContext.Gtid != "" {
+		if a.driverContext.Gtid != "" {
 			// Done copying rows. The totalRowsCopied value is the de-facto number of rows,
 			// and there is no further need to keep updating the value.
 			backlog = fmt.Sprintf("%d/%d", lenApplierMsgQueue+lenApplierTxQueue,
@@ -908,11 +909,11 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	eta = "N/A"
 	if progressPct >= 100.0 {
 		eta = "0s"
-		a.mysqlContext.Stage = common.StageSlaveHasReadAllRelayLog
+		a.driverContext.Stage = common.StageSlaveHasReadAllRelayLog
 	} else if progressPct >= 1.0 {
-		elapsedRowCopySeconds := a.mysqlContext.ElapsedRowCopyTime().Seconds()
+		elapsedRowCopySeconds := a.driverContext.ElapsedRowCopyTime().Seconds()
 		totalExpectedSeconds := elapsedRowCopySeconds * float64(rowsEstimate) / float64(totalRowsReplay)
-		if a.mysqlContext.Gtid != "" {
+		if a.driverContext.Gtid != "" {
 			totalExpectedSeconds = elapsedRowCopySeconds * float64(deltaEstimate) / float64(totalDeltaCopied)
 		}
 		etaSeconds = totalExpectedSeconds - elapsedRowCopySeconds
@@ -936,11 +937,11 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		ProgressPct:        strconv.FormatFloat(progressPct, 'f', 1, 64),
 		ETA:                eta,
 		Backlog:            backlog,
-		Stage:              a.mysqlContext.Stage,
+		Stage:              a.driverContext.Stage,
 		CurrentCoordinates: &common.CurrentCoordinates{
-			File:               a.mysqlContext.BinlogFile,
-			Position:           a.mysqlContext.BinlogPos,
-			GtidSet:            a.mysqlContext.Gtid, // TODO
+			File:               a.driverContext.BinlogFile,
+			Position:           a.driverContext.BinlogPos,
+			GtidSet:            a.driverContext.Gtid, // TODO
 			RelayMasterLogFile: "",
 			ReadMasterLogPos:   0,
 			RetrievedGtidSet:   "",
@@ -1055,7 +1056,7 @@ func (a *Applier) watchTargetGtid() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "CommandTypeJobFinish. ParseMysqlGTIDSet"))
 	}
 	a.targetGtid = gs
-	a.gtidCh <- nil
+	a.coordinatesCh <- nil
 }
 
 func (a *Applier) checkJobFinish() {
