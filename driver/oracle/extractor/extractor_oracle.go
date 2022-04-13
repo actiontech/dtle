@@ -153,12 +153,10 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConf
 func (e *ExtractorOracle) Run() {
 	var err error
 
-	{
-		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
-		if jobStatus == common.TargetGtidFinished {
-			_ = e.Shutdown()
-			return
-		}
+	err = e.storeManager.PutSourceType(e.subject, "oracle")
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "PutSourceType"))
+		return
 	}
 
 	e.logger.Info("src watch Nats")

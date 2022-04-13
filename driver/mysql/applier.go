@@ -81,9 +81,6 @@ type Applier struct {
 
 	stubFullApplyDelay time.Duration
 
-	gtidSet     *gomysql.MysqlGTIDSet
-	gtidSetLock *sync.RWMutex
-
 	storeManager *common.StoreManager
 	gtidCh       chan common.CoordinatesI
 
@@ -93,7 +90,9 @@ type Applier struct {
 	event      *eventer.Eventer
 	taskConfig *drivers.TaskConfig
 
-	targetGtid gomysql.GTIDSet
+	gtidSet     *gomysql.MysqlGTIDSet
+	gtidSetLock *sync.RWMutex
+	targetGtid  gomysql.GTIDSet
 }
 
 func (a *Applier) Finish1() error {
@@ -238,10 +237,7 @@ func (a *Applier) updateGtidLoop() {
 	}
 }
 
-// Run executes the complete apply logic.
-func (a *Applier) Run() {
-	var err error
-
+func (a *Applier) prepareGTID() (err error) {
 	a.checkJobFinish()
 	go a.watchTargetGtid()
 
@@ -254,8 +250,13 @@ func (a *Applier) Run() {
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
-		return
 	}
+	return
+}
+
+// Run executes the complete apply logic.
+func (a *Applier) Run() {
+	var err error
 
 	a.logger.Debug("initNatSubClient")
 	if err := a.initNatSubClient(); err != nil {
@@ -275,6 +276,16 @@ func (a *Applier) Run() {
 		return
 	}
 
+	sourceType, err := a.storeManager.WatchSourceType(a.subject, a.shutdownCh)
+	if err != nil {
+		a.onError(common.TaskStateDead, errors.Wrap(err, "watchSourceType"))
+		return
+	}
+
+	if sourceType == "mysql" {
+		a.prepareGTID()
+	}
+
 	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
 	//	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	if err := a.initDBConnections(); err != nil {
@@ -282,16 +293,17 @@ func (a *Applier) Run() {
 		return
 	}
 
-	a.ai, err = NewApplierIncr(a.ctx, a.subject, a.mysqlContext, a.logger, a.gtidSet, a.memory2,
-		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
+	a.ai, err = NewApplierIncr(a, sourceType)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
 	a.ai.EntryExecutedHook = func(entry *common.DataEntry) {
-		err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.GetLogPos(), entry.Coordinates.GetLastCommit())
-		if err != nil {
-			a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))
+		if a.ai.sourceType == "oracle" {
+			err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.GetLogPos(), entry.Coordinates.GetLastCommit())
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))
+			}
 			return
 		}
 
@@ -826,7 +838,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 	BufSizeLimit := 1 * 1024 * 1024 // 1MB. TODO parameterize it
 	BufSizeLimitDelta := 1024
 	buf.Grow(BufSizeLimit + BufSizeLimitDelta)
-	for i, _ := range entry.ValuesX {
+	for i := range entry.ValuesX {
 		if buf.Len() == 0 {
 			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`,
 				umconf.EscapeName(entry.TableSchema), umconf.EscapeName(entry.TableName)))

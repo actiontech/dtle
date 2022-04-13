@@ -101,6 +101,46 @@ func (sm *StoreManager) GetGtidForJob(jobName string) (string, error) {
 	return string(p.Value), nil
 }
 
+func (sm *StoreManager) WatchSourceType(jobName string, stopCh chan struct{}) (string, error) {
+	sm.logger.Debug("watchSourceType")
+
+	var err error
+	key := fmt.Sprintf("dtle/%v/SourceType", jobName)
+	ch, err := sm.consulStore.Watch(key, stopCh)
+	if err != nil {
+		return "", err
+	}
+	loop := true
+	for loop {
+		select {
+		case <-stopCh:
+			return "", fmt.Errorf("shutdown")
+		case kv := <-ch:
+			if kv == nil {
+				return "", errors.Wrap(ErrNoConsul, "watchSourceType")
+			}
+			s := string(kv.Value)
+			if s == "" {
+				continue
+			}
+			return s, nil
+		}
+	}
+	return "", nil
+}
+
+func (sm *StoreManager) PutSourceType(jobName, sourceType string) error {
+	sm.logger.Debug("PutSourceType")
+
+	var err error
+	key := fmt.Sprintf("dtle/%v/SourceType", jobName)
+	err = sm.consulStore.Put(key, []byte(sourceType), nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (sm *StoreManager) DstPutNats(jobName string, natsAddr string, stopCh chan struct{}, onWatchError func(error)) error {
 	sm.logger.Debug("DstPutNats")
 
@@ -444,7 +484,7 @@ func (sm *StoreManager) FindTenantList() (tenants []string, err error) {
 		}
 		tenantMap[user.Tenant] = struct{}{}
 	}
-	for tenant, _ := range tenantMap {
+	for tenant := range tenantMap {
 		tenants = append(tenants, tenant)
 	}
 	return
