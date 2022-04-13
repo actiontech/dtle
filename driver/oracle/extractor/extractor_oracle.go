@@ -140,14 +140,6 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.DriverConfig, l
 func (e *ExtractorOracle) Run() {
 	var err error
 
-	{
-		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
-		if jobStatus == common.TargetGtidFinished {
-			_ = e.Shutdown()
-			return
-		}
-	}
-
 	e.logger.Info("src watch Nats")
 	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
 		e.onError(common.TaskStateDead, err)
@@ -191,6 +183,12 @@ func (e *ExtractorOracle) Run() {
 		e.onError(common.TaskStateDead, errors.Wrap(err, "Subscribe control2"))
 		return
 	}
+
+	if err := e.publish(fmt.Sprintf("%s_sourcetype", e.subject), []byte("oracle"), 0); err != nil {
+		e.onError(common.TaskStateDead, err)
+		return
+	}
+	
 
 	startSCN, committedSCN, err := e.calculateSCNPos()
 	if err != nil {

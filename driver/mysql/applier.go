@@ -92,6 +92,8 @@ type Applier struct {
 	taskConfig *drivers.TaskConfig
 
 	
+	sourceType 	string
+	sourceTypech  chan string
 	gtidSet     *gomysql.MysqlGTIDSet
 	gtidSetLock *sync.RWMutex
 	targetGtid gomysql.GTIDSet
@@ -125,6 +127,7 @@ func NewApplier(
 		memory2:         new(int64),
 		event:           event,
 		taskConfig:      taskConfig,
+		sourceTypech: 	 make(chan string),
 	}
 
 	a.ctx, a.cancelFunc = context.WithCancel(context.TODO())
@@ -239,10 +242,7 @@ func (a *Applier) updateGtidLoop() {
 	}
 }
 
-// Run executes the complete apply logic.
-func (a *Applier) Run() {
-	var err error
-
+func (a *Applier)prepareGTID() (err error){
 	a.checkJobFinish()
 	go a.watchTargetGtid()
 
@@ -255,8 +255,14 @@ func (a *Applier) Run() {
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.driverContext.Gtid)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
-		return
 	}
+	return
+}
+
+
+// Run executes the complete apply logic.
+func (a *Applier) Run() {
+	var err error
 
 	a.logger.Debug("initNatSubClient")
 	if err := a.initNatSubClient(); err != nil {
@@ -275,7 +281,14 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "DstPutNats"))
 		return
 	}
-
+	
+	// wait for sourcetype 
+	sourceType :=  <- a.sourceTypech
+	
+	if sourceType == "mysql"{
+		a.prepareGTID()
+	}
+	
 	//a.logger.Debug("the connectionconfi host is ",a.mysqlContext.ConnectionConfig.Host)
 	//	a.logger.Info("Apply binlog events to %s.%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port)
 	if err := a.initDBConnections(); err != nil {
@@ -283,8 +296,7 @@ func (a *Applier) Run() {
 		return
 	}
 
-	a.ai, err = NewApplierIncr(a.ctx, a.subject, a.driverContext, a.logger, a.gtidSet, a.memory2,
-		a.db, a.dbs, a.shutdownCh, a.gtidSetLock)
+	a.ai, err = NewApplierIncr(a,sourceType)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
@@ -559,6 +571,17 @@ func (a *Applier) subscribeNats() (err error) {
 	if err != nil {
 		return err
 	}
+
+	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_sourcetype", a.subject), func(m *gonats.Msg) {
+		a.logger.Debug("recv source type msg.")
+
+		sourceType := string(m.Data)
+		if err := a.natsConn.Publish(m.Reply, nil); err != nil {
+			a.onError(common.TaskStateDead, err)
+		}
+		a.sourceTypech <- sourceType
+		a.logger.Debug("recv source type msg. after","source type",sourceType)
+	})
 
 	incrNMM := common.NewNatsMsgMerger(a.logger.With("nmm", "incr"))
 	_, err = a.natsConn.Subscribe(fmt.Sprintf("%s_incr_hete", a.subject), func(m *gonats.Msg) {

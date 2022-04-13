@@ -151,6 +151,25 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.DriverConfig, logger 
 func (e *Extractor) Run() {
 	var err error
 
+	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
+		e.onError(common.TaskStateDead, err)
+	})
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "SrcWatchNats"))
+		return
+	}
+	
+	e.logger.Info("initNatsPubClient")
+	if err := e.initNatsPubClient(e.natsAddr); err != nil {
+		e.onError(common.TaskStateDead, err)
+		return
+	}
+
+	if err := e.publish(fmt.Sprintf("%s_sourceType", e.subject), []byte("mysql"), 0); err != nil {
+		e.onError(common.TaskStateDead, err)
+		return
+	}
+
 	{
 		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
 		if jobStatus == common.TargetGtidFinished {
@@ -193,13 +212,6 @@ func (e *Extractor) Run() {
 		e.logger.Info("after WaitOnJob", "job2", e.driverContext.WaitOnJob, "firstWait", firstWait)
 	}
 
-	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
-		e.onError(common.TaskStateDead, err)
-	})
-	if err != nil {
-		e.onError(common.TaskStateDead, errors.Wrap(err, "SrcWatchNats"))
-		return
-	}
 
 	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.driverContext)
 	if err != nil {
@@ -222,11 +234,7 @@ func (e *Extractor) Run() {
 		e.onError(common.TaskStateDead, err)
 		return
 	}
-	e.logger.Info("initNatsPubClient")
-	if err := e.initNatsPubClient(e.natsAddr); err != nil {
-		e.onError(common.TaskStateDead, err)
-		return
-	}
+	
 	e.logger.Info("initDBConnections")
 	if err := e.initDBConnections(); err != nil {
 		e.logger.Error("initiateInspector error", "err", err)
