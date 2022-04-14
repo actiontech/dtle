@@ -6,7 +6,7 @@ import (
 	"github.com/araddon/qlbridge/expr"
 	"github.com/araddon/qlbridge/vm"
 
-	_ "github.com/actiontech/dtle/drivers/mysql/common"
+	_ "github.com/actiontech/dtle/driver/common"
 )
 
 type M map[string]interface{}
