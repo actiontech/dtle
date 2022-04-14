@@ -64,12 +64,12 @@ type ExtractorOracle struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            []*common.DataSource
-	dataChannel              chan *common.BinlogEntryContext
+	dataChannel              chan *common.EntryContext
 	inspector                *mysql.Inspector
 	binlogReader             *binlog.BinlogReader
 	LogMinerStream           *LogMinerStream
-	initialBinlogCoordinates *common.BinlogCoordinatesX
-	currentBinlogCoordinates *common.BinlogCoordinateTx
+	initialBinlogCoordinates *common.OracleCoordinates
+	currentBinlogCoordinates *common.OracleCoordinateTx
 	//rowCopyComplete          chan bool
 	rowCopyCompleteFlag int64
 	tableCount          int
@@ -140,7 +140,7 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConf
 		memory2:         new(int64),
 		OracleContext:   new(OracleContext),
 	}
-	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
+	e.dataChannel = make(chan *common.EntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -671,13 +671,13 @@ func (e *ExtractorOracle) StreamEvents() error {
 			e.wg.Done()
 			e.logger.Debug("StreamEvents goroutine exited")
 		}()
-		entries := common.BinlogEntries{}
+		entries := common.DataEntries{}
 		entriesSize := 0
 		sendEntriesAndClear := func() error {
 			var gno int64 = 0
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
-				gno = theEntries.Coordinates.GNO
+				// gno = theEntries.Coordinates.GNO
 				if theEntries.Events != nil && len(theEntries.Events) > 0 {
 					//e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
 				}

@@ -11,7 +11,7 @@ struct DumpEntry {
 	Table      []byte
 }
 
-struct BinlogCoordinateTx {
+struct MySQLCoordinateTx {
 	LogFile string
 	LogPos  int64
 	OSID          string
@@ -21,14 +21,26 @@ struct BinlogCoordinateTx {
 	SeqenceNumber int64
 }
 
-struct BinlogCoordinatesX {
+struct OracleCoordinateTx {
+	OldestUncommittedScn int64
+	EndSCN     int64
+}
+
+struct MySQLCoordinates {
 	LogFile string
 	LogPos  int64
 	GtidSet string
 }
 
+struct OracleCoordinates {
+	
+}
+
 struct DumpStatResult {
-    Coord *BinlogCoordinatesX
+    Coord union DumpCoordinates{
+        *MySQLCoordinates
+        *OracleCoordinates
+    }
     Type  int32
 }
 
@@ -62,15 +74,18 @@ struct DataEvent {
     DtleFlags uint32
 }
 
-struct BinlogEntry {
-	Coordinates BinlogCoordinateTx
+struct DataEntry {
+	Coordinates union CoordinatesI{
+        *MySQLCoordinateTx
+        *OracleCoordinateTx
+    }
 	Events      []DataEvent
 	Index       int32
     Final       bool
 }
 
-struct BinlogEntries {
-	Entries []*BinlogEntry
+struct DataEntries {
+	Entries []*DataEntry
 }
 
 struct ControlMsg {

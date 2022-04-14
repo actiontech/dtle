@@ -10,25 +10,27 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"encoding/binary"
-	"github.com/actiontech/dtle/drivers/mysql/common"
-	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
-	parserformat "github.com/pingcap/tidb/parser/format"
-	"github.com/pingcap/tidb/parser/model"
-	"github.com/pkg/errors"
 	"os"
 	"path"
 	"path/filepath"
 	"sync/atomic"
 	"time"
 
+	"github.com/actiontech/dtle/drivers/mysql/common"
+	"github.com/actiontech/dtle/drivers/mysql/mysql/sql"
+	parserformat "github.com/pingcap/tidb/parser/format"
+	"github.com/pingcap/tidb/parser/model"
+	"github.com/pkg/errors"
+
 	"github.com/cznic/mathutil"
 
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/pingcap/tidb/parser"
 	"github.com/pingcap/tidb/parser/ast"
@@ -40,16 +42,16 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/mysql/util"
 	hclog "github.com/hashicorp/go-hclog"
 
-	dmrelay "github.com/pingcap/dm/relay"
 	dmconfig "github.com/pingcap/dm/dm/config"
-	dmlog "github.com/pingcap/dm/pkg/log"
 	dmpb "github.com/pingcap/dm/dm/pb"
-	dmretry "github.com/pingcap/dm/relay/retry"
+	dmlog "github.com/pingcap/dm/pkg/log"
 	dmstreamer "github.com/pingcap/dm/pkg/streamer"
+	dmrelay "github.com/pingcap/dm/relay"
+	dmretry "github.com/pingcap/dm/relay/retry"
 
-	uuid "github.com/satori/go.uuid"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
+	uuid "github.com/satori/go.uuid"
 	"golang.org/x/net/context"
 )
 
@@ -73,7 +75,7 @@ type BinlogReader struct {
 	binlogStreamer dmstreamer.Streamer
 	// for relay
 	binlogReader      *dmstreamer.BinlogReader
-	currentCoord      common.BinlogCoordinatesX
+	currentCoord      common.MySQLCoordinates
 	currentCoordMutex *sync.Mutex
 	// raw config, whose ReplicateDoDB is same as config file (empty-is-all & no dynamically created tables)
 	mysqlContext *common.MySQLDriverConfig
@@ -81,7 +83,7 @@ type BinlogReader struct {
 	tables map[string]*common.SchemaContext
 
 	hasBeginQuery bool
-	entryContext  *common.BinlogEntryContext
+	entryContext  *common.EntryContext
 	ReMap         map[string]*regexp.Regexp // This is a cache for regexp.
 
 	ctx          context.Context
@@ -192,7 +194,7 @@ func NewBinlogReader(
 		ctx:                  ctx,
 		execCtx:              execCtx,
 		logger:               logger,
-		currentCoord:         common.BinlogCoordinatesX{},
+		currentCoord:         common.MySQLCoordinates{},
 		currentCoordMutex:    &sync.Mutex{},
 		mysqlContext:         cfg,
 		ReMap:                make(map[string]*regexp.Regexp),
@@ -270,7 +272,7 @@ func (b *BinlogReader) getBinlogDir() string {
 	return path.Join(b.execCtx.StateDir, "binlog", b.execCtx.Subject)
 }
 
-func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinatesX) (err error) {
+func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates) (err error) {
 	if coordinates.IsEmpty() {
 		b.logger.Warn("Emptry coordinates at ConnectBinlogStreamer")
 	}
@@ -404,7 +406,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.BinlogCoordinate
 	return nil
 }
 
-func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.BinlogCoordinatesX {
+func (b *BinlogReader) GetCurrentBinlogCoordinates() *common.MySQLCoordinates {
 	b.currentCoordMutex.Lock()
 	defer b.currentCoordMutex.Unlock()
 	returnCoordinates := b.currentCoord
@@ -422,7 +424,7 @@ type parseQueryResult struct {
 	isSkip      bool
 }
 
-func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.BinlogEntryContext) error {
+func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.EntryContext) error {
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
 		evt := ev.Event.(*replication.GTIDEvent)
@@ -432,7 +434,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		u, _ := uuid.FromBytes(evt.SID)
 
 		entry := common.NewBinlogEntry()
-		entry.Coordinates = common.BinlogCoordinateTx{
+		entry.Coordinates = &common.MySQLCoordinateTx{
 			LogFile:       b.currentCoord.LogFile,
 			LogPos:        int64(ev.Header.LogPos),
 			SID:           u,
@@ -444,7 +446,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		entry.Final = true
 
 		b.hasBeginQuery = false
-		b.entryContext = &common.BinlogEntryContext{
+		b.entryContext = &common.EntryContext{
 			Entry:        entry,
 			TableItems:   nil,
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
@@ -466,7 +468,8 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
-		b.entryContext.Entry.Coordinates.LogPos = b.currentCoord.LogPos
+		mysqlCoordinates := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+		mysqlCoordinates.LogPos = b.currentCoord.LogPos
 
 		b.sendEntry(entriesChannel)
 		if meetTarget {
@@ -481,9 +484,9 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 }
 
 func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
-	entriesChannel chan<- *common.BinlogEntryContext) error {
-
-	gno := b.entryContext.Entry.Coordinates.GNO
+	entriesChannel chan<- *common.EntryContext) error {
+    mysqlCoordinateTx := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
+	gno := mysqlCoordinateTx.GNO
 	evt := ev.Event.(*replication.QueryEvent)
 	query := string(evt.Query)
 
@@ -743,15 +746,16 @@ func (b *BinlogReader) checkDtleQueryOSID(query string) error {
 		return fmt.Errorf("bad dtle_gtid splitted for query %v", query)
 	}
 
-	b.logger.Debug("query osid", "osid", ss[1], "gno", b.entryContext.Entry.Coordinates.GNO)
+	b.logger.Debug("query osid", "osid", ss[1], "gno", b.entryContext.Entry.Coordinates.GetFieldValue("GNO"))
 
-	b.entryContext.Entry.Coordinates.OSID = ss[1]
+	b.entryContext.Entry.Coordinates.SetField("OSID",ss[1]) 
 	return nil
 }
 func (b *BinlogReader) setDtleQuery(query string) string {
-	if b.entryContext.Entry.Coordinates.OSID == "" {
-		uuidStr := uuid.UUID(b.entryContext.Entry.Coordinates.SID).String()
-		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, b.entryContext.Entry.Coordinates.GNO)
+	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+	if coordinate.OSID == "" {
+		uuidStr := uuid.UUID(coordinate.SID).String()
+		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, coordinate.GNO)
 
 		upperQuery := strings.ToUpper(query)
 		if strings.HasPrefix(upperQuery, "CREATE DEFINER=") {
@@ -766,7 +770,7 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 	}
 }
 
-func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContext) {
+func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 	isBig := b.entryContext.Entry.IsPartOfBigTx()
 	if isBig {
 		newVal := atomic.AddInt32(&b.BigTxCount, 1)
@@ -774,7 +778,8 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.BinlogEntryContex
 			g.AddBigTxJob()
 		}
 	}
-	b.logger.Debug("sendEntry", "gno", b.entryContext.Entry.Coordinates.GNO, "events", len(b.entryContext.Entry.Events),
+	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+	b.logger.Debug("sendEntry", "gno", coordinate.GNO, "events", len(b.entryContext.Entry.Events),
 		"isBig", isBig)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	select {
@@ -897,7 +902,7 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string, schemasRenameMap m
 	return bs.String(), nil
 }
 
-func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.BinlogEntryContext) error {
+func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryContext) error {
 	for {
 
 		// Check for shutdown
@@ -1206,8 +1211,9 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 						if err != nil {
 							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err, "sid", sidByte)
 						} else {
-							b.entryContext.Entry.Coordinates.OSID = sid.String()
-							b.logger.Debug("found an osid", "osid", b.entryContext.Entry.Coordinates.OSID)
+							coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+							coordinate.OSID = sid.String()
+							b.logger.Debug("found an osid", "osid", coordinate.OSID)
 						}
 					}
 				}
@@ -1750,19 +1756,20 @@ func (b *BinlogReader) onMeetTarget() {
 }
 
 func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *replication.RowsEvent,
-	entriesChannel chan<- *common.BinlogEntryContext) error {
+	entriesChannel chan<- *common.EntryContext) error {
 
 	schemaName := string(rowsEvent.Table.Schema)
 	tableName := string(rowsEvent.Table.Table)
+	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
-		"gno", b.entryContext.Entry.Coordinates.GNO,
+		"gno",coordinate.GNO,
 		"flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags)
 
 	dml := common.ToEventDML(ev.Header.EventType)
 	skip, table := b.skipRowEvent(rowsEvent, dml)
 	if skip {
 		b.logger.Debug("skip rowsEvent", "schema", schemaName, "table", tableName,
-			"gno", b.entryContext.Entry.Coordinates.GNO)
+			"gno",coordinate.GNO)
 		return nil
 	}
 
@@ -1919,7 +1926,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 			entry.Coordinates = b.entryContext.Entry.Coordinates
 			entry.Index = b.entryContext.Entry.Index + 1
 			entry.Final = true
-			b.entryContext = &common.BinlogEntryContext{
+			b.entryContext = &common.EntryContext{
 				Entry:        entry,
 				TableItems:   nil,
 				OriginalSize: 1,

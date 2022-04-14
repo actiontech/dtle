@@ -67,11 +67,11 @@ type Extractor struct {
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
 	replicateDoDb            map[string]*common.SchemaContext
-	dataChannel              chan *common.BinlogEntryContext
+	dataChannel              chan *common.EntryContext
 	inspector                *Inspector
 	binlogReader             *binlog.BinlogReader
-	initialBinlogCoordinates *common.BinlogCoordinatesX
-	currentBinlogCoordinates *common.BinlogCoordinateTx
+	initialBinlogCoordinates *common.MySQLCoordinates
+	currentBinlogCoordinates *common.MySQLCoordinateTx
 	rowCopyComplete          chan bool
 	rowCopyCompleteFlag      int64
 	tableCount               int
@@ -131,7 +131,7 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 		memory2:         new(int64),
 		replicateDoDb:   map[string]*common.SchemaContext{},
 	}
-	e.dataChannel = make(chan *common.BinlogEntryContext, cfg.ReplChanBufferSize*4)
+	e.dataChannel = make(chan *common.EntryContext, cfg.ReplChanBufferSize*4)
 	e.timestampCtx = NewTimestampContext(e.shutdownCh, e.logger, func() bool {
 		return len(e.dataChannel) == 0
 		// TODO need a more reliable method to determine queue.empty.
@@ -786,7 +786,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
-func (e *Extractor) initBinlogReader(binlogCoordinates *common.BinlogCoordinatesX) {
+func (e *Extractor) initBinlogReader(binlogCoordinates *common.MySQLCoordinates) {
 	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
 		e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
 		e.NetWriteTimeout, e.ctx)
@@ -822,13 +822,13 @@ func (e *Extractor) setInitialBinlogCoordinates() error {
 		if err != nil {
 			return err
 		}
-		e.initialBinlogCoordinates = &common.BinlogCoordinatesX{
+		e.initialBinlogCoordinates = &common.MySQLCoordinates{
 			GtidSet: gtidSet.String(),
 			LogFile: e.mysqlContext.BinlogFile,
 			LogPos:  e.mysqlContext.BinlogPos,
 		}
 	} else if e.mysqlContext.BinlogFile != "" {
-		e.initialBinlogCoordinates = &common.BinlogCoordinatesX{
+		e.initialBinlogCoordinates = &common.MySQLCoordinates{
 			LogFile: e.mysqlContext.BinlogFile,
 			LogPos:  e.mysqlContext.BinlogPos,
 		}
@@ -979,13 +979,13 @@ func (e *Extractor) StreamEvents() error {
 			e.wg.Done()
 			e.logger.Debug("StreamEvents goroutine exited")
 		}()
-		entries := common.BinlogEntries{}
+		entries := common.DataEntries{}
 		entriesSize := 0
 		sendEntriesAndClear := func() error {
 			var gno int64 = 0
 			if len(entries.Entries) > 0 {
 				theEntries := entries.Entries[0]
-				gno = theEntries.Coordinates.GNO
+				gno = theEntries.Coordinates.GetGNO()
 				if theEntries.Events != nil && len(theEntries.Events) > 0 {
 					e.timestampCtx.TimestampCh <- theEntries.Events[0].Timestamp
 				}

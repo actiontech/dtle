@@ -5,36 +5,71 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"reflect"
+
 	"github.com/actiontech/dtle/g"
 	"github.com/go-mysql-org/go-mysql/replication"
 	parsercharset "github.com/pingcap/tidb/parser/charset"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Do not call this frequently. Cache your result.
-func (b *BinlogCoordinateTx) GetSid() string {
-	return uuid.UUID(b.SID).String()
+func (b *MySQLCoordinateTx) GetSid() interface{} {
+	return uuid.UUID(b.SID)
 }
 
-func (b *BinlogCoordinateTx) GetGtidForThisTx() string {
+func (b *MySQLCoordinateTx) GetGtidForThisTx() string {
 	return fmt.Sprintf("%s:%d", b.GetSid(), b.GNO)
 }
 
-type BinlogEntryContext struct {
-	Entry       *BinlogEntry
+func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
+	v := reflect.ValueOf(*b)
+	return v.FieldByName(fieldName)
+ }
+ 
+ func (b *MySQLCoordinateTx)SetField(fieldName string,fieldValue interface{}){
+	v := reflect.ValueOf(&b).Elem().Elem()
+	v.FieldByName(fieldName).Set(reflect.ValueOf(fieldValue)) 
+ }
+
+ func (b *MySQLCoordinateTx)GetLogPos()int64{
+	return b.LogPos
+ }
+
+ func (b *MySQLCoordinateTx)GetLastCommit()int64{
+	return b.LastCommitted
+ }
+
+ func (b *MySQLCoordinateTx)GetGNO()int64{
+	return b.GNO
+ }
+
+ func (b *MySQLCoordinateTx)GetLogFile()string{
+	return b.LogFile
+ }
+
+ func (b *MySQLCoordinateTx)GetOSID()string{
+	return b.OSID
+ }
+
+ func (b *MySQLCoordinateTx)GetSequenceNumber()int64{
+	return b.SeqenceNumber
+ }
+type EntryContext struct {
+	Entry       *DataEntry
 	// Only a DML has a tableItem. For a DDL, its tableItem is nil.
 	TableItems  []*ApplierTableItem
 	OriginalSize  int // size of binlog entry
 }
 
-func NewBinlogEntry() *BinlogEntry {
-	binlogEntry := &BinlogEntry{
+func NewBinlogEntry() *DataEntry {
+	binlogEntry := &DataEntry{
 		Events:       make([]DataEvent, 0),
 	}
 	return binlogEntry
 }
 
-func (b *BinlogEntry) HasDDL() bool {
+func (b *DataEntry) HasDDL() bool {
 	for i := range b.Events {
 		switch b.Events[i].DML {
 		case NotDML:
@@ -45,12 +80,12 @@ func (b *BinlogEntry) HasDDL() bool {
 	return false
 }
 
-func (b *BinlogEntry) IsPartOfBigTx() bool {
+func (b *DataEntry) IsPartOfBigTx() bool {
 	return !(b.Index == 0 && b.Final)
 }
 
 // Duplicate creates and returns a new binlog entry, with some of the attributes pre-assigned
-func (b *BinlogEntry) String() string {
+func (b *DataEntry) String() string {
 	return fmt.Sprintf("[BinlogEntry at %+v]", b.Coordinates)
 }
 
@@ -151,16 +186,16 @@ func (ait *ApplierTableItem) Reset() {
 }
 
 // String returns a user-friendly string representation of these coordinates
-func (b BinlogCoordinatesX) String() string {
+func (b MySQLCoordinates) String() string {
 	return fmt.Sprintf("%v", b.GtidSet)
 }
 
 // IsEmpty returns true if the log file is empty, unnamed
-func (b *BinlogCoordinatesX) IsEmpty() bool {
+func (b *MySQLCoordinates) IsEmpty() bool {
 	return b.GtidSet == "" && b.LogFile == ""
 }
 
-func (b *BinlogCoordinatesX) CompareFilePos(other *BinlogCoordinatesX) int {
+func (b *MySQLCoordinates) CompareFilePos(other *MySQLCoordinates) int {
 	if b.LogFile < other.LogFile {
 		return -1
 	} else if b.LogFile == other.LogFile {
@@ -176,6 +211,17 @@ func (b *BinlogCoordinatesX) CompareFilePos(other *BinlogCoordinatesX) int {
 	}
 }
 
+func (b *MySQLCoordinates) GetLogPos() int64 {
+	return b.LogPos
+}
+
+func (b *MySQLCoordinates) GetTxSet() string {
+	return b.GtidSet
+}
+
+func (b *MySQLCoordinates) GetLogFile() string {
+	return b.LogFile
+}
 type QueryEventFlags struct {
 	NoForeignKeyChecks  bool
 

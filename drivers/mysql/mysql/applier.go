@@ -20,6 +20,7 @@ import (
 	"github.com/actiontech/dtle/drivers/mysql/common"
 	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pkg/errors"
+	uuid "github.com/satori/go.uuid"
 
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	gonats "github.com/nats-io/go-nats"
@@ -84,7 +85,7 @@ type Applier struct {
 	gtidSetLock *sync.RWMutex
 
 	storeManager *common.StoreManager
-	gtidCh       chan *common.BinlogCoordinateTx
+	gtidCh       chan common.CoordinatesI
 
 	stage      string
 	memory1    *int64
@@ -118,7 +119,7 @@ func NewApplier(
 		gtidSetLock:     &sync.RWMutex{},
 		shutdownCh:      make(chan struct{}),
 		storeManager:    storeManager,
-		gtidCh:          make(chan *common.BinlogCoordinateTx, 4096),
+		gtidCh:          make(chan common.CoordinatesI, 4096),
 		memory1:         new(int64),
 		memory2:         new(int64),
 		event:           event,
@@ -225,13 +226,13 @@ func (a *Applier) updateGtidLoop() {
 				}
 			} else {
 				a.gtidSetLock.Lock()
-				common.UpdateGtidSet(a.gtidSet, coord.SID, coord.GNO)
+				common.UpdateGtidSet(a.gtidSet, coord.GetSid().(uuid.UUID), coord.GetGNO())
 				if a.targetGtid != nil {
 					testTargetGtid()
 				}
 				a.gtidSetLock.Unlock()
-				file = coord.LogFile
-				pos = coord.LogPos
+				file = coord.GetLogFile()
+				pos = coord.GetLogPos()
 			}
 		}
 	}
@@ -287,19 +288,19 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
-	a.ai.EntryExecutedHook = func(entry *common.BinlogEntry) {
-		err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.LogPos, entry.Coordinates.LastCommitted)
+	a.ai.EntryExecutedHook = func(entry *common.DataEntry) {
+		err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.GetLogPos(), entry.Coordinates.GetLastCommit())
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))
 			return
 		}
 
 		if entry.Final {
-			a.gtidCh <- &entry.Coordinates
+			a.gtidCh <- entry.Coordinates
 		}
 		if entry.IsPartOfBigTx() {
 			bs, err := (&common.BigTxAck{
-				GNO:   entry.Coordinates.GNO,
+				GNO:   entry.Coordinates.GetGNO(),
 				Index: entry.Index,
 			}).Marshal(nil)
 			if err != nil {
@@ -525,9 +526,9 @@ func (a *Applier) subscribeNats() (err error) {
 			a.logger.Warn("ParallelWorkers > 1 and UseMySQLDependency = false. disabling MySQL session.foreign_key_checks")
 		}
 
-		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GtidSet)
+		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GetTxSet())
 		// Do not re-assign a.gtidSet (#538). Update it.
-		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GtidSet)
+		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GetTxSet())
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
 			return
@@ -536,9 +537,9 @@ func (a *Applier) subscribeNats() (err error) {
 		for _, uuidSet := range gs.Sets {
 			a.gtidSet.AddSet(uuidSet)
 		}
-		a.mysqlContext.Gtid = dumpData.Coord.GtidSet
-		a.mysqlContext.BinlogFile = dumpData.Coord.LogFile
-		a.mysqlContext.BinlogPos = dumpData.Coord.LogPos
+		a.mysqlContext.Gtid = dumpData.Coord.GetTxSet()
+		a.mysqlContext.BinlogFile = dumpData.Coord.GetLogFile()
+		a.mysqlContext.BinlogPos = dumpData.Coord.GetLogPos()
 		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
