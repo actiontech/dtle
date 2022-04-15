@@ -228,7 +228,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 		a.EntryExecutedHook(binlogEntry) // make gtid continuous
 		return nil
 	}
-	txSid := binlogEntry.Coordinates.GetSid()
+	txSid := binlogEntry.Coordinates.GetSidStr()
 
 	// Note: the gtidExecuted will be updated after commit. For a big-tx, we determine
 	// whether to skip for each parts.
@@ -239,7 +239,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	txExecuted := func() bool {
 		a.gtidSetLock.RLock()
 		defer a.gtidSetLock.RUnlock()
-		intervals := base.GetIntervals(a.gtidSet, txSid.(uuid.UUID).String())
+		intervals := base.GetIntervals(a.gtidSet, txSid)
 		return base.IntervalSlicesContainOne(intervals, binlogEntry.Coordinates.GetGNO())
 	}()
 	if txExecuted {
@@ -258,7 +258,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 
 	a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
 	if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-		err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid.(string))
+		err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid)
 		if err != nil {
 			return err
 		}

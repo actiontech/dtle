@@ -13,9 +13,13 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// Do not call this frequently. Cache your result.
 func (b *MySQLCoordinateTx) GetSid() interface{} {
 	return uuid.UUID(b.SID)
+}
+
+// Do not call this frequently. Cache your result.
+func (b *MySQLCoordinateTx) GetSidStr() string {
+	return uuid.UUID(b.SID).String()
 }
 
 func (b *MySQLCoordinateTx) GetGtidForThisTx() string {

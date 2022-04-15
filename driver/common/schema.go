@@ -8,6 +8,7 @@ import (
 
 type CoordinatesI interface{
 	GetSid()interface{}
+	GetSidStr() string
 	GetGtidForThisTx()string
 	GetFieldValue(fieldName string)interface{}
 	SetField(fieldName string,fieldValue interface{})
@@ -34,6 +35,10 @@ func SetField(fieldName string,fieldValue interface{}){
 
 func (o *OracleCoordinateTx)GetSid() interface{} {
 	return uuid.UUID([16]byte{0})
+}
+
+func (o *OracleCoordinateTx)GetSidStr() string {
+	return uuid.UUID([16]byte{0}).String()
 }
 
 func (o *OracleCoordinateTx) GetGtidForThisTx() string {
