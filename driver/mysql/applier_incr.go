@@ -80,8 +80,8 @@ func NewApplierIncr(ctx context.Context, subject string, mysqlContext *common.My
 		subject:               subject,
 		mysqlContext:          mysqlContext,
 		incrBytesQueue:        make(chan []byte, mysqlContext.ReplChanBufferSize),
-		binlogEntryQueue:      make(chan *common.DataEntry, mysqlContext.ReplChanBufferSize * 2),
-		applyBinlogMtsTxQueue: make(chan *common.EntryContext, mysqlContext.ReplChanBufferSize * 2),
+		binlogEntryQueue:      make(chan *common.DataEntry, mysqlContext.ReplChanBufferSize*2),
+		applyBinlogMtsTxQueue: make(chan *common.EntryContext, mysqlContext.ReplChanBufferSize*2),
 		db:                    db,
 		dbs:                   dbs,
 		shutdownCh:            shutdownCh,
@@ -218,7 +218,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	if binlogEntry.Coordinates.GetSid() == uuid.UUID([16]byte{0}) {
 		return a.handleEntryOracle(entryCtx)
 	}
-	
+
 	a.logger.Debug("a binlogEntry.", "remaining", len(a.incrBytesQueue),
 		"gno", binlogEntry.Coordinates.GetGNO(), "lc", binlogEntry.Coordinates.GetLastCommit(),
 		"seq", binlogEntry.Coordinates.GetSequenceNumber())
@@ -258,7 +258,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 
 	a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
 	if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-		err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid.(string))
+		err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid.(uuid.UUID).String())
 		if err != nil {
 			return err
 		}
@@ -367,8 +367,8 @@ func (a *ApplierIncr) heterogeneousReplay() {
 				return
 			case entry := <-a.binlogEntryQueue:
 				err := a.handleEntry(&common.EntryContext{
-					Entry:       entry,
-					TableItems:  nil,
+					Entry:      entry,
+					TableItems: nil,
 				})
 				if err != nil {
 					a.wg.Done()
@@ -535,7 +535,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				return nil
 			}
 
-			if event.DtleFlags & common.DtleFlagCreateSchemaIfNotExists != 0 {
+			if event.DtleFlags&common.DtleFlagCreateSchemaIfNotExists != 0 {
 				// TODO CHARACTER SET & COLLATE
 				query := fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", mysqlconfig.EscapeName(event.DatabaseName))
 				err := execQuery(query)
@@ -603,7 +603,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			} else {
 				// Oracle
 			}
-			noFKCheckFlag := flag &common.RowsEventFlagNoForeignKeyChecks != 0
+			noFKCheckFlag := flag&common.RowsEventFlagNoForeignKeyChecks != 0
 			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOff)
 				if err != nil {
@@ -655,7 +655,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		if !a.SkipGtidExecutedTable {
 			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GetGNO())
 			_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
-			a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), binlogEntry.Coordinates.GetGNO())
+				a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), binlogEntry.Coordinates.GetGNO())
 			if err != nil {
 				return errors.Wrap(err, "insert gno")
 			}
@@ -755,4 +755,3 @@ func (a *ApplierIncr) handleEntryOracle(entryCtx *common.EntryContext) (err erro
 	}
 	return nil
 }
-
