@@ -25,6 +25,7 @@ import (
 	"github.com/actiontech/dtle/g"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/hashicorp/nomad/plugins/drivers"
+	"github.com/pingcap/tidb/types"
 	"github.com/pkg/errors"
 
 	gonats "github.com/nats-io/go-nats"
@@ -342,8 +343,8 @@ func (kr *KafkaRunner) handleFullCopy() {
 
 		sendDDLPayload := func(ddl string) error {
 			p := &DDLPayload{
-				Source:       DDLSource{},
-				Position:     DDLPosition{
+				Source: DDLSource{},
+				Position: DDLPosition{
 					// TODO
 					Snapshot: true,
 				},
@@ -879,12 +880,12 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 
 			if dataEvent.DML == common.NotDML {
 				p := DDLPayload{
-					Source:       DDLSource{},
-					Position:     DDLPosition{
-						TsSec:    int64(dataEvent.Timestamp),
-						File:     dmlEvent.Coordinates.GetLogFile(),
-						Pos:      dmlEvent.Coordinates.GetLogPos(),
-						Gtids:    kr.Gtid,
+					Source: DDLSource{},
+					Position: DDLPosition{
+						TsSec: int64(dataEvent.Timestamp),
+						File:  dmlEvent.Coordinates.GetLogFile(),
+						Pos:   dmlEvent.Coordinates.GetLogPos(),
+						Gtids: kr.Gtid,
 					},
 					DatabaseName: dataEvent.DatabaseName,
 					DDL:          dataEvent.Query,
@@ -1256,7 +1257,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 		case mysqlconfig.BitColumnType:
 			if cols[i].ColumnType == "bit(1)" {
 				if defaultValue != nil {
-					if string(defaultValue.([]byte)) == "\x01" {
+					if string(defaultValue.(types.BinaryLiteral)) == "\x01" {
 						defaultValue = true
 					} else {
 						defaultValue = false
