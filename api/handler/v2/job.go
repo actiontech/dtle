@@ -158,7 +158,7 @@ func JobListV2(c echo.Context, filterJobType DtleJobType) error {
 		for i := range allocations {
 			allocation := allocations[i]
 			if lastAllocation, ok := mapAllocation[allocation.TaskGroup]; !ok ||
-				(ok && allocation.ModifyTime > lastAllocation.ModifyTime) {
+				(ok && allocation.CreateTime > lastAllocation.CreateTime) {
 				jobItem.AllocationStatus[allocation.TaskGroup] = allocations[i].ClientStatus
 				mapAllocation[allocation.TaskGroup] = allocation
 			}
@@ -192,8 +192,8 @@ func filterJobAddr(addrList []string, filterHost, filterPort string) bool {
 }
 
 func findJobMapFromNomad() (map[string]nomadApi.JobListStub, error) {
-	nomadJobs,err := findJobsFromNomad()
-	if err != nil{
+	nomadJobs, err := findJobsFromNomad()
+	if err != nil {
 		return nil, err
 	}
 	nomadJobMap := make(map[string]nomadApi.JobListStub, 0)
