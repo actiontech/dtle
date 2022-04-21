@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/actiontech/dtle/g"
+	"github.com/pingcap/tidb/types"
 
 	"github.com/actiontech/dtle/driver/common"
 
@@ -31,18 +32,18 @@ const (
 	CONVERTER_JSON = "json"
 	CONVERTER_AVRO = "avro"
 
-	SCHEMA_TYPE_STRUCT  = "struct"
-	SCHEMA_TYPE_STRING  = "string"
-	SCHEMA_TYPE_INT64   = "int64"
-	SCHEMA_TYPE_INT32   = "int32"
-	SCHEMA_TYPE_INT16   = "int16"
-	SCHEMA_TYPE_INT8    = "int8"
-	SCHEMA_TYPE_BYTES   = "bytes"
-	SCHEMA_TYPE_FLOAT64 = "float64"
+	SCHEMA_TYPE_STRUCT    = "struct"
+	SCHEMA_TYPE_STRING    = "string"
+	SCHEMA_TYPE_INT64     = "int64"
+	SCHEMA_TYPE_INT32     = "int32"
+	SCHEMA_TYPE_INT16     = "int16"
+	SCHEMA_TYPE_INT8      = "int8"
+	SCHEMA_TYPE_BYTES     = "bytes"
+	SCHEMA_TYPE_FLOAT64   = "float64"
 	SCHEMA_TYPE_TIMESTAMP = "timestamp"
-	SCHEMA_TYPE_DOUBLE  = "float64"
-	SCHEMA_TYPE_FLOAT32 = "float32"
-	SCHEMA_TYPE_BOOLEAN = "boolean"
+	SCHEMA_TYPE_DOUBLE    = "float64"
+	SCHEMA_TYPE_FLOAT32   = "float32"
+	SCHEMA_TYPE_BOOLEAN   = "boolean"
 
 	RECORD_OP_INSERT = "c"
 	RECORD_OP_UPDATE = "u"
@@ -223,6 +224,7 @@ type SchemaJson struct {
 	schema *Schema
 	cache  []byte
 }
+
 func (sj *SchemaJson) MarshalJSON() ([]byte, error) {
 	if sj.cache != nil {
 		return sj.cache, nil
@@ -467,8 +469,8 @@ func DateTimeValue(dateTime string, loc *time.Location) int64 {
 	if err != nil {
 		return 0
 	}
-	if tm2.UnixNano()/ 1e6 < -2177481600000{
-		return tm2.UnixNano() / 1e6 - 343000
+	if tm2.UnixNano()/1e6 < -2177481600000 {
+		return tm2.UnixNano()/1e6 - 343000
 		// fix bug 1900 year. timezone change. LMT（Local Mean Time）change to CST (China Standard Time).
 		// +8:05:43 change to +8:00:00
 	}
@@ -499,7 +501,7 @@ func NewJsonField(optional bool, field string) *Schema {
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
-		defaultV := defaultValue.([]byte)
+		defaultV := defaultValue.(types.BinaryLiteral)
 		defaultValue = base64.StdEncoding.EncodeToString(defaultV)
 	}
 	return &Schema{
