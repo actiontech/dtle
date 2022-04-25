@@ -469,7 +469,12 @@ func DateTimeValue(dateTime string, loc *time.Location) int64 {
 	if err != nil {
 		return 0
 	}
-	return tm2.UnixMilli()
+	timeSlice := strings.Split(tm2.Format("15:04:05.000"), ".")
+	if len(timeSlice) != 2 {
+		return 0
+	}
+	ms, err := strconv.ParseInt(timeSlice[1], 10, 64)
+	return tm2.Unix()*1000 + ms
 }
 func DateValue(date string) int64 {
 	tm2, err := time.Parse(LAYOUT, date+" 00:00:00")
