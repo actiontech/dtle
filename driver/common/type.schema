@@ -1,10 +1,10 @@
 struct DumpEntry {
-	SystemVariablesStatement string
-	SqlMode                  string
-	DbSQL                    string
-	TableName                string
-	TableSchema              string
-	TbSQL                    []string
+	SystemVariables [][2]string
+	SqlMode         string
+	DbSQL           string
+	TableName       string
+	TableSchema     string
+	TbSQL           []string
 	ValuesX    [][]*[]byte
 	TotalCount int64
 	Err        string

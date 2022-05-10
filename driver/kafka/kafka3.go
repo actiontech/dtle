@@ -20,7 +20,8 @@ import (
 	"time"
 
 	"github.com/actiontech/dtle/driver/common"
-	mysql "github.com/actiontech/dtle/driver/mysql"
+	"github.com/actiontech/dtle/driver/mysql"
+	"github.com/actiontech/dtle/driver/mysql/base"
 	"github.com/actiontech/dtle/driver/mysql/mysqlconfig"
 	"github.com/actiontech/dtle/g"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
@@ -381,8 +382,9 @@ func (kr *KafkaRunner) handleFullCopy() {
 				}
 			}
 		} else if dumpData.TableSchema == "" && dumpData.TableName == "" {
-			if dumpData.SystemVariablesStatement != "" {
-				err := sendDDLPayload(dumpData.SystemVariablesStatement)
+			if len(dumpData.SystemVariables) > 0 {
+				systemVariablesStatement := base.GenerateSetSystemVariables(dumpData.SystemVariables)
+				err := sendDDLPayload(systemVariablesStatement)
 				if err != nil {
 					kr.onError(common.TaskStateDead, err)
 					return

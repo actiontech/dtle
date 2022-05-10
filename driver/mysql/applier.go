@@ -766,10 +766,24 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 		a.logger.Debug("stubFullApplyDelay end sleep")
 	}
 
-	if entry.SystemVariablesStatement != "" {
+	queries := []string{}
+	if len(entry.SystemVariables) > 0 {
+		if strings.HasPrefix(a.MySQLVersion, "5") {
+			for i := range entry.SystemVariables {
+				if strings.HasPrefix(strings.ToLower(entry.SystemVariables[i][0]), "collation_") {
+					oldCollation := entry.SystemVariables[i][1]
+					newCollation := base.MySQL57CharacterSetMapping(oldCollation)
+					entry.SystemVariables[i][1] = newCollation
+					a.logger.Info("mapping a collation", "from", oldCollation, "to", newCollation)
+				}
+			}
+		}
+		systemVariablesStatement := base.GenerateSetSystemVariables(entry.SystemVariables)
+		queries = append(queries, systemVariablesStatement, entry.SqlMode, entry.DbSQL)
+
 		for i := range a.dbs {
-			a.logger.Debug("exec sysvar query", "query", entry.SystemVariablesStatement)
-			_, err := a.dbs[i].Db.ExecContext(a.ctx, entry.SystemVariablesStatement)
+			a.logger.Debug("exec sysvar query", "query", systemVariablesStatement)
+			_, err := a.dbs[i].Db.ExecContext(a.ctx, systemVariablesStatement)
 			if err != nil {
 				a.logger.Error("err exec sysvar query.", "err", err)
 				return err
@@ -787,8 +801,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 		}
 	}
 
-	queries := []string{}
-	queries = append(queries, entry.SystemVariablesStatement, entry.SqlMode, entry.DbSQL)
+	queries = append(queries, entry.SqlMode, entry.DbSQL)
 	queries = append(queries, entry.TbSQL...)
 	tx, err := db.BeginTx(a.ctx, &gosql.TxOptions{})
 	if err != nil {

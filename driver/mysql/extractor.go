@@ -23,7 +23,6 @@ import (
 	"github.com/actiontech/dtle/g"
 	"github.com/pkg/errors"
 
-	"bytes"
 	"math"
 	"strconv"
 	"strings"
@@ -908,25 +907,6 @@ func (e *Extractor) readMySqlCharsetSystemVariables() error {
 	return nil
 }
 
-func (e *Extractor) setStatementFor() string {
-	var buffer bytes.Buffer
-	first := true
-	buffer.WriteString("SET ")
-	for valName, value := range e.systemVariables {
-		if first {
-			first = false
-		} else {
-			buffer.WriteString(", ")
-		}
-		buffer.WriteString(valName + " = ")
-		if strings.Contains(value, ",") || strings.Contains(value, ";") {
-			value = "'" + value + "'"
-		}
-		buffer.WriteString(value)
-	}
-	return buffer.String()
-}
-
 type TimestampContext struct {
 	stopCh chan struct{}
 	// Do not pass 0 to the chan.
@@ -1134,16 +1114,19 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 	if err := e.readMySqlCharsetSystemVariables(); err != nil {
 		return err
 	}
-	setSystemVariablesStatement := e.setStatementFor()
-	e.logger.Debug("set sysvar query", "query", setSystemVariablesStatement)
+	e.logger.Debug("system variables", "value", e.systemVariables)
 	if err := e.selectSqlMode(); err != nil {
 		return err
 	}
 	setSqlMode := fmt.Sprintf("SET @@session.sql_mode = '%s'", e.sqlMode)
 
+	var outSystemVariables [][2]string
+	for k, v := range e.systemVariables {
+		outSystemVariables = append(outSystemVariables, [2]string{k, v})
+	}
 	entry := &common.DumpEntry{
-		SystemVariablesStatement: setSystemVariablesStatement,
-		SqlMode:                  setSqlMode,
+		SystemVariables: outSystemVariables,
+		SqlMode:         setSqlMode,
 	}
 	if err := e.encodeAndSendDumpEntry(entry); err != nil {
 		e.onError(common.TaskStateRestart, err)

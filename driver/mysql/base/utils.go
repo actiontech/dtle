@@ -154,6 +154,44 @@ func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExi
 	return fmt.Sprintf("%s;%s", statement, createTableStatement), err
 }
 
+func GenerateSetSystemVariables(systemVariables [][2]string) string {
+	var buffer bytes.Buffer
+	first := true
+	buffer.WriteString("SET ")
+	for i := range systemVariables {
+		valName := systemVariables[i][0]
+		value := systemVariables[i][1]
+		if first {
+			first = false
+		} else {
+			buffer.WriteString(", ")
+		}
+		buffer.WriteString(valName + " = ")
+		if strings.Contains(value, ",") || strings.Contains(value, ";") {
+			value = "'" + value + "'"
+		}
+		buffer.WriteString(value)
+	}
+	return buffer.String()
+}
+
+func MySQL57CharacterSetMapping(name string) string {
+	switch name {
+	case "utf8mb4_0900_ai_ci":
+		return "utf8mb4_general_ci"
+	case "utf8mb4_0900_as_ci":
+		return "utf8mb4_general_ci"
+	case "utf8mb4_0900_as_cs":
+		return "utf8mb4_bin"
+	case "utf8mb4_zh_0900_as_cs":
+		return "utf8mb4_bin"
+	case "utf8mb4_0900_bin":
+		return "utf8mb4_bin"
+	default:
+		return name
+	}
+}
+
 func StringInterval(intervals gomysql.IntervalSlice) string {
 	buf := new(bytes.Buffer)
 
@@ -167,7 +205,6 @@ func StringInterval(intervals gomysql.IntervalSlice) string {
 	return hack.String(buf.Bytes())
 }
 
-// applyColumnTypes
 func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columnsLists ...*common.ColumnList) error {
 	query := `
 		select

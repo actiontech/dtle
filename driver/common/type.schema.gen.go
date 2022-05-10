@@ -13,22 +13,22 @@ var (
 )
 
 type DumpEntry struct {
-	SystemVariablesStatement string
-	SqlMode                  string
-	DbSQL                    string
-	TableName                string
-	TableSchema              string
-	TbSQL                    []string
-	ValuesX                  [][]*[]byte
-	TotalCount               int64
-	Err                      string
-	Table                    []byte
+	SystemVariables [][2]string
+	SqlMode         string
+	DbSQL           string
+	TableName       string
+	TableSchema     string
+	TbSQL           []string
+	ValuesX         [][]*[]byte
+	TotalCount      int64
+	Err             string
+	Table           []byte
 }
 
 func (d *DumpEntry) Size() (s uint64) {
 
 	{
-		l := uint64(len(d.SystemVariablesStatement))
+		l := uint64(len(d.SystemVariables))
 
 		{
 
@@ -40,7 +40,34 @@ func (d *DumpEntry) Size() (s uint64) {
 			s++
 
 		}
-		s += l
+
+		for k0 := range d.SystemVariables {
+
+			{
+				for k := range d.SystemVariables[k0] {
+					_ = k // make compiler happy in case k is unused
+
+					{
+						l := uint64(len(d.SystemVariables[k0][k]))
+
+						{
+
+							t := l
+							for t >= 0x80 {
+								t >>= 7
+								s++
+							}
+							s++
+
+						}
+						s += l
+					}
+
+				}
+			}
+
+		}
+
 	}
 	{
 		l := uint64(len(d.SqlMode))
@@ -245,7 +272,7 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 	i := uint64(0)
 
 	{
-		l := uint64(len(d.SystemVariablesStatement))
+		l := uint64(len(d.SystemVariables))
 
 		{
 
@@ -260,8 +287,35 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 			i++
 
 		}
-		copy(buf[i+0:], d.SystemVariablesStatement)
-		i += l
+		for k0 := range d.SystemVariables {
+
+			{
+				for k := range d.SystemVariables[k0] {
+
+					{
+						l := uint64(len(d.SystemVariables[k0][k]))
+
+						{
+
+							t := uint64(l)
+
+							for t >= 0x80 {
+								buf[i+0] = byte(t) | 0x80
+								t >>= 7
+								i++
+							}
+							buf[i+0] = byte(t)
+							i++
+
+						}
+						copy(buf[i+0:], d.SystemVariables[k0][k])
+						i += l
+					}
+
+				}
+			}
+
+		}
 	}
 	{
 		l := uint64(len(d.SqlMode))
@@ -531,8 +585,41 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 			l = t
 
 		}
-		d.SystemVariablesStatement = string(buf[i+0 : i+0+l])
-		i += l
+		if uint64(cap(d.SystemVariables)) >= l {
+			d.SystemVariables = d.SystemVariables[:l]
+		} else {
+			d.SystemVariables = make([][2]string, l)
+		}
+		for k0 := range d.SystemVariables {
+
+			{
+				for k := range d.SystemVariables[k0] {
+
+					{
+						l := uint64(0)
+
+						{
+
+							bs := uint8(7)
+							t := uint64(buf[i+0] & 0x7F)
+							for buf[i+0]&0x80 == 0x80 {
+								i++
+								t |= uint64(buf[i+0]&0x7F) << bs
+								bs += 7
+							}
+							i++
+
+							l = t
+
+						}
+						d.SystemVariables[k0][k] = string(buf[i+0 : i+0+l])
+						i += l
+					}
+
+				}
+			}
+
+		}
 	}
 	{
 		l := uint64(0)
