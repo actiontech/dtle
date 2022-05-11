@@ -1239,9 +1239,8 @@ func getBitValue(bit string, value int64) string {
 		bitNumber = bitNumber + 1
 	}
 	var buf = make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(value))
-
-	return base64.StdEncoding.EncodeToString(buf[8-bitNumber:])
+	binary.LittleEndian.PutUint64(buf, uint64(value))
+	return base64.StdEncoding.EncodeToString(buf[:bitNumber])
 }
 
 func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (valColDefs ColDefs, keyColDefs ColDefs) {
