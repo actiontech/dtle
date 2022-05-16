@@ -764,7 +764,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 							value = true
 						}
 					} else {
-						value = base64.StdEncoding.EncodeToString([]byte(valueStr))
+						value = reverseBytes([]byte(valueStr))
 					}
 				case mysqlconfig.BlobColumnType:
 					if strings.Contains(columnList[i].ColumnType, "text") {
@@ -1241,6 +1241,14 @@ func getBitValue(bit string, value int64) string {
 	var buf = make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, uint64(value))
 	return base64.StdEncoding.EncodeToString(buf[:bitNumber])
+}
+
+func reverseBytes(bytes []byte) string {
+	for i, j := 0, len(bytes)-1; i <= j; i, j = i+1, j-1 {
+		bytes[i], bytes[j] = bytes[j], bytes[i]
+	}
+	value := base64.StdEncoding.EncodeToString(bytes)
+	return value
 }
 
 func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (valColDefs ColDefs, keyColDefs ColDefs) {
