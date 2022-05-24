@@ -144,18 +144,19 @@ func TestParseDMLSQL(t *testing.T) {
 		undo_sql  string
 		want_rows [][]interface{}
 	}{
+		// update SQL
+		{
+			name:      "TESTNULL",
+			sql:       "update \"TEST\".\"TESTNULL\" set \"COL1\" = NULL where \"COL1\" = 'T'",
+			undo_sql:  "update \"TEST\".\"TESTNULL\" set \"COL1\" = 'T' where \"COL1\" IS NULL",
+			want_rows: [][]interface{}{{"T", nil}, {nil, nil}},
+		},
+		// Insert SQL
 		{
 			name:      "NCHAR_255_COLUMNS",
 			sql:       `insert into "TEST"."NCHAR_255_COLUMNS"("COL1","COL2") values ('11',UNISTR('\6570\636E\5E93sql\6D4B\8BD5\6570\636E\5E93sql\6D4B\8BD5                                                                                                                                                                                                                                               '))`,
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"11", "数据库sql测试数据库sql测试                                                                                                                                                                                                                                               "}}},
-		// NUMBER(*)
-		// BFILE  no support
-		// BINARY_FLOAT
-		// insert into TEST.TEST("COL1","COL2") values (1, 3.40282E+38F);
-		// insert into TEST.TEST("COL1","COL2") values (2, BINARY_FLOAT_INFINITY);
-		// insert into TEST.TEST("COL1","COL2") values (3, -BINARY_FLOAT_INFINITY);
-		// insert into TEST.TEST("COL1","COL2") values (4, BINARY_FLOAT_NAN);
 		{
 			name:      "BINARY_FLOAT1",
 			sql:       `insert into "TEST"."BINARY_FLOAT1"("COL1","COL2") values ('0', '1.17549E-38F');`,
@@ -188,7 +189,7 @@ func TestParseDMLSQL(t *testing.T) {
 		},
 		{
 			name:      "BINARY_FLOAT6",
-			sql:       `update "TEST"."BINARY_FLOAT6" set "COL2" ='500'  where "COL1" = '3' and "COL2" = 'NULL';`,
+			sql:       `update "TEST"."BINARY_FLOAT6" set "COL2" = '500'  where "COL1" = '3' and "COL2" = 'NULL';`,
 			undo_sql:  `update "TEST"."BINARY_FLOAT6" set "COL2" = NULL  where "COL1" = '3' and "COL2" = '50\0';`,
 			want_rows: [][]interface{}{{"3", nil}, {"3", "50\\0"}},
 		},
@@ -198,10 +199,6 @@ func TestParseDMLSQL(t *testing.T) {
 			undo_sql:  `insert into "TEST"."BINARY_FLOAT7"("COL1","COL2") VALUES ('4', 'Nan');`,
 			want_rows: [][]interface{}{{"4", nil}},
 		},
-		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('1',NULL)
-		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('2',TO_DATE('-4712-01-01 00:00:00', 'SYYYY-MM-DD HH24:MI:SS'))
-		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('3',TO_DATE(' 9999-12-31 00:00:00', 'SYYYY-MM-DD HH24:MI:SS'))
-		// insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('4',TO_DATE(' 2003-05-03 21:02:44', 'SYYYY-MM-DD HH24:MI:SS'))
 		{
 			name:      "DATE_COLUMNS",
 			sql:       `insert into "TEST"."DATE_COLUMNS"("COL1","COL2") values ('1',NULL)`,
@@ -226,7 +223,6 @@ func TestParseDMLSQL(t *testing.T) {
 			undo_sql:  ``,
 			want_rows: [][]interface{}{{"4", " 2003-05-03 21:02:44"}},
 		},
-		// CREATE TABLE TEST."te\shu"(COL1 INT, col2 CHAR(256))
 		{
 			name:      `te\shu`,
 			sql:       `insert into "TEST"."te\shu"("COL1","COL2") values ('5','x\x44')`,
@@ -245,11 +241,6 @@ func TestParseDMLSQL(t *testing.T) {
 			undo_sql:  `insert into "TEST"."BINARY_FLOAT"("COL1","COL2") VALUES ('5', 'Nan');`,
 			want_rows: [][]interface{}{{"5", `"`}},
 		},
-		// {
-		// 	name:      "NCHAR_255_COLUMNS",
-		// 	sql:       `insert into "TEST"."NCHAR_255_COLUMNS"("COL1","COL2") values ('9',UNISTR('\6570\636E\5E93sql\6D4B\8BD5'))`,
-		// 	undo_sql:  ``,
-		// 	want_rows: [][]interface{}{{"9", "数据库sql测试"}}},
 		{
 			name:      "CHAR_255_COLUMNS2",
 			sql:       `insert into "TEST"."CHAR_255_COLUMNS2"("COL1","COL2") values ('16','"')`,
@@ -521,34 +512,6 @@ func TestParseDDLSQL(t *testing.T) {
 			name: "createTableSQLCharRelation",
 			sql:  `CREATE TABLE TEST.XMLTYPE_COLUMNS(ID INT, C_XMLTYPE XMLTYPE);`,
 			want: "CREATE TABLE `TEST`.`XMLTYPE_COLUMNS` (`ID` INT,`C_XMLTYPE` LONGTEXT) DEFAULT CHARACTER SET = UTF8MB4"},
-
-		// {
-		// 	name: "createTableSQLCharRelation",
-		// 	sql: `CREATE TABLE test."persons"(
-		// 		   "first_name" VARCHAR(15) NOT NULL,
-		// 		   last_name VARCHAR2(45) NOT NULL
-		// 		 );`,
-		// 	want: "CREATE TABLE `TEST`.`persons (first_name VARCHAR(15),LAST_NAME VARCHAR(45)) DEFAULT CHARACTER SET = UTF8MB4"},
-		// {
-		// 	// 是否支持没有 p s,或者仅仅支持 p s
-		// 	//NUMERIC_NAME  NUMERIC(15,2),
-		// 	//Decimal_NAME  DECIMAL(15,2),
-		// 	//Dec_NAME DEC(15,2),
-		// 	// ps 都为空时候，oracle上限为 38,0 mysql上限为10,0
-		// 	name: "createTableSQLNumberRelation",
-		// 	sql: `CREATE TABLE test."persons"(
-		// 		   "first_num" NUMBER(15,2) NOT NULL,
-		// 		    second_num NUMBER(10) NOT NULL,
-		// 			three_num NUMBER(5,0) NOT NULL,
-		// 			last_name NUMBER NOT NULL,
-		// 			NUMERIC_NAME  NUMERIC(15,2),
-		// 			Decimal_NAME  DECIMAL(15,2),
-		// 			Dec_NAME DEC(15,2),
-		// 			INTEGER_NAME INTEGER,
-		// 			INT_NAME  INT,
-		// 			SMALLINT_NAME SMALLINT
-		// 		 );`,
-		// 	want: "CREATE TABLE `TEST`.`persons (first_num DECIMAL(15,2),SECOND_NUM BIGINT,THREE_NUM INT,LAST_NAME DOUBLE,NUMERIC_NAME NUMERIC(15,2),DECIMAL_NAME DECIMAL(15,2),DEC_NAME DEC(15,2),INTEGER_NAME INT,INT_NAME INT,SMALLINT_NAME DECIMAL(38)) DEFAULT CHARACTER SET = UTF8MB4"},
 	}
 	logger := hclog.NewNullLogger()
 	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
@@ -736,11 +699,6 @@ func TestParseConstraintSQL(t *testing.T) {
 				)`,
 			want: "CREATE TABLE `TEST`.`EMPLOYEES_DEMO` (`EMPLOYEE_ID` INT,`FIRST_NAME` VARCHAR(20),`LAST_NAME` VARCHAR(25) NOT NULL,`EMAIL` VARCHAR(25) NOT NULL,`PHONE_NUMBER` VARCHAR(20),`HIRE_DATE` DATETIME NOT NULL,`JOB_ID` VARCHAR(10) NOT NULL,`SALARY` DECIMAL(8,2) NOT NULL,`COMMISSION_PCT` DECIMAL(2,2),`MANAGER_ID` INT,`DEPARTMENT_ID` SMALLINT,`DN` VARCHAR(300),UNIQUE `EMP_EMAIL_UK_DEMO`(`email`)) DEFAULT CHARACTER SET = UTF8MB4",
 		},
-		// {
-		// 	name: "createOutOfLineConstraint",
-		// 	sql:  `CREATE TABLE TEST.emp1 ( id number REFERENCES TEST.USERINFO11 ( ID ), NAME VARCHAR ( 8 ) );`,
-		// 	want: "CREATE TABLE `TEST`.`EMP1` (`ID` DOUBLE,`NAME` VARCHAR(8)) DEFAULT CHARACTER SET = UTF8MB4",
-		// },
 	}
 	logger := hclog.NewNullLogger()
 	extractor := &ExtractorOracle{logger: logger, replicateDoDb: []*common.DataSource{}}
