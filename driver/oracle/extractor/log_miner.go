@@ -590,10 +590,10 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.EntryCo
 
 func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.DataEntry {
 	entry := common.NewBinlogEntry()
-	entry.Final = true	
+	entry.Final = true
 	oracleCoordinateTx := &common.OracleCoordinateTx{
-		OldestUncommittedScn:	tx.oldestUncommittedScn,
-		EndSCN:					tx.endScn,
+		OldestUncommittedScn: tx.oldestUncommittedScn,
+		EndSCN:               tx.endScn,
 	}
 	entry.Coordinates = oracleCoordinateTx
 	for _, row := range tx.records {
@@ -925,9 +925,8 @@ func (e *ExtractorOracle) parseToDataEvent(row *LogMinerRecord) (common.DataEven
 	return dataEvent, fmt.Errorf("parese dateEvent fail , operation Code %v", row.Operation)
 }
 func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (dataEvent common.DataEvent, err error) {
-	// e.logger.Debug("============= dml stmt parse start===============", "redoSQL", redoSQL, "undoSQL", undoSQL)
-	// todo 大小写问题
-	OracleToMySQL := func(oracleSQL string) string {
+	// Convert oracle SQL to MySQL format that can be parsed by tidb parese
+	OracleToMySQLFormat := func(oracleSQL string) string {
 		if strings.HasPrefix(oracleSQL, "insert into") {
 			insertSqlSlice := strings.Split(oracleSQL, ") values (")
 			if len(insertSqlSlice) == 2 {
@@ -941,34 +940,34 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 			delSqlSlice := strings.Split(oracleSQL, " where ")
 			if len(delSqlSlice) == 2 {
 				oracleSQL = strings.Replace(oracleSQL, delSqlSlice[0], ReplaceSpecifiedString(delSqlSlice[0], `"`, "`"), 1)
-				wereExper := delSqlSlice[1]
-				wereExperSli := strings.Split(wereExper, " and ")
-				for i := range wereExperSli {
-					colAndVal := strings.Split(wereExperSli[i], " = ")
+				whereExper := delSqlSlice[1]
+				whereExperSli := strings.Split(whereExper, " and ")
+				for i := range whereExperSli {
+					colAndVal := strings.Split(whereExperSli[i], " = ")
 					if len(colAndVal) == 2 {
-						wereExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
+						whereExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
 							ReplaceSpecifiedString(colAndVal[1], `\`, `\\`))
 					}
 				}
-				wereExper = strings.Join(wereExperSli, " and ")
-				oracleSQL = strings.Replace(oracleSQL, delSqlSlice[1], wereExper, 1)
+				whereExper = strings.Join(whereExperSli, " and ")
+				oracleSQL = strings.Replace(oracleSQL, delSqlSlice[1], whereExper, 1)
 			}
 		} else if strings.HasPrefix(oracleSQL, "update") {
 			// update "TEST"."BINARY_FLOAT6" set "COL2" ='500'  where "COL1" = '3' and "COL2" = 'NULL';
 			updateSqlSlice := strings.Split(oracleSQL, " where ")
 			if len(updateSqlSlice) == 2 {
 				// "COL1" = '3' and "COL2" = 'NULL';
-				wereExper := updateSqlSlice[1]
-				wereExperSli := strings.Split(wereExper, " and ")
-				for i := range wereExperSli {
-					colAndVal := strings.Split(wereExperSli[i], " = ")
+				whereExper := updateSqlSlice[1]
+				whereExperSli := strings.Split(whereExper, " and ")
+				for i := range whereExperSli {
+					colAndVal := strings.Split(whereExperSli[i], " = ")
 					if len(colAndVal) == 2 {
-						wereExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
+						whereExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
 							ReplaceSpecifiedString(colAndVal[1], `\`, `\\`))
 					}
 				}
-				wereExper = strings.Join(wereExperSli, " and ")
-				updateSqlSlice[1] = wereExper
+				whereExper = strings.Join(whereExperSli, " and ")
+				updateSqlSlice[1] = whereExper
 
 				// update "TEST"."BINARY_FLOAT6" set "COL2" ='500' and "COL1" = 'ss'
 				headerExper := updateSqlSlice[0]
@@ -979,7 +978,7 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 					// "COL2" ='500' and "COL1" = 'ss'
 					setExperSli := strings.Split(headExperSli[1], " and ")
 					for i := range setExperSli {
-						colAndVal := strings.Split(wereExperSli[i], " = ")
+						colAndVal := strings.Split(setExperSli[i], " = ")
 						setExperSli[i] = fmt.Sprintf("%s = %s", ReplaceSpecifiedString(colAndVal[0], `"`, "`"),
 							ReplaceSpecifiedString(colAndVal[1], `\`, `\\`))
 					}
@@ -999,7 +998,7 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 		}
 		return oracleSQL
 	}
-	redoSQL := OracleToMySQL(oracleRedoSQL)
+	redoSQL := OracleToMySQLFormat(oracleRedoSQL)
 	p := parser.New()
 	stmt, _, err := p.Parse(redoSQL, "", "")
 	if err != nil {
@@ -1046,7 +1045,7 @@ func (e *ExtractorOracle) parseDMLSQL(oracleRedoSQL, oracleUndoSQL string) (data
 	case common.DeleteDML:
 		dataEvent.Rows = [][]interface{}{visitor.WhereColumnValues}
 	case common.UpdateDML:
-		undoSQL := OracleToMySQL(oracleUndoSQL)
+		undoSQL := OracleToMySQLFormat(oracleUndoSQL)
 		undoP := parser.New()
 		untoStmt, _, err := undoP.Parse(undoSQL, "", "")
 		if err != nil {
