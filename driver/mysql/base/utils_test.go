@@ -348,3 +348,32 @@ func TestRenameCreateTable(t *testing.T) {
 		})
 	}
 }
+
+func TestMySQL57CollationReplaceWorkaround(t *testing.T) {
+	type args struct {
+		sql string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "db1",
+			args: args{"CREATE DATABASE `a` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */"},
+			want: "CREATE DATABASE `a` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */ /*!80016 DEFAULT ENCRYPTION='N' */",
+		},
+		{
+			name: "tb1",
+			args: args{"CREATE TABLE `a` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `val1` varchar(64) DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"},
+			want: "CREATE TABLE `a` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `val1` varchar(64) DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := MySQL57CollationReplaceWorkaround(tt.args.sql); got != tt.want {
+				t.Errorf("MySQL57CollationReplaceWorkaround() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

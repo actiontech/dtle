@@ -769,10 +769,15 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 	queries := []string{}
 	if len(entry.SystemVariables) > 0 {
 		if strings.HasPrefix(a.MySQLVersion, "5") {
+			entry.DbSQL = base.MySQL57CollationReplaceWorkaround(entry.DbSQL)
+			for i := range entry.TbSQL {
+				entry.TbSQL[i] = base.MySQL57CollationReplaceWorkaround(entry.TbSQL[i])
+			}
+
 			for i := range entry.SystemVariables {
 				if strings.HasPrefix(strings.ToLower(entry.SystemVariables[i][0]), "collation_") {
 					oldCollation := entry.SystemVariables[i][1]
-					newCollation := base.MySQL57CharacterSetMapping(oldCollation)
+					newCollation := base.MySQL57CollationMapping(oldCollation)
 					entry.SystemVariables[i][1] = newCollation
 					a.logger.Info("mapping a collation", "from", oldCollation, "to", newCollation)
 				}

@@ -175,7 +175,7 @@ func GenerateSetSystemVariables(systemVariables [][2]string) string {
 	return buffer.String()
 }
 
-func MySQL57CharacterSetMapping(name string) string {
+func MySQL57CollationMapping(name string) string {
 	switch name {
 	case "utf8mb4_0900_ai_ci":
 		return "utf8mb4_general_ci"
@@ -190,6 +190,11 @@ func MySQL57CharacterSetMapping(name string) string {
 	default:
 		return name
 	}
+}
+
+func MySQL57CollationReplaceWorkaround(sql string) string {
+	re := regexp.MustCompile(`(?i)COLLATE utf8mb4_0900_ai_ci|COLLATE=utf8mb4_0900_ai_ci`)
+	return re.ReplaceAllString(sql, "COLLATE utf8mb4_general_ci")
 }
 
 func StringInterval(intervals gomysql.IntervalSlice) string {
