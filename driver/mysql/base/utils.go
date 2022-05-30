@@ -193,7 +193,7 @@ func MySQL57CollationMapping(name string) string {
 }
 
 func MySQL57CollationReplaceWorkaround(sql string) string {
-	re := regexp.MustCompile(`(?i)(COLLATE |COLLATE=)utf8mb4_0900_ai_ci`)
+	re := regexp.MustCompile(`(?i)(COLLATE\s?=?\s?)utf8mb4_0900_ai_ci`)
 	return re.ReplaceAllString(sql, "${1}utf8mb4_general_ci")
 }
 

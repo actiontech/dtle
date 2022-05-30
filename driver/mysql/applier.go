@@ -767,24 +767,25 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 	}
 
 	queries := []string{}
-	if len(entry.SystemVariables) > 0 {
-		if strings.HasPrefix(a.MySQLVersion, "5") {
-			entry.DbSQL = base.MySQL57CollationReplaceWorkaround(entry.DbSQL)
-			for i := range entry.TbSQL {
-				entry.TbSQL[i] = base.MySQL57CollationReplaceWorkaround(entry.TbSQL[i])
-			}
+	if strings.HasPrefix(a.MySQLVersion, "5") {
+		entry.DbSQL = base.MySQL57CollationReplaceWorkaround(entry.DbSQL)
+		for i := range entry.TbSQL {
+			entry.TbSQL[i] = base.MySQL57CollationReplaceWorkaround(entry.TbSQL[i])
+		}
 
-			for i := range entry.SystemVariables {
-				if strings.HasPrefix(strings.ToLower(entry.SystemVariables[i][0]), "collation_") {
-					oldCollation := entry.SystemVariables[i][1]
-					newCollation := base.MySQL57CollationMapping(oldCollation)
-					entry.SystemVariables[i][1] = newCollation
-					a.logger.Info("mapping a collation", "from", oldCollation, "to", newCollation)
-				}
+		for i := range entry.SystemVariables {
+			if strings.HasPrefix(strings.ToLower(entry.SystemVariables[i][0]), "collation_") {
+				oldCollation := entry.SystemVariables[i][1]
+				newCollation := base.MySQL57CollationMapping(oldCollation)
+				entry.SystemVariables[i][1] = newCollation
+				a.logger.Info("mapping a collation", "from", oldCollation, "to", newCollation)
 			}
 		}
+	}
+
+	if len(entry.SystemVariables) > 0 {
 		systemVariablesStatement := base.GenerateSetSystemVariables(entry.SystemVariables)
-		queries = append(queries, systemVariablesStatement, entry.SqlMode, entry.DbSQL)
+		queries = append(queries, systemVariablesStatement)
 
 		for i := range a.dbs {
 			a.logger.Debug("exec sysvar query", "query", systemVariablesStatement)
@@ -795,6 +796,7 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 			}
 		}
 	}
+
 	if entry.SqlMode != "" {
 		for i := range a.dbs {
 			a.logger.Debug("exec sqlmode query", "query", entry.SqlMode)
