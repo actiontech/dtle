@@ -193,8 +193,8 @@ func MySQL57CollationMapping(name string) string {
 }
 
 func MySQL57CollationReplaceWorkaround(sql string) string {
-	re := regexp.MustCompile(`(?i)COLLATE utf8mb4_0900_ai_ci|COLLATE=utf8mb4_0900_ai_ci`)
-	return re.ReplaceAllString(sql, "COLLATE utf8mb4_general_ci")
+	re := regexp.MustCompile(`(?i)(COLLATE |COLLATE=)utf8mb4_0900_ai_ci`)
+	return re.ReplaceAllString(sql, "${1}utf8mb4_general_ci")
 }
 
 func StringInterval(intervals gomysql.IntervalSlice) string {
