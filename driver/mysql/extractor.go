@@ -1399,13 +1399,13 @@ func (e *Extractor) mysqlDump() error {
 			}
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
-			for entry := range d.resultsChannel {
+			for entry := range d.ResultsChannel {
 				if entry.Err != "" {
 					e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
 					memSize := int64(entry.Size())
 					if !d.sentTableDef {
-						tableBs, err := common.EncodeTable(d.table)
+						tableBs, err := common.EncodeTable(d.Table)
 						if err != nil {
 							err = errors.Wrap(err, "full copy: EncodeTable")
 							e.onError(common.TaskStateDead, err)
@@ -1419,7 +1419,7 @@ func (e *Extractor) mysqlDump() error {
 						e.onError(common.TaskStateRestart, err)
 					}
 					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
-					atomic.AddInt64(d.memory, -memSize)
+					atomic.AddInt64(d.Memory, -memSize)
 				}
 			}
 

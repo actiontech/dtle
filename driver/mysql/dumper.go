@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/actiontech/dtle/driver/common"
@@ -24,50 +23,33 @@ import (
 )
 
 type dumper struct {
-	logger             g.LoggerType
-	chunkSize          int64
-	TableSchema        string
+	*common.Dumper
 	EscapedTableSchema string
-	TableName          string
 	EscapedTableName   string
-	table              *common.Table
-	iteration          int64
-	columns            string
-	resultsChannel     chan *common.DumpEntry
-	shutdown           bool
-	shutdownCh         chan struct{}
-	shutdownLock       sync.Mutex
-
 	// DB is safe for using in goroutines
 	// http://golang.org/src/database/sql/sql.go?s=5574:6362#L201
 	db usql.QueryAble
-
 	// 0: don't checksum; 1: checksum once; 2: checksum every time
 	doChecksum int
 	oldWayDump bool
 
 	sentTableDef bool
-
-	memory *int64
 }
 
 func NewDumper(db usql.QueryAble, table *common.Table, chunkSize int64,
 	logger g.LoggerType, memory *int64) *dumper {
-
 	dumper := &dumper{
-		logger:             logger,
-		db:                 db,
-		TableSchema:        table.TableSchema,
-		EscapedTableSchema: umconf.EscapeName(table.TableSchema),
-		TableName:          table.TableName,
-		EscapedTableName:   umconf.EscapeName(table.TableName),
-		table:              table,
-		resultsChannel:     make(chan *common.DumpEntry, 24),
-		chunkSize:          chunkSize,
-		shutdownCh:         make(chan struct{}),
-		sentTableDef:       false,
-		memory:             memory,
+		common.NewDumper(table, chunkSize, logger, memory),
+		umconf.EscapeName(table.TableSchema),
+		umconf.EscapeName(table.TableName),
+		db,
+		0,
+		false,
+		false,
 	}
+	dumper.PrepareForDumping = dumper.prepareForDumping
+	dumper.GetChunkData = dumper.getChunkData
+
 	switch os.Getenv(g.ENV_DUMP_CHECKSUM) {
 	case "1":
 		dumper.doChecksum = 1
@@ -83,27 +65,10 @@ func NewDumper(db usql.QueryAble, table *common.Table, chunkSize int64,
 	return dumper
 }
 
-type DumpEntryOrig struct {
-	SystemVariablesStatement string
-	SqlMode                  string
-	DbSQL                    string
-	TableName                string
-	TableSchema              string
-	TbSQL                    []string
-	// For each `*interface{}` item, it is ensured to be not nil.
-	// If field is sql-NULL, *item is nil. Else, *item is a `[]byte`.
-	// TODO can we just use interface{}? Make sure it is not copied again and again.
-	ValuesX    [][]*interface{}
-	TotalCount int64
-	RowsCount  int64
-	Err        error
-	Table      *common.Table
-}
-
 func (d *dumper) prepareForDumping() error {
 	needPm := false
 	columns := make([]string, 0)
-	for _, col := range d.table.OriginalTableColumns.Columns {
+	for _, col := range d.Table.OriginalTableColumns.Columns {
 		switch col.Type {
 		case umconf.FloatColumnType, umconf.DoubleColumnType,
 			umconf.MediumIntColumnType, umconf.BigIntColumnType,
@@ -115,9 +80,9 @@ func (d *dumper) prepareForDumping() error {
 		}
 	}
 	if needPm {
-		d.columns = strings.Join(columns, ", ")
+		d.Columns = strings.Join(columns, ", ")
 	} else {
-		d.columns = "*"
+		d.Columns = "*"
 	}
 
 	return nil
@@ -125,19 +90,19 @@ func (d *dumper) prepareForDumping() error {
 
 func (d *dumper) buildQueryOldWay() string {
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) LIMIT %d OFFSET %d`,
-		d.columns,
+		d.Columns,
 		d.EscapedTableSchema,
 		d.EscapedTableName,
-		d.table.GetWhere(),
-		d.chunkSize,
-		d.iteration * d.chunkSize,
+		d.Table.GetWhere(),
+		d.ChunkSize,
+		d.Iteration*d.ChunkSize,
 	)
 }
 
 func (d *dumper) buildQueryOnUniqueKey() string {
-	nCol := len(d.table.UseUniqueKey.Columns.Columns)
+	nCol := len(d.Table.UseUniqueKey.Columns.Columns)
 	uniqueKeyColumnAscending := make([]string, nCol, nCol)
-	for i, col := range d.table.UseUniqueKey.Columns.Columns {
+	for i, col := range d.Table.UseUniqueKey.Columns.Columns {
 		colName := col.EscapedName
 		switch col.Type {
 		case umconf.EnumColumnType:
@@ -150,7 +115,7 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 
 	var rangeStr string
 
-	if d.iteration == 0 {
+	if d.Iteration == 0 {
 		rangeStr = "true"
 	} else {
 		rangeItems := make([]string, nCol)
@@ -160,12 +125,12 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 			innerItems := make([]string, x+1)
 
 			for y := 0; y < x; y++ {
-				colName := d.table.UseUniqueKey.Columns.Columns[y].EscapedName
-				innerItems[y] = fmt.Sprintf("(%s = %s)", colName, d.table.UseUniqueKey.LastMaxVals[y])
+				colName := d.Table.UseUniqueKey.Columns.Columns[y].EscapedName
+				innerItems[y] = fmt.Sprintf("(%s = %s)", colName, d.Table.UseUniqueKey.LastMaxVals[y])
 			}
 
-			colName := d.table.UseUniqueKey.Columns.Columns[x].EscapedName
-			innerItems[x] = fmt.Sprintf("(%s > %s)", colName, d.table.UseUniqueKey.LastMaxVals[x])
+			colName := d.Table.UseUniqueKey.Columns.Columns[x].EscapedName
+			innerItems[x] = fmt.Sprintf("(%s > %s)", colName, d.Table.UseUniqueKey.LastMaxVals[x])
 
 			rangeItems[x] = fmt.Sprintf("(%s)", strings.Join(innerItems, " and "))
 		}
@@ -174,15 +139,15 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 	}
 
 	return fmt.Sprintf(`SELECT %s FROM %s.%s where (%s) and (%s) order by %s LIMIT %d`,
-		d.columns,
+		d.Columns,
 		d.EscapedTableSchema,
 		d.EscapedTableName,
 		// where
-		rangeStr, d.table.GetWhere(),
+		rangeStr, d.Table.GetWhere(),
 		// order by
 		strings.Join(uniqueKeyColumnAscending, ", "),
 		// limit
-		d.chunkSize,
+		d.ChunkSize,
 	)
 }
 
@@ -205,53 +170,53 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		defer timer.Stop()
 		for keepGoing {
 			select {
-			case <-d.shutdownCh:
+			case <-d.ShutdownCh:
 				keepGoing = false
-			case d.resultsChannel <- entry:
-				atomic.AddInt64(d.memory, int64(entry.Size()))
+			case d.ResultsChannel <- entry:
+				atomic.AddInt64(d.Memory, int64(entry.Size()))
 				//d.logger.Debug("*** memory", "memory", atomic.LoadInt64(d.memory))
 				keepGoing = false
 			case <-timer.C:
-				d.logger.Debug("resultsChannel full. waiting and ping conn")
+				d.Logger.Debug("resultsChannel full. waiting and ping conn")
 				var dummy int
 				errPing := d.db.QueryRow("select 1").Scan(&dummy)
 				if errPing != nil {
-					d.logger.Debug("ping query row got error.", "err", errPing)
+					d.Logger.Debug("ping query row got error.", "err", errPing)
 				}
 			}
 		}
-		d.logger.Debug("resultsChannel", "n", len(d.resultsChannel))
+		d.Logger.Debug("resultsChannel", "n", len(d.ResultsChannel))
 	}()
 
 	query := ""
-	if d.oldWayDump || d.table.UseUniqueKey == nil {
+	if d.oldWayDump || d.Table.UseUniqueKey == nil {
 		query = d.buildQueryOldWay()
 	} else {
 		query = d.buildQueryOnUniqueKey()
 	}
-	d.logger.Debug("getChunkData.", "query", query)
+	d.Logger.Debug("getChunkData.", "query", query)
 
 	if d.doChecksum != 0 {
-		if d.doChecksum == 2 || (d.doChecksum == 1 && d.iteration == 0) {
+		if d.doChecksum == 2 || (d.doChecksum == 1 && d.Iteration == 0) {
 			row := d.db.QueryRow(fmt.Sprintf("checksum table %v.%v", d.TableSchema, d.TableName))
 			var table string
 			var cs int64
 			err := row.Scan(&table, &cs)
 			if err != nil {
-				d.logger.Debug("getChunkData checksum_table_err", "table", table, "err", err)
+				d.Logger.Debug("getChunkData checksum_table_err", "table", table, "err", err)
 			} else {
-				d.logger.Debug("getChunkData checksum_table", "table", table, "cs", cs)
+				d.Logger.Debug("getChunkData checksum_table", "table", table, "cs", cs)
 			}
 		}
 	}
 
 	// this must be increased after building query
-	d.iteration += 1
+	d.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
-		d.logger.Debug("error at select chunk. query: ", query)
+		d.Logger.Debug("error at select chunk. query: ", query)
 		newErr := fmt.Errorf("error at select chunk. err: %v", err)
-		d.logger.Error(newErr.Error())
+		d.Logger.Error(newErr.Error())
 		return 0, err
 	}
 
@@ -277,7 +242,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	}
 
 	nRows = int64(len(entry.ValuesX))
-	d.logger.Debug("getChunkData.", "n_row", nRows)
+	d.Logger.Debug("getChunkData.", "n_row", nRows)
 
 	if nRows > 0 {
 		var lastVals []string
@@ -286,31 +251,31 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			lastVals = append(lastVals, usql.EscapeColRawToString(col))
 		}
 
-		if d.table.UseUniqueKey != nil {
+		if d.Table.UseUniqueKey != nil {
 			// lastVals must not be nil if len(data) > 0
-			for i, col := range d.table.UseUniqueKey.Columns.Columns {
+			for i, col := range d.Table.UseUniqueKey.Columns.Columns {
 				// TODO save the idx
-				idx := d.table.OriginalTableColumns.Ordinals[col.RawName]
+				idx := d.Table.OriginalTableColumns.Ordinals[col.RawName]
 				if idx > len(lastVals) {
 					return nRows, fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
 				} else {
-					d.table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
+					d.Table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
 				}
 			}
-			d.logger.Debug("GetLastMaxVal", "val", d.table.UseUniqueKey.LastMaxVals)
+			d.Logger.Debug("GetLastMaxVal", "val", d.Table.UseUniqueKey.LastMaxVals)
 		}
 	}
-	if d.table.TableRename != "" {
-		entry.TableName = d.table.TableRename
+	if d.Table.TableRename != "" {
+		entry.TableName = d.Table.TableRename
 	}
-	if d.table.TableSchemaRename != "" {
-		entry.TableSchema = d.table.TableSchemaRename
+	if d.Table.TableSchemaRename != "" {
+		entry.TableSchema = d.Table.TableSchemaRename
 	}
-	if len(d.table.ColumnMap) > 0 {
+	if len(d.Table.ColumnMap) > 0 {
 		for i, oldRow := range entry.ValuesX {
-			row := make([]*[]byte, len(d.table.ColumnMap))
-			for i := range d.table.ColumnMap {
-				fromIdx := d.table.ColumnMap[i]
+			row := make([]*[]byte, len(d.Table.ColumnMap))
+			for i := range d.Table.ColumnMap {
+				fromIdx := d.Table.ColumnMap[i]
 				row[i] = oldRow[fromIdx]
 			}
 			entry.ValuesX[i] = row
@@ -322,52 +287,4 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	// Values[i][j]: j-th row (in paren-wrapped string)
 
 	return nRows, nil
-}
-
-func (d *dumper) Dump() error {
-	err := d.prepareForDumping()
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		defer close(d.resultsChannel)
-		for {
-			select {
-			case <-d.shutdownCh:
-				return
-			default:
-			}
-
-			nRows, err := d.getChunkData()
-			if err != nil {
-				d.logger.Error("error at dump", "err", err)
-				break
-			}
-
-			if nRows < d.chunkSize {
-				// If nRows < d.chunkSize while there are still more rows, it is a possible mysql bug.
-				d.logger.Info("nRows < d.chunkSize.", "nRows", nRows, "chunkSize", d.chunkSize)
-			}
-			if nRows == 0 {
-				d.logger.Info("nRows == 0. dump finished.", "nRows", nRows, "chunkSize", d.chunkSize)
-				break
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (d *dumper) Close() error {
-	// Quit goroutine
-	d.shutdownLock.Lock()
-	defer d.shutdownLock.Unlock()
-
-	if d.shutdown {
-		return nil
-	}
-	d.shutdown = true
-	close(d.shutdownCh)
-	return nil
 }
