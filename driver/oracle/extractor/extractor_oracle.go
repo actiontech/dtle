@@ -936,27 +936,27 @@ func (e *ExtractorOracle) oracleDump() error {
 	}
 	// step 5: Dump all of the tables and generate source records ...
 	// todo need merged dumper with mysql dumper
-	// for _, db := range e.replicateDoDb {
-	// 	for _, t := range db.Tables {
-	// 		d := NewDumper(e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
-	// 		if err := d.Dump(); err != nil {
-	// 			e.onError(common.TaskStateDead, err)
-	// 		}
-	// 		// todo close when shutdown
-	// 		// e.dumpers = append(e.dumpers, d)
+	for _, db := range e.replicateDoDb {
+		for _, t := range db.Tables {
+			d := NewDumper(e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
+			if err := d.Dump(); err != nil {
+				e.onError(common.TaskStateDead, err)
+			}
+			// todo close when shutdown
+			// e.dumpers = append(e.dumpers, d)
 
-	// 		// Scan the rows in the table ...
-	// 		for entry := range d.resultsChannel {
-	// 			if entry.Err != "" {
-	// 				e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
-	// 			} else {
-	// 				if err := e.encodeAndSendDumpEntry(entry); err != nil {
-	// 					e.onError(common.TaskStateRestart, err)
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
+			// Scan the rows in the table ...
+			for entry := range d.ResultsChannel {
+				if entry.Err != "" {
+					e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
+				} else {
+					if err := e.encodeAndSendDumpEntry(entry); err != nil {
+						e.onError(common.TaskStateRestart, err)
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 
