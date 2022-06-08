@@ -28,30 +28,22 @@ func (m *OracleConfig) ConnectString() string {
 	return fmt.Sprintf("%s:%d/%s", m.Host, m.Port, m.ServiceName)
 }
 
-func NewDB(meta *OracleConfig) (*OracleDB, error) {
+func OpenDb(meta *OracleConfig) (*sql.DB, error) {
 	if meta.ServiceName == "" {
 		meta.ServiceName = "xe"
 	}
-	sqlDB, err := sql.Open("oracle", fmt.Sprintf("oracle://%s:%s@%s:%d/%s", meta.User, meta.Password, meta.Host, meta.Port, meta.ServiceName))
+	sqlDb, err := sql.Open("oracle", fmt.Sprintf("oracle://%s:%s@%s:%d/%s", meta.User, meta.Password, meta.Host, meta.Port, meta.ServiceName))
 	if err != nil {
-		return nil, fmt.Errorf("error on open oracle database connection:%v", err)
+		return nil, fmt.Errorf("error on open oracle database :%v", err)
 	}
-	// oraDsn := godror.ConnectionParams{
-	// 	CommonParams: godror.CommonParams{
-	// 		Username:      meta.User,
-	// 		ConnectString: meta.ConnectString(),
-	// 		Password:      godror.NewPassword(meta.Password),
-	// 	},
-	// 	PoolParams: godror.PoolParams{
-	// 		MinSessions:    dsn.DefaultPoolMinSessions,
-	// 		MaxSessions:    dsn.DefaultPoolMaxSessions,
-	// 		WaitTimeout:    dsn.DefaultWaitTimeout,
-	// 		MaxLifeTime:    dsn.DefaultMaxLifeTime,
-	// 		SessionTimeout: dsn.DefaultSessionTimeout,
-	// 	},
-	// }
-	// sqlDB := sql.OpenDB(godror.NewConnector(oraDsn))
+	return sqlDb, nil
+}
 
+func NewDB(meta *OracleConfig) (*OracleDB, error) {
+	sqlDB, err := OpenDb(meta)
+	if err != nil {
+		return nil, err
+	}
 	err = sqlDB.Ping()
 	if err != nil {
 		return nil, fmt.Errorf("error on ping oracle database connection:%v", err)
