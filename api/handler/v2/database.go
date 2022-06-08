@@ -15,6 +15,8 @@ import (
 
 	"github.com/actiontech/dtle/api/handler"
 
+	gosql "database/sql"
+
 	"github.com/actiontech/dtle/api/models"
 	"github.com/actiontech/dtle/driver/mysql/sql"
 )
@@ -51,12 +53,12 @@ func ListDatabaseSchemasV2(c echo.Context) error {
 	case DB_TYPE_MYSQL:
 		replicateDoDb, err = listMySQLSchema(logger, reqParam)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("list %s schema failed : %v", DB_TYPE_MYSQL, err)))
 		}
 	case DB_TYPE_ORACLE:
 		replicateDoDb, err = listOracleSchema(logger, reqParam)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("list %s schema failed : %v", DB_TYPE_ORACLE, err)))
 		}
 	}
 
@@ -129,7 +131,7 @@ func listOracleSchema(logger hclog.Logger, reqParam *models.ListDatabaseSchemasR
 		ServiceName: reqParam.ServiceName,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("new oracle db err %v", err)
+		return nil, err
 	}
 	defer oracleDb.Close()
 
@@ -192,7 +194,7 @@ func ListDatabaseColumnsV2(c echo.Context) error {
 	case DB_TYPE_MYSQL:
 		columns, err = listMySQLColumns(logger, reqParam)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("list %s columns failed : %v", DB_TYPE_MYSQL, err)))
 		}
 	case DB_TYPE_ORACLE:
 		if reqParam.IsPasswordEncrypted && reqParam.Password != "" {
@@ -212,12 +214,12 @@ func ListDatabaseColumnsV2(c echo.Context) error {
 			ServiceName: reqParam.ServiceName,
 		})
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("new oracle db err %v", err)))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("list %s columns failed : %v", DB_TYPE_ORACLE, err)))
 		}
 		defer oracleDb.Close()
 		columns, err = oracleDb.GetColumns(reqParam.Schema, reqParam.Table)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("Get schema %v table %v columns  err : %v", reqParam.Schema, reqParam.Table, err)))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("list %s columns failed : %v", DB_TYPE_ORACLE, err)))
 		}
 	}
 
@@ -303,6 +305,8 @@ func ConnectionV2(c echo.Context) error {
 }
 
 func connectDatabase(reqParam *models.ConnectionReqV2) error {
+	var db *gosql.DB
+	var err error
 	switch reqParam.DatabaseType {
 	case DB_TYPE_MYSQL:
 		uri, err := buildMysqlUri(reqParam.Host, reqParam.User, reqParam.Password,
@@ -310,16 +314,7 @@ func connectDatabase(reqParam *models.ConnectionReqV2) error {
 		if err != nil {
 			return fmt.Errorf("build database Uri failed: %v", err)
 		}
-		db, err := sql.CreateDB(uri)
-		if err != nil {
-			return fmt.Errorf("open db failed: %v", err)
-		}
-		defer db.Close()
-
-		err = db.Ping()
-		if err != nil {
-			return err
-		}
+		db, err = sql.CreateDB(uri)
 	case DB_TYPE_ORACLE:
 		if reqParam.IsPasswordEncrypted && reqParam.Password != "" {
 			realPwd, err := handler.DecryptPassword(reqParam.Password, g.RsaPrivateKey)
@@ -328,19 +323,25 @@ func connectDatabase(reqParam *models.ConnectionReqV2) error {
 			}
 			reqParam.Password = realPwd
 		}
-		oracleDb, err := config.NewDB(&config.OracleConfig{
+		db, err = config.OpenDb(&config.OracleConfig{
 			User:        reqParam.User,
 			Password:    reqParam.Password,
 			Host:        reqParam.Host,
 			Port:        reqParam.Port,
 			ServiceName: reqParam.ServiceName,
 		})
-		if err != nil {
-			return err
-		}
-		defer oracleDb.Close()
 	default:
 		return fmt.Errorf("data type %v is unsupport", reqParam.DatabaseType)
+	}
+
+	if err != nil {
+		return fmt.Errorf("open db failed: %v", err)
+	}
+	defer db.Close()
+
+	err = db.Ping()
+	if err != nil {
+		return err
 	}
 
 	return nil
