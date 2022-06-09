@@ -327,8 +327,9 @@ func (a *Applier) Run() {
 	}
 	a.ai.OnError = a.onError
 
-	go a.updateGtidLoop()
-
+	if sourceType == "mysql" {
+		go a.updateGtidLoop()
+	}
 	if a.stage != JobFullCopy {
 		a.stage = JobFullCopy
 		a.sendEvent(JobFullCopy)

@@ -237,21 +237,21 @@ func (e *ExtractorOracle) Run() {
 			e.onError(common.TaskStateDead, err)
 			return
 		}
-	}
 
-	{
-		startSCN, committedSCN, err := e.calculateSCNPos()
-		if err != nil {
-			e.onError(common.TaskStateDead, errors.Wrap(err, "calculateSCNPos"))
-			return
-		}
-		e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
-			startSCN, committedSCN, 100000)
-		e.logger.Debug("start .initiateStreaming before")
-		if err := e.initiateStreaming(); err != nil {
-			e.logger.Error("error at initiateStreaming", "err", err)
-			e.onError(common.TaskStateDead, err)
-			return
+		{
+			startSCN, committedSCN, err := e.calculateSCNPos()
+			if err != nil {
+				e.onError(common.TaskStateDead, errors.Wrap(err, "calculateSCNPos"))
+				return
+			}
+			e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
+				startSCN, committedSCN, 100000)
+			e.logger.Debug("start .initiateStreaming before")
+			if err := e.initiateStreaming(); err != nil {
+				e.logger.Error("error at initiateStreaming", "err", err)
+				e.onError(common.TaskStateDead, err)
+				return
+			}
 		}
 	}
 }
@@ -872,7 +872,7 @@ func (e *ExtractorOracle) oracleDump() error {
 	}
 
 	// step 2 : get current scn for d.Dump()
-	_, err := (&LogMinerStream{oracleDB: e.oracleDB}).GetCurrentSnapshotSCN()
+	currentSCN, err := (&LogMinerStream{oracleDB: e.oracleDB}).GetCurrentSnapshotSCN()
 	if err != nil {
 		return err
 	}
@@ -935,7 +935,7 @@ func (e *ExtractorOracle) oracleDump() error {
 	// todo need merged dumper with mysql dumper
 	for _, db := range e.replicateDoDb {
 		for _, t := range db.Tables {
-			d := NewDumper(e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
+			d := NewDumper(e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1, currentSCN)
 			if err := d.Dump(); err != nil {
 				e.onError(common.TaskStateDead, err)
 			}
