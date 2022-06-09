@@ -46,7 +46,7 @@ func NewDB(meta *OracleConfig) (*OracleDB, error) {
 	}
 	err = sqlDB.Ping()
 	if err != nil {
-		return nil, fmt.Errorf("error on ping oracle database connection:%v", err)
+		return nil, err
 	}
 	oracleDB := &OracleDB{_db: sqlDB}
 
