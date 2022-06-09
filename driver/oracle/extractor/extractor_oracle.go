@@ -216,7 +216,7 @@ func (e *ExtractorOracle) Run() {
 		notFullCopy := true
 		if notFullCopy {
 			fullCopy = false
-		} else if startSCN == 0 && committedSCN == 0 {
+		} else if startSCN != 0 || committedSCN != 0 {
 			fullCopy = false
 		}
 	}
@@ -914,15 +914,12 @@ func (e *ExtractorOracle) oracleDump() error {
 				if err != nil {
 					return err
 				}
-
 				// parse ddl
-				for i := range createTbSQL {
-					dataEvent, err := e.parseDDLSQL(entry.TbSQL[i], tb.TableSchema)
-					if err != nil {
-						return err
-					}
-					tbSQL = append(tbSQL, dataEvent.Query)
+				dataEvent, err := e.parseDDLSQL(createTbSQL, tb.TableSchema)
+				if err != nil {
+					return err
 				}
+				tbSQL = append(tbSQL, dataEvent.Query)
 
 				entry := &common.DumpEntry{
 					TbSQL: tbSQL,
