@@ -77,7 +77,7 @@ func listMySQLSchema(logger hclog.Logger, reqParam *models.ListDatabaseSchemasRe
 
 	db, err := sql.CreateDB(uri)
 	if err != nil {
-		return nil, fmt.Errorf("create db failed: %v", err)
+		return nil, err
 	}
 	defer db.Close()
 
@@ -85,14 +85,14 @@ func listMySQLSchema(logger hclog.Logger, reqParam *models.ListDatabaseSchemasRe
 
 	dbs, err := sql.ShowDatabases(db)
 	if err != nil {
-		return nil, fmt.Errorf("showdatabases failed: %v", err)
+		return nil, err
 	}
 
 	replicateDoDb := make([]*models.SchemaItem, 0)
 	for _, dbName := range dbs {
 		tbs, err := sql.ShowTables(db, dbName, true)
 		if err != nil {
-			return nil, fmt.Errorf("showtables failed: %v", err)
+			return nil, err
 		}
 
 		tables := []*models.TableItem{}
@@ -238,7 +238,7 @@ func listMySQLColumns(logger hclog.Logger, reqParam *models.ListColumnsReqV2) ([
 
 	db, err := sql.CreateDB(uri)
 	if err != nil {
-		return nil, fmt.Errorf("create db failed: %v", err)
+		return nil, err
 	}
 	defer db.Close()
 
@@ -246,7 +246,7 @@ func listMySQLColumns(logger hclog.Logger, reqParam *models.ListColumnsReqV2) ([
 
 	columns, err := sql.ListColumns(db, reqParam.Schema, reqParam.Table)
 	if err != nil {
-		return nil, fmt.Errorf("find db columns failed: %v", err)
+		return nil, err
 
 	}
 	return columns, nil

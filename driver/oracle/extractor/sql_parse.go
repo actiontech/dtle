@@ -428,6 +428,9 @@ func LimitSize(dec int) int {
 }
 
 func IdentifierToString(i *oracle_element.Identifier) string {
+	if i == nil {
+		return ""
+	}
 	if i.Typ == oracle_element.IdentifierTypeNonQuoted {
 		return strings.ToUpper(i.Value)
 	} else if i.Typ == oracle_element.IdentifierTypeQuoted {
