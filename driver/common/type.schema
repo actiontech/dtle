@@ -9,6 +9,7 @@ struct DumpEntry {
 	TotalCount int64
 	Err        string
 	Table      []byte
+	ColumnMapTo []string
 }
 
 struct MySQLCoordinateTx {
@@ -72,6 +73,7 @@ struct DataEvent {
         bool
     }
     DtleFlags uint32
+	ColumnMapTo []string
 }
 
 struct DataEntry {

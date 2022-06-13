@@ -177,18 +177,12 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 	return result, columnArgs, hasUK, nil
 }
 
-func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns *common.ColumnList, args []interface{}) (result string, sharedArgs []interface{}, err error) {
+func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.ColumnList, mappedSharedColumns []string, args []interface{}) (result string, sharedArgs []interface{}, err error) {
 	if len(args) < tableColumns.Len() {
 		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery %v, %v",
 			len(args), tableColumns.Len())
 	}
 
-	if !sharedColumns.IsSubsetOf(tableColumns) {
-		return result, sharedArgs, fmt.Errorf("shared columns is not a subset of table columns in BuildDMLInsertQuery")
-	}
-	if sharedColumns.Len() == 0 {
-		return result, sharedArgs, fmt.Errorf("No shared columns found in BuildDMLInsertQuery")
-	}
 	databaseName = umconf.EscapeName(databaseName)
 	tableName = umconf.EscapeName(tableName)
 
@@ -202,13 +196,10 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns, sharedCol
 		}
 	}
 
-	mappedSharedColumnNames := duplicateNames(tableColumns.EscapedNames())
 	preparedValues := buildColumnsPreparedValues(tableColumns)
 
-	result = fmt.Sprintf(`replace into %s.%s
-(%s) values
-(%s)`, databaseName, tableName,
-		strings.Join(mappedSharedColumnNames, ", "),
+	result = fmt.Sprintf(`replace into %s.%s %s values (%s)`, databaseName, tableName,
+		umconf.BuildInsertColumnList(mappedSharedColumns),
 		strings.Join(preparedValues, ", "),
 	)
 	return result, sharedArgs, nil

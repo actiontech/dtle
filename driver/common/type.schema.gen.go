@@ -23,6 +23,7 @@ type DumpEntry struct {
 	TotalCount      int64
 	Err             string
 	Table           []byte
+	ColumnMapTo     []string
 }
 
 func (d *DumpEntry) Size() (s uint64) {
@@ -256,6 +257,41 @@ func (d *DumpEntry) Size() (s uint64) {
 
 		}
 		s += l
+	}
+	{
+		l := uint64(len(d.ColumnMapTo))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(len(d.ColumnMapTo[k0]))
+
+				{
+
+					t := l
+					for t >= 0x80 {
+						t >>= 7
+						s++
+					}
+					s++
+
+				}
+				s += l
+			}
+
+		}
+
 	}
 	s += 8
 	return
@@ -561,6 +597,46 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 		}
 		copy(buf[i+8:], d.Table)
 		i += l
+	}
+	{
+		l := uint64(len(d.ColumnMapTo))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+8] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+8] = byte(t)
+			i++
+
+		}
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(len(d.ColumnMapTo[k0]))
+
+				{
+
+					t := uint64(l)
+
+					for t >= 0x80 {
+						buf[i+8] = byte(t) | 0x80
+						t >>= 7
+						i++
+					}
+					buf[i+8] = byte(t)
+					i++
+
+				}
+				copy(buf[i+8:], d.ColumnMapTo[k0])
+				i += l
+			}
+
+		}
 	}
 	return buf[:i+8], nil
 }
@@ -889,6 +965,53 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 		}
 		copy(d.Table, buf[i+8:])
 		i += l
+	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+8] & 0x7F)
+			for buf[i+8]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+8]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		if uint64(cap(d.ColumnMapTo)) >= l {
+			d.ColumnMapTo = d.ColumnMapTo[:l]
+		} else {
+			d.ColumnMapTo = make([]string, l)
+		}
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(0)
+
+				{
+
+					bs := uint8(7)
+					t := uint64(buf[i+8] & 0x7F)
+					for buf[i+8]&0x80 == 0x80 {
+						i++
+						t |= uint64(buf[i+8]&0x7F) << bs
+						bs += 7
+					}
+					i++
+
+					l = t
+
+				}
+				d.ColumnMapTo[k0] = string(buf[i+8 : i+8+l])
+				i += l
+			}
+
+		}
 	}
 	return i + 8, nil
 }
@@ -1671,6 +1794,7 @@ type DataEvent struct {
 	FKParent      bool
 	Rows          [][]interface{}
 	DtleFlags     uint32
+	ColumnMapTo   []string
 }
 
 func (d *DataEvent) Size() (s uint64) {
@@ -1939,6 +2063,41 @@ func (d *DataEvent) Size() (s uint64) {
 
 				}
 
+			}
+
+		}
+
+	}
+	{
+		l := uint64(len(d.ColumnMapTo))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(len(d.ColumnMapTo[k0]))
+
+				{
+
+					t := l
+					for t >= 0x80 {
+						t >>= 7
+						s++
+					}
+					s++
+
+				}
+				s += l
 			}
 
 		}
@@ -2472,6 +2631,46 @@ func (d *DataEvent) Marshal(buf []byte) ([]byte, error) {
 		buf[i+3+22] = byte(d.DtleFlags >> 24)
 
 	}
+	{
+		l := uint64(len(d.ColumnMapTo))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+26] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+26] = byte(t)
+			i++
+
+		}
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(len(d.ColumnMapTo[k0]))
+
+				{
+
+					t := uint64(l)
+
+					for t >= 0x80 {
+						buf[i+26] = byte(t) | 0x80
+						t >>= 7
+						i++
+					}
+					buf[i+26] = byte(t)
+					i++
+
+				}
+				copy(buf[i+26:], d.ColumnMapTo[k0])
+				i += l
+			}
+
+		}
+	}
 	return buf[:i+26], nil
 }
 
@@ -2912,6 +3111,53 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 
 		d.DtleFlags = 0 | (uint32(buf[i+0+22]) << 0) | (uint32(buf[i+1+22]) << 8) | (uint32(buf[i+2+22]) << 16) | (uint32(buf[i+3+22]) << 24)
 
+	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+26] & 0x7F)
+			for buf[i+26]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+26]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		if uint64(cap(d.ColumnMapTo)) >= l {
+			d.ColumnMapTo = d.ColumnMapTo[:l]
+		} else {
+			d.ColumnMapTo = make([]string, l)
+		}
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(0)
+
+				{
+
+					bs := uint8(7)
+					t := uint64(buf[i+26] & 0x7F)
+					for buf[i+26]&0x80 == 0x80 {
+						i++
+						t |= uint64(buf[i+26]&0x7F) << bs
+						bs += 7
+					}
+					i++
+
+					l = t
+
+				}
+				d.ColumnMapTo[k0] = string(buf[i+26 : i+26+l])
+				i += l
+			}
+
+		}
 	}
 	return i + 26, nil
 }

@@ -455,7 +455,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 	case common.InsertDML:
 		{
 			// TODO no need to generate query string every time
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, dmlEvent.Rows[0])
+			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.ColumnMapTo, dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}

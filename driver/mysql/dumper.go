@@ -156,6 +156,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	entry := &common.DumpEntry{
 		TableSchema: d.TableSchema,
 		TableName:   d.TableName,
+		ColumnMapTo: d.Table.ColumnMapTo,
 	}
 	defer func() {
 		if err != nil {

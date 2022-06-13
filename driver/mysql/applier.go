@@ -860,8 +860,8 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 	buf.Grow(BufSizeLimit + BufSizeLimitDelta)
 	for i := range entry.ValuesX {
 		if buf.Len() == 0 {
-			buf.WriteString(fmt.Sprintf(`replace into %s.%s values (`,
-				umconf.EscapeName(entry.TableSchema), umconf.EscapeName(entry.TableName)))
+			buf.WriteString(fmt.Sprintf(`replace into %s.%s %s values (`,
+				umconf.EscapeName(entry.TableSchema), umconf.EscapeName(entry.TableName), umconf.BuildInsertColumnList(entry.ColumnMapTo)))
 		} else {
 			buf.WriteString(",(")
 		}

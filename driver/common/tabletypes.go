@@ -99,7 +99,7 @@ type Table struct {
 	TableSchemaRename string // not user assigned
 	Counter           int64
 	ColumnMapFrom     []string
-	//ColumnMapTo       []string
+	ColumnMapTo       []string
 	//ColumnMapUseRe    bool
 
 	OriginalTableColumns *ColumnList

@@ -184,6 +184,21 @@ func EscapeName(name string) string {
 	return sb.String()
 }
 
+func EscapeNameSlice(names []string) (r []string) {
+	for i := range names {
+		r = append(r, EscapeName(names[i]))
+	}
+	return r
+}
+
+func BuildInsertColumnList(columnNames []string) string {
+	if len(columnNames) == 0 {
+		return ""
+	} else {
+		return "(" + strings.Join(EscapeNameSlice(columnNames), ", ") + ")"
+	}
+}
+
 func BuildColumnMapIndex(from []string, ordinals ColumnsMap) (mapIndex []int) {
 	mapIndex = make([]int, len(from))
 	for i, colName := range from {

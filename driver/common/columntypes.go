@@ -66,13 +66,6 @@ func (c *ColumnList) Names() []string {
 	}
 	return names
 }
-func (c *ColumnList) EscapedNames() []string {
-	names := make([]string, len(c.Columns))
-	for i := range c.Columns {
-		names[i] = c.Columns[i].EscapedName
-	}
-	return names
-}
 
 // TODO caller doesn't handle nil.
 func (c *ColumnList) GetColumn(columnName string) *mysqlconfig.Column {
