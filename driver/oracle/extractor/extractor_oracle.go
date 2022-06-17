@@ -7,6 +7,8 @@
 package extractor
 
 import (
+	"context"
+	"database/sql"
 	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
@@ -408,6 +410,10 @@ func (e *ExtractorOracle) Finish1() (err error) {
 }
 
 func (e *ExtractorOracle) getSchemaTablesAndMeta() error {
+	err := e.oracleDB.InitSCN(e.mysqlContext.OracleConfig.Scn)
+	if err != nil {
+		return err
+	}
 	if err := e.inspectTables(); err != nil {
 		return err
 	}
@@ -864,22 +870,35 @@ func (e *ExtractorOracle) CheckAndApplyLowerCaseTableNames() {
 }
 
 func (e *ExtractorOracle) oracleDump() error {
-	// step 1 : todo lock row
-	// query : lock table schema.table in row share mode;
 	if err := e.getSchemaTablesAndMeta(); err != nil {
 		e.onError(common.TaskStateDead, err)
 		return err
 	}
 
-	// step 2 : get current scn for d.Dump()
-	currentSCN, err := (&LogMinerStream{oracleDB: e.oracleDB}).GetCurrentSnapshotSCN()
+	// step 1 :  lock table schema.table in row share mode;
+	tx, err := e.oracleDB.NewTx(context.TODO())
 	if err != nil {
+		e.onError(common.TaskStateDead, err)
 		return err
 	}
 
-	// step 3 : defer unlock row
+	err = e.LockTablesForSchema(tx, context.TODO())
+	if err != nil {
+		e.onError(common.TaskStateDead, err)
+		return err
+	}
+	defer func() {
+		if tx != nil {
+			tx.Rollback()
+		}
+	}()
+	// step 2 : get current scn for d.Dump()
+	// currentSCN, err := e.oracleDB.GetCurrentSnapshotSCN()
+	// if err != nil {
+	// 	return err
+	// }
 
-	// step 4 : create table ddl
+	// step 3 : create table ddl
 	if !e.mysqlContext.SkipCreateDbTable {
 		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas",
 			"replicateDoDb", e.replicateDoDb)
@@ -931,11 +950,17 @@ func (e *ExtractorOracle) oracleDump() error {
 			}
 		}
 	}
+
+	// step 4: rollback for unlock table
+	if tx != nil {
+		tx.Rollback()
+	}
+
 	// step 5: Dump all of the tables and generate source records ...
 	// todo need merged dumper with mysql dumper
 	for _, db := range e.replicateDoDb {
 		for _, t := range db.Tables {
-			d := NewDumper(e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1, currentSCN)
+			d := NewDumper(e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1, e.oracleDB.SCN)
 			if err := d.Dump(); err != nil {
 				e.onError(common.TaskStateDead, err)
 			}
@@ -970,4 +995,25 @@ func (e *ExtractorOracle) encodeAndSendDumpEntry(entry *common.DumpEntry) error 
 		return err
 	}
 	return nil
+}
+
+func (e *ExtractorOracle) LockTablesForSchema(tx *sql.Tx, ctx context.Context) error {
+	for _, db := range e.replicateDoDb {
+		for _, table := range db.Tables {
+			query := fmt.Sprintf("LOCK TABLE %s.%s IN ROW SHARE MODE", db.TableSchema, table.TableName)
+			_, err := tx.Exec(query)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func releaseSchemaSnapshotLock(tx *sql.Tx) {
+	// roll back connect
+	for err := tx.Rollback(); err != nil; {
+		// log roll back failed
+		continue
+	}
 }

@@ -28,16 +28,6 @@ import (
 	"github.com/thinkeridea/go-extend/exbytes"
 )
 
-func (l *LogMinerStream) GetCurrentSnapshotSCN() (int64, error) {
-	var globalSCN int64
-	// 获取当前 SCN 号
-	err := l.oracleDB.LogMinerConn.QueryRowContext(context.TODO(), "SELECT CURRENT_SCN FROM V$DATABASE").Scan(&globalSCN)
-	if err != nil {
-		return 0, err
-	}
-	return globalSCN, nil
-}
-
 type LogFile struct {
 	Name        string
 	FirstChange int64
@@ -532,7 +522,7 @@ func (e *ExtractorOracle) DataStreamEvents(entriesChannel chan<- *common.EntryCo
 	e.logger.Debug("start oracle. DataStreamEvents")
 
 	if e.LogMinerStream.startScn == 0 {
-		scn, err := e.LogMinerStream.GetCurrentSnapshotSCN()
+		scn, err := e.LogMinerStream.oracleDB.GetCurrentSnapshotSCN()
 		if err != nil {
 			e.logger.Error("GetCurrentSnapshotSCN", "err", err)
 			return err
@@ -726,7 +716,7 @@ func (l *LogMinerStream) stopLogMiner() error {
 //}
 
 func (l *LogMinerStream) getEndScn() (int64, error) {
-	latestScn, err := l.GetCurrentSnapshotSCN()
+	latestScn, err := l.oracleDB.GetCurrentSnapshotSCN()
 	if err != nil {
 		l.logger.Error("GetCurrentSnapshotSCN", "err", err)
 		return 0, err
