@@ -4,4 +4,4 @@ bin/
 dist
 .vagrant
 .scannerwork
-.vscode/launch.json
+.vscode/

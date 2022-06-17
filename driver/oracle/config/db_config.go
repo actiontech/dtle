@@ -22,6 +22,7 @@ type OracleDB struct {
 	_db          *sql.DB
 	LogMinerConn *sql.Conn
 	MetaDataConn *sql.Conn
+	SCN          int64
 }
 
 func (m *OracleConfig) ConnectString() string {
@@ -110,13 +111,18 @@ func (o *OracleDB) NLS_DATE_FORMAT() error {
 	return nil
 }
 func (o *OracleDB) GetTables(schema string) ([]string, error) {
+	asOfSCN := ""
+	// if o.SCN != 0 {
+	// 	asOfSCN = fmt.Sprintf("AS OF SCN %d", o.SCN)
+	// }
 	query := fmt.Sprintf(`
 SELECT 
 	table_name
 FROM 
 	all_tables 
+%s	
 WHERE 
-	owner = '%s'`, schema)
+	owner = '%s'`, asOfSCN, schema)
 
 	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
 	if err != nil {
@@ -137,12 +143,17 @@ WHERE
 }
 
 func (o *OracleDB) GetSchemas() ([]string, error) {
-	query := `SELECT
+	asOfSCN := ""
+	// if o.SCN != 0 {
+	// 	asOfSCN = fmt.Sprintf("AS OF SCN %d", o.SCN)
+	// }
+	query := fmt.Sprintf(`SELECT
 	USERNAME
 	FROM
 	DBA_USERS
+	%s
 	WHERE
-	USERNAME NOT IN ( 'SYS', 'SYSTEM', 'ANONYMOUS', 'APEX_PUBLIC_USER', 'APEX_040000', 'OUTLN', 'XS$NULL', 'FLOWS_FILES', 'MDSYS', 'CTXSYS', 'XDB', 'HR' )`
+	USERNAME NOT IN ( 'SYS', 'SYSTEM', 'ANONYMOUS', 'APEX_PUBLIC_USER', 'APEX_040000', 'OUTLN', 'XS$NULL', 'FLOWS_FILES', 'MDSYS', 'CTXSYS', 'XDB', 'HR' )`, asOfSCN)
 
 	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
 	if err != nil {
@@ -163,11 +174,16 @@ func (o *OracleDB) GetSchemas() ([]string, error) {
 }
 
 func (o *OracleDB) GetColumns(schema, table string) ([]string, error) {
+	asOfSCN := ""
+	// if o.SCN != 0 {
+	// 	asOfSCN = fmt.Sprintf("AS OF SCN %d", o.SCN)
+	// }
 	query := fmt.Sprintf(`SELECT column_name
 	FROM all_tab_cols
+	%s
 	WHERE table_name = '%s'
 	AND owner = '%s'
-	ORDER BY COLUMN_ID`, table, schema)
+	ORDER BY COLUMN_ID`, asOfSCN, table, schema)
 
 	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
 	if err != nil {
@@ -200,4 +216,33 @@ SELECT dbms_metadata.get_ddl('TABLE','%s','%s') FROM dual`, table, schema))
 		return "", err
 	}
 	return query, nil
+}
+
+func (o *OracleDB) NewTx(ctx context.Context) (*sql.Tx, error) {
+	tx, err := o._db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
+}
+
+func (o *OracleDB) GetCurrentSnapshotSCN() (int64, error) {
+	var globalSCN int64
+	// 获取当前 SCN 号
+	err := o.MetaDataConn.QueryRowContext(context.TODO(), "SELECT CURRENT_SCN FROM V$DATABASE").Scan(&globalSCN)
+	if err != nil {
+		return 0, err
+	}
+	return globalSCN, nil
+}
+
+func (o *OracleDB) InitSCN(scn int64) (err error) {
+	if scn == 0 {
+		scn, err = o.GetCurrentSnapshotSCN()
+		if err != nil {
+			return err
+		}
+	}
+	o.SCN = scn
+	return nil
 }
