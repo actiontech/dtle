@@ -9,6 +9,7 @@ package sql
 import (
 	"bytes"
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"strings"
 
 	"github.com/actiontech/dtle/driver/common"
@@ -68,20 +69,6 @@ func EscapeValue(colValue string) string {
 	}
 	colBuffer.WriteString(colValue[last:])
 	return colBuffer.String()
-}
-
-func buildColumnsPreparedValues(columns *common.ColumnList) []string {
-	values := make([]string, columns.Len(), columns.Len())
-	for i, column := range columns.ColumnList() {
-		var token string
-		if column.TimezoneConversion != nil {
-			token = fmt.Sprintf("convert_tz(?, '%s', '%s')", column.TimezoneConversion.ToTimezone, "+00:00")
-		} else {
-			token = "?"
-		}
-		values[i] = token
-	}
-	return values
 }
 
 func duplicateNames(names []string) []string {
@@ -177,30 +164,46 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 	return result, columnArgs, hasUK, nil
 }
 
-func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.ColumnList, mappedSharedColumns []string, args []interface{}) (result string, sharedArgs []interface{}, err error) {
-	if len(args) < tableColumns.Len() {
-		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery %v, %v",
-			len(args), tableColumns.Len())
+func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, args []interface{}) (result string, sharedArgs []interface{}, err error) {
+	if len(args) < g.MinInt(tableColumns.Len(), len(columnMapTo)) {
+		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery %v %v %v",
+			len(args), tableColumns.Len(), len(columnMapTo))
 	}
 
 	databaseName = umconf.EscapeName(databaseName)
 	tableName = umconf.EscapeName(tableName)
 
-	for _, column := range tableColumns.ColumnList() {
-		tableOrdinal := tableColumns.Ordinals[column.RawName]
-		if args[tableOrdinal] == nil {
-			sharedArgs = append(sharedArgs, args[tableOrdinal])
+	var placeholders []string
+
+	for i := range args {
+		var column *umconf.Column
+		if len(columnMapTo) > 0 {
+			column = tableColumns.GetColumn(columnMapTo[i])
 		} else {
-			arg := column.ConvertArg(args[tableOrdinal])
-			sharedArgs = append(sharedArgs, arg)
+			if i < tableColumns.Len() {
+				column = &tableColumns.ColumnList()[i]
+			}
 		}
+		var token string
+		var arg interface{}
+		if column != nil {
+			if column.TimezoneConversion != nil {
+				token = fmt.Sprintf("convert_tz(?, '%s', '%s')", column.TimezoneConversion.ToTimezone, "+00:00")
+			} else {
+				token = "?"
+			}
+			arg = column.ConvertArg(args[i])
+		} else {
+			token = "?"
+			arg = args[i]
+		}
+		placeholders = append(placeholders, token)
+		sharedArgs = append(sharedArgs, arg)
 	}
 
-	preparedValues := buildColumnsPreparedValues(tableColumns)
-
 	result = fmt.Sprintf(`replace into %s.%s %s values (%s)`, databaseName, tableName,
-		umconf.BuildInsertColumnList(mappedSharedColumns),
-		strings.Join(preparedValues, ", "),
+		umconf.BuildInsertColumnList(columnMapTo),
+		strings.Join(placeholders, ", "),
 	)
 	return result, sharedArgs, nil
 }

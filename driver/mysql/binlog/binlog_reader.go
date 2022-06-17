@@ -1793,6 +1793,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		ev.Header.Timestamp,
 	)
 	if table != nil {
+		dmlEvent.ColumnMapTo = table.Table.ColumnMapTo
 		dmlEvent.FKParent = len(table.FKChildren) > 0
 	}
 	dmlEvent.Flags = make([]byte, 2)

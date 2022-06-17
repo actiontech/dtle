@@ -129,3 +129,11 @@ func StringElse(s1 string, s2 string) string {
 func CurrentTimeMillis() int64 {
 	return time.Now().UnixNano() / 1000000
 }
+
+func MinInt(a int, b int) int {
+	if a < b {
+		return a
+	} else {
+		return b
+	}
+}
