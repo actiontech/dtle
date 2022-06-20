@@ -28,26 +28,6 @@ func normalizeQuery(name string) string {
 	return name
 }
 
-func TestBuildSetPreparedClause(t *testing.T) {
-	{
-		columns := common.NewColumnList([]mysqlconfig.Column{{RawName: "c1", EscapedName: "c1"}})
-		clause, err := BuildSetPreparedClause(columns)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(clause, "c1=?")
-	}
-	{
-		columns := common.NewColumnList([]mysqlconfig.Column{{RawName: "c1", EscapedName: "c1"}, {RawName: "c2", EscapedName: "c2"}})
-		clause, err := BuildSetPreparedClause(columns)
-		test.S(t).ExpectNil(err)
-		test.S(t).ExpectEquals(clause, "c1=?, c2=?")
-	}
-	{
-		columns := common.NewColumnList([]mysqlconfig.Column{})
-		_, err := BuildSetPreparedClause(columns)
-		test.S(t).ExpectNotNil(err)
-	}
-}
-
 func TestBuildDMLInsertQuery(t *testing.T) {
 	databaseName := "mydb"
 	tableName := "tbl"
@@ -670,7 +650,7 @@ func TestBuildDMLUpdateQuery(t *testing.T) {
 	valueArgs := []interface{}{3, "testname", "newval", 17, 23}
 	whereArgs := []interface{}{3, "testname", "findme", 17, 56}
 	{
-		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, tableColumns, valueArgs, whereArgs)
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs)
 		test.S(t).ExpectNil(err)
 		expected := `
 			update 
@@ -838,7 +818,7 @@ func TestBuildDMLUpdateQuerySignedUnsigned(t *testing.T) {
 				Scale:              0,
 			},
 		})
-		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, tableColumns, valueArgs, whereArgs)
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs)
 		test.S(t).ExpectNil(err)
 		expected := `
 			update
@@ -925,7 +905,7 @@ func TestBuildDMLUpdateQuerySignedUnsigned(t *testing.T) {
 		// test unsigned
 		tableColumns.SetUnsigned("age")
 		tableColumns.SetUnsigned("position")
-		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, tableColumns, tableColumns, tableColumns, valueArgs, whereArgs)
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs)
 		test.S(t).ExpectNil(err)
 		expected := `
 			update

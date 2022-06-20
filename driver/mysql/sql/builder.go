@@ -71,12 +71,6 @@ func EscapeValue(colValue string) string {
 	return colBuffer.String()
 }
 
-func duplicateNames(names []string) []string {
-	duplicate := make([]string, len(names), len(names))
-	copy(duplicate, names)
-	return duplicate
-}
-
 func BuildValueComparison(columnEscaped string, value string, comparisonSign ValueComparisonSign) (result string, err error) {
 	if columnEscaped == "``" {
 		return "", fmt.Errorf("Empty column in GetValueComparison")
@@ -86,23 +80,6 @@ func BuildValueComparison(columnEscaped string, value string, comparisonSign Val
 	}
 	comparison := fmt.Sprintf("(%s %s %s)", columnEscaped, string(comparisonSign), value)
 	return comparison, err
-}
-
-func BuildSetPreparedClause(columns *common.ColumnList) (result string, err error) {
-	if columns.Len() == 0 {
-		return "", fmt.Errorf("Got 0 columns in BuildSetPreparedClause")
-	}
-	setTokens := []string{}
-	for _, column := range columns.ColumnList() {
-		var setToken string
-		if column.TimezoneConversion != nil {
-			setToken = fmt.Sprintf("%s=convert_tz(?, '%s', '%s')", column.EscapedName, column.TimezoneConversion.ToTimezone, "+00:00")
-		} else {
-			setToken = fmt.Sprintf("%s=?", column.EscapedName)
-		}
-		setTokens = append(setTokens, setToken)
-	}
-	return strings.Join(setTokens, ", "), nil
 }
 
 func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, args []interface{}) (result string, columnArgs []interface{}, hasUK bool, err error) {
@@ -116,15 +93,10 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 	uniqueKeyArgs := make([]interface{}, 0)
 
 	for i := range args {
-		var column *umconf.Column = nil
-		if len(columnMapTo) > 0 {
-			column = tableColumns.GetColumn(columnMapTo[i])
-		} else {
-			column = &tableColumns.ColumnList()[i]
-		}
+		column := getColumnWithMapTo(i, columnMapTo, tableColumns)
 
 		if column == nil {
-			g.Logger.Warn("BuildDMLDeleteQuery: unable to find column",
+			g.Logger.Warn("BuildDMLDeleteQuery: unable to find column. ignoring",
 				"columnMapTo", columnMapTo, "i", i, "len", tableColumns.Len())
 			continue
 		}
@@ -191,14 +163,7 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 	var placeholders []string
 
 	for i := range args {
-		var column *umconf.Column
-		if len(columnMapTo) > 0 {
-			column = tableColumns.GetColumn(columnMapTo[i])
-		} else {
-			if i < tableColumns.Len() {
-				column = &tableColumns.ColumnList()[i]
-			}
-		}
+		column := getColumnWithMapTo(i, columnMapTo, tableColumns)
 		var token string
 		var arg interface{}
 		if column != nil {
@@ -223,41 +188,51 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 	return result, sharedArgs, nil
 }
 
-func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedColumns, mappedSharedColumns, uniqueKeyColumns *common.ColumnList, valueArgs, whereArgs []interface{}) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
-	if len(valueArgs) < tableColumns.Len() {
-		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
-			len(valueArgs), tableColumns.Len())
+func getColumnWithMapTo(columnIndex int, columnMapTo []string, tableColumns *common.ColumnList) *umconf.Column {
+	if len(columnMapTo) > 0 {
+		return tableColumns.GetColumn(columnMapTo[columnIndex])
+	} else if columnIndex < tableColumns.Len() {
+		return &tableColumns.ColumnList()[columnIndex]
 	}
-	if len(whereArgs) < tableColumns.Len() {
-		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("where args count differs from table column count in BuildDMLUpdateQuery %v, %v",
-			len(whereArgs), tableColumns.Len())
-	}
-	if !sharedColumns.IsSubsetOf(tableColumns) {
-		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("shared columns is not a subset of table columns in BuildDMLUpdateQuery")
-	}
-	if sharedColumns.Len() == 0 {
-		return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("No shared columns found in BuildDMLUpdateQuery")
-	}
+	return nil
+}
+
+func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, valueArgs, whereArgs []interface{}) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
+	//if len(valueArgs) < tableColumns.Len() {
+	//	return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
+	//		len(valueArgs), tableColumns.Len())
+	//}
+	//if len(whereArgs) < tableColumns.Len() {
+	//	return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("where args count differs from table column count in BuildDMLUpdateQuery %v, %v",
+	//		len(whereArgs), tableColumns.Len())
+	//}
+
 	databaseName = umconf.EscapeName(databaseName)
 	tableName = umconf.EscapeName(tableName)
-
-	for _, column := range tableColumns.ColumnList() {
-		tableOrdinal := tableColumns.Ordinals[column.RawName]
-		if valueArgs[tableOrdinal] == nil || valueArgs[tableOrdinal] == "NULL" ||
-			fmt.Sprintf("%v", valueArgs[tableOrdinal]) == "" {
-			sharedArgs = append(sharedArgs, valueArgs[tableOrdinal])
-		} else {
-			arg := column.ConvertArg(valueArgs[tableOrdinal])
-			sharedArgs = append(sharedArgs, arg)
-		}
-	}
 
 	comparisons := []string{}
 	uniqueKeyComparisons := []string{}
 	uniqueKeyArgs := make([]interface{}, 0)
-	for _, column := range tableColumns.ColumnList() {
-		tableOrdinal := tableColumns.Ordinals[column.RawName]
-		if whereArgs[tableOrdinal] == nil {
+	setTokens := []string{}
+
+	for i := range whereArgs {
+		column := getColumnWithMapTo(i, columnMapTo, tableColumns)
+
+		if valueArgs[i] == nil || valueArgs[i] == "NULL" ||
+			fmt.Sprintf("%v", valueArgs[i]) == "" {
+			sharedArgs = append(sharedArgs, valueArgs[i])
+		} else {
+			arg := column.ConvertArg(valueArgs[i])
+			sharedArgs = append(sharedArgs, arg)
+		}
+
+		if column == nil {
+			g.Logger.Warn("BuildDMLDeleteQuery: unable to find column. ignoring",
+				"columnMapTo", columnMapTo, "i", i, "len", tableColumns.Len())
+			continue
+		}
+
+		if whereArgs[i] == nil {
 			comparison, err := BuildValueComparison(column.EscapedName, "NULL", IsEqualsComparisonSign)
 			if err != nil {
 				return result, sharedArgs, columnArgs, hasUK, err
@@ -265,7 +240,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 			comparisons = append(comparisons, comparison)
 		} else {
 			if column.Type == umconf.BinaryColumnType {
-				arg := column.ConvertArg(whereArgs[tableOrdinal])
+				arg := column.ConvertArg(whereArgs[i])
 				comparison, err := BuildValueComparison(column.EscapedName, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
 					return result, sharedArgs, columnArgs, hasUK, err
@@ -276,7 +251,7 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 					comparisons = append(comparisons, comparison)
 				}
 			} else {
-				arg := column.ConvertArg(whereArgs[tableOrdinal])
+				arg := column.ConvertArg(whereArgs[i])
 				comparison, err := BuildValueComparison(column.EscapedName, "?", EqualsComparisonSign)
 				if err != nil {
 					return result, sharedArgs, columnArgs, hasUK, err
@@ -290,20 +265,27 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns, sharedCol
 				}
 			}
 		}
+
+		var setToken string
+		if column.TimezoneConversion != nil {
+			setToken = fmt.Sprintf("%s=convert_tz(?, '%s', '%s')", column.EscapedName, column.TimezoneConversion.ToTimezone, "+00:00")
+		} else {
+			setToken = fmt.Sprintf("%s=?", column.EscapedName)
+		}
+		setTokens = append(setTokens, setToken)
 	}
+
 	if len(uniqueKeyComparisons) > 0 {
 		hasUK = true
 		comparisons = uniqueKeyComparisons
 		columnArgs = uniqueKeyArgs
 	}
 
-	setClause, err := BuildSetPreparedClause(mappedSharedColumns)
-
 	result = fmt.Sprintf(`update %s.%s set
 %s
 where
 %s limit 1`, databaseName, tableName,
-		setClause,
+		strings.Join(setTokens, ", "),
 		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
 	return result, sharedArgs, columnArgs, hasUK, nil

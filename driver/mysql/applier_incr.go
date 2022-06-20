@@ -468,7 +468,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 		}
 	case common.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableColumns, tableColumns, tableColumns, dmlEvent.Rows[1], dmlEvent.Rows[0])
+			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.ColumnMapTo, dmlEvent.Rows[1], dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
