@@ -438,10 +438,11 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 	switch dmlEvent.DML {
 	case common.DeleteDML:
 		{
-			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.Rows[0])
+			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.ColumnMapTo, dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
+			a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 			if hasUK {
 				stmt, err := doPrepareIfNil(tableItem.PsDelete, query)
 				if err != nil {

@@ -307,7 +307,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 		},
 	})
 	{
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete  from
@@ -388,7 +388,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 				Scale:              0,
 			},
 		})
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete	from
@@ -469,7 +469,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 				Scale:              0,
 			},
 		})
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete
@@ -485,7 +485,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 	{
 		args := []interface{}{"first", 17}
 
-		_, _, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
+		_, _, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
 		test.S(t).ExpectNotNil(err)
 	}
 }
@@ -564,7 +564,7 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 	{
 		// test signed (expect no change)
 		args := []interface{}{-1, "testname", "first", 3, 23}
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete
@@ -581,7 +581,7 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 		// test unsigned
 		args := []interface{}{int8(-1), "testname", "first", 3, 23}
 		tableColumns.SetUnsigned("position")
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete 

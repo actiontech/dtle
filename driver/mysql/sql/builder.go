@@ -105,17 +105,31 @@ func BuildSetPreparedClause(columns *common.ColumnList) (result string, err erro
 	return strings.Join(setTokens, ", "), nil
 }
 
-func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.ColumnList, args []interface{}) (result string, columnArgs []interface{}, hasUK bool, err error) {
-	if len(args) < tableColumns.Len() {
-		return result, columnArgs, hasUK, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v, %v",
-			len(args), tableColumns.Len())
+func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, args []interface{}) (result string, columnArgs []interface{}, hasUK bool, err error) {
+	if !(len(args) >= tableColumns.Len() || len(args) == len(columnMapTo)) {
+		return result, columnArgs, hasUK, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v %v %v",
+			len(args), tableColumns.Len(), len(columnMapTo))
 	}
+
 	comparisons := []string{}
 	uniqueKeyComparisons := []string{}
 	uniqueKeyArgs := make([]interface{}, 0)
-	for _, column := range tableColumns.ColumnList() {
-		tableOrdinal := tableColumns.Ordinals[column.RawName]
-		if args[tableOrdinal] == nil {
+
+	for i := range args {
+		var column *umconf.Column = nil
+		if len(columnMapTo) > 0 {
+			column = tableColumns.GetColumn(columnMapTo[i])
+		} else {
+			column = &tableColumns.ColumnList()[i]
+		}
+
+		if column == nil {
+			g.Logger.Warn("BuildDMLDeleteQuery: unable to find column",
+				"columnMapTo", columnMapTo, "i", i, "len", tableColumns.Len())
+			continue
+		}
+
+		if args[i] == nil {
 			comparison, err := BuildValueComparison(column.EscapedName, "NULL", IsEqualsComparisonSign)
 			if err != nil {
 				return result, columnArgs, hasUK, err
@@ -123,7 +137,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 			comparisons = append(comparisons, comparison)
 		} else {
 			if column.Type == umconf.BinaryColumnType {
-				arg := column.ConvertArg(args[tableOrdinal])
+				arg := column.ConvertArg(args[i])
 				comparison, err := BuildValueComparison(column.EscapedName, fmt.Sprintf("cast('%v' as %s)", arg, column.ColumnType), EqualsComparisonSign)
 				if err != nil {
 					return result, columnArgs, hasUK, err
@@ -134,7 +148,7 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 					comparisons = append(comparisons, comparison)
 				}
 			} else {
-				arg := column.ConvertArg(args[tableOrdinal])
+				arg := column.ConvertArg(args[i])
 				comparison, err := BuildValueComparison(column.EscapedName, "?", EqualsComparisonSign)
 				if err != nil {
 					return result, columnArgs, hasUK, err
@@ -161,11 +175,12 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 %s limit 1`, databaseName, tableName,
 		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
 	)
+	// hasUK: true: use saved PS to execute; false: execute a new query.
 	return result, columnArgs, hasUK, nil
 }
 
 func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, args []interface{}) (result string, sharedArgs []interface{}, err error) {
-	if len(args) < g.MinInt(tableColumns.Len(), len(columnMapTo)) {
+	if !(len(args) >= tableColumns.Len() || len(args) == len(columnMapTo)) {
 		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery %v %v %v",
 			len(args), tableColumns.Len(), len(columnMapTo))
 	}
