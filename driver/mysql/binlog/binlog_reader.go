@@ -574,6 +574,8 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 			if b.skipQueryDDL(realSchema, tableName) {
 				b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
 					"realSchema", realSchema, "tableName", tableName, "gno", gno)
+			} else if realSchema == "" {
+				b.logger.Warn("query with empty schema", "query", g.StrLim(sql, 10))
 			} else {
 				err = b.updateCurrentReplicateDoDb(realSchema, tableName)
 				if err != nil {
