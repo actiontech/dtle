@@ -530,6 +530,11 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 		}
 
 		for _, doTb := range doDb.Tables {
+			if len(doTb.ColumnMapTo) != 0 {
+				if len(doTb.ColumnMapTo) != len(doTb.ColumnMapFrom) {
+					addErrMsgs("ColumnMapTo should be either empty or the same cardinality as ColumnMapFrom")
+				}
+			}
 			if doTb.TableName == "" && doTb.TableRegex == "" {
 				addErrMsgs("TableName and TableRegex in ReplicateDoDb cannot both be empty")
 			}

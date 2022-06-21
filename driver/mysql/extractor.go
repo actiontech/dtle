@@ -574,7 +574,10 @@ func (e *Extractor) readTableColumns() (err error) {
 				return err
 			}
 			doTb.OriginalTableColumns = tableColumns
-			doTb.ColumnMap = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
+			doTb.ColumnMap, err = mysqlconfig.BuildColumnMapIndex(doTb.ColumnMapFrom, doTb.OriginalTableColumns.Ordinals)
+			if err != nil {
+				return err
+			}
 
 			childST := common.SchemaTable{Schema: doTb.TableSchema, Table: doTb.TableName}
 			for _, fkpt := range fkParentTables {

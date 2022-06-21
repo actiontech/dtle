@@ -7,6 +7,7 @@
 package mysqlconfig
 
 import (
+	"fmt"
 	"strings"
 
 	"golang.org/x/text/transform"
@@ -199,11 +200,14 @@ func BuildInsertColumnList(columnNames []string) string {
 	}
 }
 
-func BuildColumnMapIndex(from []string, ordinals ColumnsMap) (mapIndex []int) {
+func BuildColumnMapIndex(from []string, ordinals ColumnsMap) (mapIndex []int, err error) {
 	mapIndex = make([]int, len(from))
 	for i, colName := range from {
-		idxFrom := ordinals[colName]
+		idxFrom, hasCol := ordinals[colName]
+		if !hasCol {
+			return nil, fmt.Errorf("cannot find column %v in ColumnMapFrom", colName)
+		}
 		mapIndex[i] = idxFrom
 	}
-	return mapIndex
+	return mapIndex, nil
 }

@@ -1348,7 +1348,10 @@ func (b *BinlogReader) updateTableMeta(currentSchema string, table *common.Table
 		table.TableType = "BASE TABLE"
 	}
 	table.OriginalTableColumns = columns
-	table.ColumnMap = mysqlconfig.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
+	table.ColumnMap, err = mysqlconfig.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
+	if err != nil {
+		return nil, err
+	}
 
 	schemaContext := b.findCurrentSchema(realSchema)
 	tableCtx, err := common.NewTableContext(table)
