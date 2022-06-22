@@ -3409,6 +3409,12 @@ var doc = `{
                         "type": "string"
                     }
                 },
+                "column_map_to": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "table_name": {
                     "type": "string"
                 },

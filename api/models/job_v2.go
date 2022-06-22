@@ -184,6 +184,7 @@ type TableConfig struct {
 	TableRegex    string   `json:"table_regex"`
 	TableRename   string   `json:"table_rename"`
 	ColumnMapFrom []string `json:"column_map_from"`
+	ColumnMapTO   []string `json:"column_map_to"`
 	Where         string   `json:"where"`
 }
 type DatabaseConnectionConfig struct {

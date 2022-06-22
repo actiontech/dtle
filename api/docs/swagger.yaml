@@ -847,6 +847,10 @@ definitions:
         items:
           type: string
         type: array
+      column_map_to:
+        items:
+          type: string
+        type: array
       table_name:
         type: string
       table_regex:
