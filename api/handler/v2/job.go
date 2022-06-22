@@ -643,6 +643,9 @@ func buildMysqlTableConfigMap(configs []*models.TableConfig) []map[string]interf
 		configMap := make(map[string]interface{})
 		if len(c.ColumnMapFrom) != 0 {
 			configMap["ColumnMapFrom"] = c.ColumnMapFrom
+			if len(c.ColumnMapTO) != 0 {
+				configMap["ColumnMapTo"] = c.ColumnMapTO
+			}
 		}
 		addNotRequiredParamToMap(configMap, c.TableName, "TableName")
 		addNotRequiredParamToMap(configMap, c.TableRegex, "TableRegex")
@@ -955,6 +958,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 					TableRegex:    tb.TableRegex,
 					TableRename:   tb.TableRename,
 					ColumnMapFrom: tb.ColumnMapFrom,
+					ColumnMapTO:   tb.ColumnMapTo,
 					Where:         tb.Where,
 				})
 			}
