@@ -529,6 +529,8 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
+		a.ai.tableSpecs = dumpData.TableSpecs
+
 		if a.ai.sourceType == "oracle" {
 			err = a.storeManager.SaveOracleSCNPos(a.subject, dumpData.Coord.GetLogPos(), dumpData.Coord.GetLogPos())
 			if err != nil {
