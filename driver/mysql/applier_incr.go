@@ -68,6 +68,7 @@ type ApplierIncr struct {
 	gtidSetLock *sync.RWMutex
 	gtidItemMap base.GtidItemMap
 	sourceType  string
+	tableSpecs  []*common.TableSpec
 }
 
 func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
@@ -438,7 +439,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 	switch dmlEvent.DML {
 	case common.DeleteDML:
 		{
-			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.ColumnMapTo, dmlEvent.Rows[0])
+			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
@@ -456,7 +457,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 	case common.InsertDML:
 		{
 			// TODO no need to generate query string every time
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.ColumnMapTo, dmlEvent.Rows[0])
+			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
@@ -468,7 +469,7 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 		}
 	case common.UpdateDML:
 		{
-			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, dmlEvent.ColumnMapTo, dmlEvent.Rows[1], dmlEvent.Rows[0])
+			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[1], dmlEvent.Rows[0])
 			if err != nil {
 				return nil, "", nil, -1, err
 			}
@@ -696,6 +697,11 @@ func (a *ApplierIncr) getTableItem(schema string, table string) *common.ApplierT
 	tableItem, ok := schemaItem[table]
 	if !ok {
 		tableItem = common.NewApplierTableItem(a.mysqlContext.ParallelWorkers)
+		for _, tableSpec := range a.tableSpecs {
+			if tableSpec.Schema == schema && tableSpec.Table == table {
+				tableItem.ColumnMapTo = tableSpec.ColumnMapTo
+			}
+		}
 		schemaItem[table] = tableItem
 	}
 

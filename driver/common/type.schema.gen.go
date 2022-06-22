@@ -1560,9 +1560,270 @@ func (d *OracleCoordinates) Unmarshal(buf []byte) (uint64, error) {
 	return i + 8, nil
 }
 
+type TableSpec struct {
+	Schema      string
+	Table       string
+	ColumnMapTo []string
+}
+
+func (d *TableSpec) Size() (s uint64) {
+
+	{
+		l := uint64(len(d.Schema))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+		s += l
+	}
+	{
+		l := uint64(len(d.Table))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+		s += l
+	}
+	{
+		l := uint64(len(d.ColumnMapTo))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(len(d.ColumnMapTo[k0]))
+
+				{
+
+					t := l
+					for t >= 0x80 {
+						t >>= 7
+						s++
+					}
+					s++
+
+				}
+				s += l
+			}
+
+		}
+
+	}
+	return
+}
+func (d *TableSpec) Marshal(buf []byte) ([]byte, error) {
+	size := d.Size()
+	{
+		if uint64(cap(buf)) >= size {
+			buf = buf[:size]
+		} else {
+			buf = make([]byte, size)
+		}
+	}
+	i := uint64(0)
+
+	{
+		l := uint64(len(d.Schema))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+0] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+0] = byte(t)
+			i++
+
+		}
+		copy(buf[i+0:], d.Schema)
+		i += l
+	}
+	{
+		l := uint64(len(d.Table))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+0] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+0] = byte(t)
+			i++
+
+		}
+		copy(buf[i+0:], d.Table)
+		i += l
+	}
+	{
+		l := uint64(len(d.ColumnMapTo))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+0] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+0] = byte(t)
+			i++
+
+		}
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(len(d.ColumnMapTo[k0]))
+
+				{
+
+					t := uint64(l)
+
+					for t >= 0x80 {
+						buf[i+0] = byte(t) | 0x80
+						t >>= 7
+						i++
+					}
+					buf[i+0] = byte(t)
+					i++
+
+				}
+				copy(buf[i+0:], d.ColumnMapTo[k0])
+				i += l
+			}
+
+		}
+	}
+	return buf[:i+0], nil
+}
+
+func (d *TableSpec) Unmarshal(buf []byte) (uint64, error) {
+	i := uint64(0)
+
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+0] & 0x7F)
+			for buf[i+0]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+0]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		d.Schema = string(buf[i+0 : i+0+l])
+		i += l
+	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+0] & 0x7F)
+			for buf[i+0]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+0]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		d.Table = string(buf[i+0 : i+0+l])
+		i += l
+	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+0] & 0x7F)
+			for buf[i+0]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+0]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		if uint64(cap(d.ColumnMapTo)) >= l {
+			d.ColumnMapTo = d.ColumnMapTo[:l]
+		} else {
+			d.ColumnMapTo = make([]string, l)
+		}
+		for k0 := range d.ColumnMapTo {
+
+			{
+				l := uint64(0)
+
+				{
+
+					bs := uint8(7)
+					t := uint64(buf[i+0] & 0x7F)
+					for buf[i+0]&0x80 == 0x80 {
+						i++
+						t |= uint64(buf[i+0]&0x7F) << bs
+						bs += 7
+					}
+					i++
+
+					l = t
+
+				}
+				d.ColumnMapTo[k0] = string(buf[i+0 : i+0+l])
+				i += l
+			}
+
+		}
+	}
+	return i + 0, nil
+}
+
 type DumpStatResult struct {
-	Coord DumpCoordinates
-	Type  int32
+	Coord      DumpCoordinates
+	Type       int32
+	TableSpecs []*TableSpec
 }
 
 func (d *DumpStatResult) Size() (s uint64) {
@@ -1620,6 +1881,37 @@ func (d *DumpStatResult) Size() (s uint64) {
 			s += 1
 
 		}
+	}
+	{
+		l := uint64(len(d.TableSpecs))
+
+		{
+
+			t := l
+			for t >= 0x80 {
+				t >>= 7
+				s++
+			}
+			s++
+
+		}
+
+		for k0 := range d.TableSpecs {
+
+			{
+				if d.TableSpecs[k0] != nil {
+
+					{
+						s += (*d.TableSpecs[k0]).Size()
+					}
+					s += 0
+				}
+			}
+
+			s += 1
+
+		}
+
 	}
 	s += 4
 	return
@@ -1717,6 +2009,45 @@ func (d *DumpStatResult) Marshal(buf []byte) ([]byte, error) {
 		buf[i+3+0] = byte(d.Type >> 24)
 
 	}
+	{
+		l := uint64(len(d.TableSpecs))
+
+		{
+
+			t := uint64(l)
+
+			for t >= 0x80 {
+				buf[i+4] = byte(t) | 0x80
+				t >>= 7
+				i++
+			}
+			buf[i+4] = byte(t)
+			i++
+
+		}
+		for k0 := range d.TableSpecs {
+
+			{
+				if d.TableSpecs[k0] == nil {
+					buf[i+4] = 0
+				} else {
+					buf[i+4] = 1
+
+					{
+						nbuf, err := (*d.TableSpecs[k0]).Marshal(buf[i+5:])
+						if err != nil {
+							return nil, err
+						}
+						i += uint64(len(nbuf))
+					}
+					i += 0
+				}
+			}
+
+			i += 1
+
+		}
+	}
 	return buf[:i+4], nil
 }
 
@@ -1803,6 +2134,53 @@ func (d *DumpStatResult) Unmarshal(buf []byte) (uint64, error) {
 		d.Type = 0 | (int32(buf[i+0+0]) << 0) | (int32(buf[i+1+0]) << 8) | (int32(buf[i+2+0]) << 16) | (int32(buf[i+3+0]) << 24)
 
 	}
+	{
+		l := uint64(0)
+
+		{
+
+			bs := uint8(7)
+			t := uint64(buf[i+4] & 0x7F)
+			for buf[i+4]&0x80 == 0x80 {
+				i++
+				t |= uint64(buf[i+4]&0x7F) << bs
+				bs += 7
+			}
+			i++
+
+			l = t
+
+		}
+		if uint64(cap(d.TableSpecs)) >= l {
+			d.TableSpecs = d.TableSpecs[:l]
+		} else {
+			d.TableSpecs = make([]*TableSpec, l)
+		}
+		for k0 := range d.TableSpecs {
+
+			{
+				if buf[i+4] == 1 {
+					if d.TableSpecs[k0] == nil {
+						d.TableSpecs[k0] = new(TableSpec)
+					}
+
+					{
+						ni, err := (*d.TableSpecs[k0]).Unmarshal(buf[i+5:])
+						if err != nil {
+							return 0, err
+						}
+						i += ni
+					}
+					i += 0
+				} else {
+					d.TableSpecs[k0] = nil
+				}
+			}
+
+			i += 1
+
+		}
+	}
 	return i + 4, nil
 }
 
@@ -1820,7 +2198,6 @@ type DataEvent struct {
 	FKParent      bool
 	Rows          [][]interface{}
 	DtleFlags     uint32
-	ColumnMapTo   []string
 }
 
 func (d *DataEvent) Size() (s uint64) {
@@ -2089,41 +2466,6 @@ func (d *DataEvent) Size() (s uint64) {
 
 				}
 
-			}
-
-		}
-
-	}
-	{
-		l := uint64(len(d.ColumnMapTo))
-
-		{
-
-			t := l
-			for t >= 0x80 {
-				t >>= 7
-				s++
-			}
-			s++
-
-		}
-
-		for k0 := range d.ColumnMapTo {
-
-			{
-				l := uint64(len(d.ColumnMapTo[k0]))
-
-				{
-
-					t := l
-					for t >= 0x80 {
-						t >>= 7
-						s++
-					}
-					s++
-
-				}
-				s += l
 			}
 
 		}
@@ -2657,46 +2999,6 @@ func (d *DataEvent) Marshal(buf []byte) ([]byte, error) {
 		buf[i+3+22] = byte(d.DtleFlags >> 24)
 
 	}
-	{
-		l := uint64(len(d.ColumnMapTo))
-
-		{
-
-			t := uint64(l)
-
-			for t >= 0x80 {
-				buf[i+26] = byte(t) | 0x80
-				t >>= 7
-				i++
-			}
-			buf[i+26] = byte(t)
-			i++
-
-		}
-		for k0 := range d.ColumnMapTo {
-
-			{
-				l := uint64(len(d.ColumnMapTo[k0]))
-
-				{
-
-					t := uint64(l)
-
-					for t >= 0x80 {
-						buf[i+26] = byte(t) | 0x80
-						t >>= 7
-						i++
-					}
-					buf[i+26] = byte(t)
-					i++
-
-				}
-				copy(buf[i+26:], d.ColumnMapTo[k0])
-				i += l
-			}
-
-		}
-	}
 	return buf[:i+26], nil
 }
 
@@ -3137,53 +3439,6 @@ func (d *DataEvent) Unmarshal(buf []byte) (uint64, error) {
 
 		d.DtleFlags = 0 | (uint32(buf[i+0+22]) << 0) | (uint32(buf[i+1+22]) << 8) | (uint32(buf[i+2+22]) << 16) | (uint32(buf[i+3+22]) << 24)
 
-	}
-	{
-		l := uint64(0)
-
-		{
-
-			bs := uint8(7)
-			t := uint64(buf[i+26] & 0x7F)
-			for buf[i+26]&0x80 == 0x80 {
-				i++
-				t |= uint64(buf[i+26]&0x7F) << bs
-				bs += 7
-			}
-			i++
-
-			l = t
-
-		}
-		if uint64(cap(d.ColumnMapTo)) >= l {
-			d.ColumnMapTo = d.ColumnMapTo[:l]
-		} else {
-			d.ColumnMapTo = make([]string, l)
-		}
-		for k0 := range d.ColumnMapTo {
-
-			{
-				l := uint64(0)
-
-				{
-
-					bs := uint8(7)
-					t := uint64(buf[i+26] & 0x7F)
-					for buf[i+26]&0x80 == 0x80 {
-						i++
-						t |= uint64(buf[i+26]&0x7F) << bs
-						bs += 7
-					}
-					i++
-
-					l = t
-
-				}
-				d.ColumnMapTo[k0] = string(buf[i+26 : i+26+l])
-				i += l
-			}
-
-		}
 	}
 	return i + 26, nil
 }

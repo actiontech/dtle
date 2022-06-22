@@ -37,12 +37,19 @@ struct OracleCoordinates {
 	LaststSCN int64
 }
 
+struct TableSpec {
+    Schema string
+    Table  string
+    ColumnMapTo []string
+}
+
 struct DumpStatResult {
     Coord union DumpCoordinates{
         *MySQLCoordinates
         *OracleCoordinates
     }
     Type  int32
+    TableSpecs []*TableSpec
 }
 
 struct DataEvent {
@@ -73,7 +80,6 @@ struct DataEvent {
         bool
     }
     DtleFlags uint32
-	ColumnMapTo []string
 }
 
 struct DataEntry {

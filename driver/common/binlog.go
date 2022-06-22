@@ -158,10 +158,11 @@ func (b *DataEvent) String() string {
 }
 
 type ApplierTableItem struct {
-	Columns  *ColumnList
-	PsInsert []*sql.Stmt
-	PsDelete []*sql.Stmt
-	PsUpdate []*sql.Stmt
+	Columns     *ColumnList
+	PsInsert    []*sql.Stmt
+	PsDelete    []*sql.Stmt
+	PsUpdate    []*sql.Stmt
+	ColumnMapTo []string
 }
 
 func NewApplierTableItem(parallelWorkers int) *ApplierTableItem {

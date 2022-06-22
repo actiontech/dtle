@@ -46,6 +46,7 @@ type Extractor struct {
 	logger       g.LoggerType
 	subject      string
 	mysqlContext *common.MySQLDriverConfig
+	tableSpecs   []*common.TableSpec
 
 	systemVariables       map[string]string
 	sqlMode               string
@@ -471,6 +472,13 @@ func (e *Extractor) inspectTables() (err error) {
 				for _, doTb := range doDb.Tables {
 					doTb.TableSchema = doDb.TableSchema
 					doTb.TableSchemaRename = doDb.TableSchemaRename
+
+					e.tableSpecs = append(e.tableSpecs, &common.TableSpec{
+						// use new name if renaming
+						Schema:      g.StringElse(doDb.TableSchemaRename, doDb.TableSchema),
+						Table:       g.StringElse(doTb.TableRename, doTb.TableName),
+						ColumnMapTo: doTb.ColumnMapTo,
+					})
 
 					var regex string
 					if doTb.TableRegex != "" && doTb.TableRename != "" {
@@ -1612,6 +1620,7 @@ func (e *Extractor) Shutdown() error {
 func (e *Extractor) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
 		Coord: e.initialBinlogCoordinates,
+		TableSpecs: e.tableSpecs,
 	})
 	if err != nil {
 		return err
