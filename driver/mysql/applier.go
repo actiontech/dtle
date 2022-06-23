@@ -529,31 +529,38 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 		a.logger.Info("Rows copy complete.", "TotalRowsReplayed", a.TotalRowsReplayed)
 
-		if a.mysqlContext.ForeignKeyChecks {
-			err = a.enableForeignKeyChecks()
+		if a.ai.sourceType == "oracle" {
+			err = a.storeManager.SaveOracleSCNPos(a.subject, dumpData.Coord.GetLogPos(), dumpData.Coord.GetLogPos())
 			if err != nil {
-				a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
-				return
+				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveOracleSCNPos"))
 			}
 		} else {
-			a.logger.Warn("ParallelWorkers > 1 and UseMySQLDependency = false. disabling MySQL session.foreign_key_checks")
-		}
+			if a.mysqlContext.ForeignKeyChecks {
+				err = a.enableForeignKeyChecks()
+				if err != nil {
+					a.onError(common.TaskStateDead, errors.Wrap(err, "enableForeignKeyChecks"))
+					return
+				}
+			} else {
+				a.logger.Warn("ParallelWorkers > 1 and UseMySQLDependency = false. disabling MySQL session.foreign_key_checks")
+			}
 
-		a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GetTxSet())
-		// Do not re-assign a.gtidSet (#538). Update it.
-		gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GetTxSet())
-		if err != nil {
-			a.onError(common.TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
-			return
+			a.logger.Info("got gtid from extractor", "gtid", dumpData.Coord.GetTxSet())
+			// Do not re-assign a.gtidSet (#538). Update it.
+			gs0, err := gomysql.ParseMysqlGTIDSet(dumpData.Coord.GetTxSet())
+			if err != nil {
+				a.onError(common.TaskStateDead, errors.Wrap(err, "ParseMysqlGTIDSet"))
+				return
+			}
+			gs := gs0.(*gomysql.MysqlGTIDSet)
+			for _, uuidSet := range gs.Sets {
+				a.gtidSet.AddSet(uuidSet)
+			}
+			a.mysqlContext.Gtid = dumpData.Coord.GetTxSet()
+			a.mysqlContext.BinlogFile = dumpData.Coord.GetLogFile()
+			a.mysqlContext.BinlogPos = dumpData.Coord.GetLogPos()
+			a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 		}
-		gs := gs0.(*gomysql.MysqlGTIDSet)
-		for _, uuidSet := range gs.Sets {
-			a.gtidSet.AddSet(uuidSet)
-		}
-		a.mysqlContext.Gtid = dumpData.Coord.GetTxSet()
-		a.mysqlContext.BinlogFile = dumpData.Coord.GetLogFile()
-		a.mysqlContext.BinlogPos = dumpData.Coord.GetLogPos()
-		a.gtidCh <- nil // coord == nil is a flag for update/upload gtid
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
 		if a.stage != JobIncrCopy {
