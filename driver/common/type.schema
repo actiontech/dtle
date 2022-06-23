@@ -34,7 +34,7 @@ struct MySQLCoordinates {
 }
 
 struct OracleCoordinates {
-	
+	LaststSCN int64
 }
 
 struct DumpStatResult {

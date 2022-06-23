@@ -86,7 +86,7 @@ func (o *OracleCoordinateTx)GetFieldValue(fieldName string)interface{}{
 
 
 func (b *OracleCoordinates) GetLogPos() int64 {
-	return 0
+	return b.LaststSCN
 }
 
 func (b *OracleCoordinates) GetTxSet() string {

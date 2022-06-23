@@ -65,13 +65,12 @@ type ExtractorOracle struct {
 	//dumpers           []*mysql.dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb
-	replicateDoDb            []*common.DataSource
-	dataChannel              chan *common.EntryContext
-	inspector                *mysql.Inspector
-	binlogReader             *binlog.BinlogReader
-	LogMinerStream           *LogMinerStream
-	initialBinlogCoordinates *common.OracleCoordinates
-	currentBinlogCoordinates *common.OracleCoordinateTx
+	replicateDoDb       []*common.DataSource
+	dataChannel         chan *common.EntryContext
+	inspector           *mysql.Inspector
+	binlogReader        *binlog.BinlogReader
+	LogMinerStream      *LogMinerStream
+	fullCopyCoordinates *common.OracleCoordinates
 	//rowCopyComplete          chan bool
 	rowCopyCompleteFlag int64
 	tableCount          int
@@ -207,20 +206,16 @@ func (e *ExtractorOracle) Run() {
 
 	e.initDBConnections()
 
+	startSCN, committedSCN, err := e.calculateSCNPos()
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "calculateSCNPos"))
+		return
+	}
 	fullCopy := true
-	{
-		startSCN, committedSCN, err := e.calculateSCNPos()
-		if err != nil {
-			e.onError(common.TaskStateDead, errors.Wrap(err, "calculateSCNPos"))
-			return
-		}
-		// todo
-		notFullCopy := true
-		if notFullCopy {
-			fullCopy = false
-		} else if startSCN != 0 || committedSCN != 0 {
-			fullCopy = false
-		}
+	if e.mysqlContext.OracleConfig.Scn != 0 {
+		fullCopy = false
+	} else if startSCN != 0 || committedSCN != 0 {
+		fullCopy = false
 	}
 
 	if fullCopy {
@@ -239,21 +234,19 @@ func (e *ExtractorOracle) Run() {
 			e.onError(common.TaskStateDead, err)
 			return
 		}
+	}
 
-		{
-			startSCN, committedSCN, err := e.calculateSCNPos()
-			if err != nil {
-				e.onError(common.TaskStateDead, errors.Wrap(err, "calculateSCNPos"))
-				return
-			}
-			e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
-				startSCN, committedSCN, 100000)
-			e.logger.Debug("start .initiateStreaming before")
-			if err := e.initiateStreaming(); err != nil {
-				e.logger.Error("error at initiateStreaming", "err", err)
-				e.onError(common.TaskStateDead, err)
-				return
-			}
+	{
+		if startSCN == 0 && committedSCN == 0 {
+			startSCN, committedSCN = e.oracleDB.SCN, e.oracleDB.SCN
+		}
+		e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
+			startSCN, committedSCN, 100000)
+		e.logger.Debug("start .initiateStreaming before")
+		if err := e.initiateStreaming(); err != nil {
+			e.logger.Error("error at initiateStreaming", "err", err)
+			e.onError(common.TaskStateDead, err)
+			return
 		}
 	}
 }
@@ -839,7 +832,7 @@ func (e *ExtractorOracle) onError(state int, err error) {
 
 func (e *ExtractorOracle) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
-		Coord: e.initialBinlogCoordinates,
+		Coord: e.fullCopyCoordinates,
 	})
 	if err != nil {
 		return err
@@ -978,6 +971,9 @@ func (e *ExtractorOracle) oracleDump() error {
 				}
 			}
 		}
+	}
+	e.fullCopyCoordinates = &common.OracleCoordinates{
+		LaststSCN: e.oracleDB.SCN,
 	}
 	return nil
 }

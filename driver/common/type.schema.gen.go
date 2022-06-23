@@ -1508,10 +1508,12 @@ func (d *MySQLCoordinates) Unmarshal(buf []byte) (uint64, error) {
 }
 
 type OracleCoordinates struct {
+	LaststSCN int64
 }
 
 func (d *OracleCoordinates) Size() (s uint64) {
 
+	s += 8
 	return
 }
 func (d *OracleCoordinates) Marshal(buf []byte) ([]byte, error) {
@@ -1525,13 +1527,37 @@ func (d *OracleCoordinates) Marshal(buf []byte) ([]byte, error) {
 	}
 	i := uint64(0)
 
-	return buf[:i+0], nil
+	{
+
+		buf[0+0] = byte(d.LaststSCN >> 0)
+
+		buf[1+0] = byte(d.LaststSCN >> 8)
+
+		buf[2+0] = byte(d.LaststSCN >> 16)
+
+		buf[3+0] = byte(d.LaststSCN >> 24)
+
+		buf[4+0] = byte(d.LaststSCN >> 32)
+
+		buf[5+0] = byte(d.LaststSCN >> 40)
+
+		buf[6+0] = byte(d.LaststSCN >> 48)
+
+		buf[7+0] = byte(d.LaststSCN >> 56)
+
+	}
+	return buf[:i+8], nil
 }
 
 func (d *OracleCoordinates) Unmarshal(buf []byte) (uint64, error) {
 	i := uint64(0)
 
-	return i + 0, nil
+	{
+
+		d.LaststSCN = 0 | (int64(buf[0+0]) << 0) | (int64(buf[1+0]) << 8) | (int64(buf[2+0]) << 16) | (int64(buf[3+0]) << 24) | (int64(buf[4+0]) << 32) | (int64(buf[5+0]) << 40) | (int64(buf[6+0]) << 48) | (int64(buf[7+0]) << 56)
+
+	}
+	return i + 8, nil
 }
 
 type DumpStatResult struct {
