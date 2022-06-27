@@ -27,10 +27,11 @@ var charsetEncodingMap = map[string]encoding.Encoding{
 	"utf32": utf32.UTF32(utf32.BigEndian, utf32.IgnoreBOM),
 }
 
+// return original string and error if charset is not recognized
 func ConvertToUTF8(s string, charset string) (string, error) {
 	enc, ok := charsetEncodingMap[charset]
 	if !ok {
-		return "", fmt.Errorf("unknown character set %v", charset)
+		return s, fmt.Errorf("unknown character set %v", charset)
 	}
 	r, _, err := transform.String(enc.NewDecoder(), s)
 	if err != nil {

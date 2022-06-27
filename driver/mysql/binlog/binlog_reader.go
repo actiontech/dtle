@@ -483,12 +483,20 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	return nil
 }
 
+func queryIsBegin(query string) bool {
+	return len(query) == 5 && strings.ToUpper(query) == "BEGIN"
+}
+
+func queryIsCommit(query string) bool {
+	return len(query) == 6 && strings.ToUpper(query) == "COMMIT"
+}
+
 func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 	entriesChannel chan<- *common.EntryContext) error {
     mysqlCoordinateTx := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	gno := mysqlCoordinateTx.GNO
 	evt := ev.Event.(*replication.QueryEvent)
-	query := string(evt.Query)
+	query0 := string(evt.Query)
 
 	queryEventFlags, err := common.ParseQueryEventFlags(evt.StatusVars, b.logger)
 	if err != nil {
@@ -497,86 +505,91 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 
 	if evt.ErrorCode != 0 {
 		b.logger.Error("DTLE_BUG: found query_event with error code, which is not handled.",
-			"ErrorCode", evt.ErrorCode, "query", query, "gno", gno)
+			"ErrorCode", evt.ErrorCode, "query", query0, "gno", gno)
 	}
 	currentSchema := string(evt.Schema)
 
-	b.logger.Debug("query event", "schema", currentSchema, "query", query)
+	b.logger.Debug("query event", "schema", currentSchema, "query", query0)
 
-	if !g.IsUTF8OrMB4(queryEventFlags.CharacterSetClient) {
-		b.logger.Info("transcode a DDL to UTF8", "from", queryEventFlags.CharacterSetClient)
-		query, err = mysqlconfig.ConvertToUTF8(query, queryEventFlags.CharacterSetClient)
-		if err != nil {
-			return errors.Wrap(err, "DDL ConvertToUTF8")
-		}
-	}
-
-	upperQuery := strings.ToUpper(query)
-	if upperQuery == "BEGIN" {
+	if queryIsBegin(query0) {
 		b.hasBeginQuery = true
-	} else {
-		if upperQuery == "COMMIT" || !b.hasBeginQuery {
-			err := b.checkDtleQueryOSID(query)
-			if err != nil {
-				return errors.Wrap(err, "checkDtleQueryOSID")
-			}
+	} else if queryIsCommit(query0) || !b.hasBeginQuery {
+		// not hasBeginQuery: a single-query transaction.
 
-			queryInfo, err := b.resolveQuery(currentSchema, query, b.skipQueryDDL)
-			if err != nil {
-				return errors.Wrap(err, "resolveQuery")
-			}
+		var query8 string
+		var errConvertToUTF8 error
+		if g.IsUTF8OrMB4(queryEventFlags.CharacterSetClient) {
+			query8 = query0
+		} else {
+			b.logger.Info("transcode a DDL to UTF8", "from", queryEventFlags.CharacterSetClient)
+			query8, errConvertToUTF8 = mysqlconfig.ConvertToUTF8(query0, queryEventFlags.CharacterSetClient)
+		}
 
-			skipSql := false
-			if queryInfo.isSkip || isSkipQuery(query) {
-				// queries that should be skipped regardless of ExpandSyntaxSupport
-				skipSql = true
+		err := b.checkDtleQueryOSID(query8)
+		if err != nil {
+			return errors.Wrap(err, "checkDtleQueryOSID")
+		}
+
+		queryInfo, err := b.resolveQuery(currentSchema, query8, b.skipQueryDDL)
+		if err != nil {
+			return errors.Wrap(err, "resolveQuery")
+		}
+
+		skipSql := false
+		if queryInfo.isSkip || isSkipQuery(query8) {
+			// queries that should be skipped regardless of ExpandSyntaxSupport
+			skipSql = true
+		} else {
+			if !b.mysqlContext.ExpandSyntaxSupport {
+				skipSql = queryInfo.isExpand || isExpandSyntaxQuery(query8)
+			}
+		}
+
+		currentSchemaRename := currentSchema
+		schema := b.findCurrentSchema(currentSchema)
+		if schema != nil && schema.TableSchemaRename != "" {
+			currentSchemaRename = schema.TableSchemaRename
+		}
+
+		if skipSql || !queryInfo.isRecognized {
+			if skipSql {
+				b.logger.Warn("skipQuery", "query", query8, "gno", gno)
 			} else {
-				if !b.mysqlContext.ExpandSyntaxSupport {
-					skipSql = queryInfo.isExpand || isExpandSyntaxQuery(query)
+				if !queryInfo.isRecognized {
+					b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query8, "gno", gno)
 				}
-			}
 
-			currentSchemaRename := currentSchema
-			schema := b.findCurrentSchema(currentSchema)
-			if schema != nil && schema.TableSchemaRename != "" {
-				currentSchemaRename = schema.TableSchemaRename
-			}
-
-			if skipSql || !queryInfo.isRecognized {
-				if skipSql {
-					b.logger.Warn("skipQuery", "query", query, "gno", gno)
-				} else {
-					if !queryInfo.isRecognized {
-						b.logger.Warn("mysql.reader: QueryEvent is not recognized. will still execute", "query", query, "gno", gno)
-					}
-
-					event := common.NewQueryEvent(
-						currentSchemaRename,
-						b.setDtleQuery(query),
-						common.NotDML,
-						ev.Header.Timestamp,
-						evt.StatusVars,
-					)
-
-					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
-					b.entryContext.OriginalSize += len(ev.RawData)
+				if errConvertToUTF8 != nil {
+					return errors.Wrap(errConvertToUTF8, "DDL ConvertToUTF8")
 				}
-				b.sendEntry(entriesChannel)
-				return nil
+
+				event := common.NewQueryEvent(
+					currentSchemaRename,
+					b.setDtleQuery(query8),
+					common.NotDML,
+					ev.Header.Timestamp,
+					evt.StatusVars,
+				)
+
+				b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
+				b.entryContext.OriginalSize += len(ev.RawData)
 			}
+			b.sendEntry(entriesChannel)
+			return nil
+		}
 
-			b.sqleExecDDL(currentSchema, queryInfo.ast)
+		b.sqleExecDDL(currentSchema, queryInfo.ast)
 
-			sql := queryInfo.sql
-			realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
-			tableName := queryInfo.table.Table
+		sql := queryInfo.sql
+		realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
+		tableName := queryInfo.table.Table
 
-			if b.skipQueryDDL(realSchema, tableName) {
-				b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
-					"realSchema", realSchema, "tableName", tableName, "gno", gno)
-			} else if realSchema == "" {
-				b.logger.Warn("query with empty schema", "query", g.StrLim(sql, 10))
-			} else {
+		if b.skipQueryDDL(realSchema, tableName) {
+			b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
+				"realSchema", realSchema, "tableName", tableName, "gno", gno)
+		} else {
+			var table *common.Table
+			if realSchema != "" {
 				err = b.updateCurrentReplicateDoDb(realSchema, tableName)
 				if err != nil {
 					return errors.Wrap(err, "updateCurrentReplicateDoDb")
@@ -586,135 +599,137 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					schema = b.findCurrentSchema(realSchema)
 				}
 				tableCtx := b.findCurrentTable(schema, tableName)
-				var table *common.Table
 				if tableCtx != nil {
 					table = tableCtx.Table
 				}
+			}
 
-				skipEvent := skipBySqlFilter(queryInfo.ast, b.sqlFilter)
-				switch realAst := queryInfo.ast.(type) {
-				case *ast.CreateDatabaseStmt:
-					b.sqleAfterCreateSchema(queryInfo.table.Schema)
-				case *ast.DropDatabaseStmt:
-					b.removeFKChildSchema(queryInfo.table.Schema)
-				case *ast.CreateTableStmt:
-					b.logger.Debug("ddl is create table")
-					_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query)
-					if err != nil {
-						return err
+			switch realAst := queryInfo.ast.(type) {
+			case *ast.CreateDatabaseStmt:
+				b.sqleAfterCreateSchema(queryInfo.table.Schema)
+			case *ast.DropDatabaseStmt:
+				b.removeFKChildSchema(queryInfo.table.Schema)
+			case *ast.CreateTableStmt:
+				b.logger.Debug("ddl is create table")
+				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query8)
+				if err != nil {
+					return err
+				}
+			case *ast.DropTableStmt:
+				if realAst.IsView {
+					// do nothing
+				} else {
+					for _, t := range realAst.Tables {
+						dropTableSchema := g.StringElse(t.Schema.String(), currentSchema)
+						b.removeFKChild(dropTableSchema, t.Name.String())
 					}
-				case *ast.DropTableStmt:
-					if realAst.IsView {
+				}
+			case *ast.DropIndexStmt:
+				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query8)
+				if err != nil {
+					return err
+				}
+			case *ast.AlterTableStmt:
+				b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
+
+				fromTable := table
+				newSchemaName := realSchema
+				newTableName := tableName
+
+				for _, spec := range realAst.Specs {
+					switch spec.Tp {
+					case ast.AlterTableRenameTable:
+						fromTable = nil
+						newSchemaName = g.StringElse(spec.NewTable.Schema.String(), currentSchema)
+						newTableName = spec.NewTable.Name.String()
+					case ast.AlterTableAddConstraint, ast.AlterTableDropForeignKey:
+						b.removeFKChild(realSchema, fromTable.TableName)
+					default:
 						// do nothing
-					} else {
-						for _, t := range realAst.Tables {
-							dropTableSchema := g.StringElse(t.Schema.String(), currentSchema)
-							b.removeFKChild(dropTableSchema, t.Name.String())
-						}
 					}
-				case *ast.DropIndexStmt:
-					_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query)
+				}
+
+				if !b.skipQueryDDL(newSchemaName, newTableName) {
+					_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, query8)
 					if err != nil {
 						return err
 					}
-				case *ast.AlterTableStmt:
-					b.logger.Debug("ddl is alter table.", "specs", realAst.Specs)
-
-					fromTable := table
-					newSchemaName := realSchema
-					newTableName := tableName
-
-					for _, spec := range realAst.Specs {
-						switch spec.Tp {
-						case ast.AlterTableRenameTable:
-							fromTable = nil
-							newSchemaName = g.StringElse(spec.NewTable.Schema.String(), currentSchema)
-							newTableName = spec.NewTable.Name.String()
-						case ast.AlterTableAddConstraint, ast.AlterTableDropForeignKey:
-							b.removeFKChild(realSchema, fromTable.TableName)
-						default:
-							// do nothing
-						}
-					}
-
+				}
+			case *ast.RenameTableStmt:
+				for _, tt := range realAst.TableToTables {
+					newSchemaName := g.StringElse(tt.NewTable.Schema.String(), currentSchema)
+					newTableName := tt.NewTable.Name.String()
+					b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
+						"newTable", newTableName)
 					if !b.skipQueryDDL(newSchemaName, newTableName) {
-						_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, query)
+						_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, query8)
 						if err != nil {
 							return err
 						}
-					}
-				case *ast.RenameTableStmt:
-					for _, tt := range realAst.TableToTables {
-						newSchemaName := g.StringElse(tt.NewTable.Schema.String(), currentSchema)
-						newTableName := tt.NewTable.Name.String()
-						b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
+					} else {
+						b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
 							"newTable", newTableName)
-						if !b.skipQueryDDL(newSchemaName, newTableName) {
-							_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, query)
-							if err != nil {
-								return err
-							}
-						} else {
-							b.logger.Debug("not updating meta for rename table", "newSchema", newSchemaName,
-								"newTable", newTableName)
-						}
 					}
-				}
-
-				if schema != nil && schema.TableSchemaRename != "" {
-					queryInfo.table.Schema = schema.TableSchemaRename
-					realSchema = schema.TableSchemaRename
-				} else {
-					// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
-					// or schema.TableSchemaRename == "" means no renaming
-				}
-
-				if table != nil && table.TableRename != "" {
-					queryInfo.table.Table = table.TableRename
-				}
-				var columnMapFrom []string
-				if table != nil {
-					columnMapFrom = table.ColumnMapFrom
-				}
-				// mapping
-				schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
-				if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 ||
-					len(columnMapFrom) > 0 {
-					sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, columnMapFrom)
-					if nil != err {
-						return fmt.Errorf("ddl mapping failed: %v", err)
-					}
-				}
-
-				if skipEvent {
-					b.logger.Debug("skipped a ddl event.", "query", query)
-				} else {
-					if realSchema == "" || queryInfo.table.Table == "" {
-						b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-							"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
-					}
-
-					event := common.NewQueryEventAffectTable(
-						currentSchemaRename,
-						b.setDtleQuery(sql),
-						common.NotDML,
-						queryInfo.table,
-						ev.Header.Timestamp,
-						evt.StatusVars,
-					)
-					if table != nil {
-						tableBs, err := common.EncodeTable(table)
-						if err != nil {
-							return errors.Wrap(err, "EncodeTable(table)")
-						}
-						event.Table = tableBs
-					}
-					b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
 				}
 			}
-			b.entryContext.OriginalSize += len(ev.RawData)
-			b.sendEntry(entriesChannel)
+
+			if schema != nil && schema.TableSchemaRename != "" {
+				queryInfo.table.Schema = schema.TableSchemaRename
+				realSchema = schema.TableSchemaRename
+			} else {
+				// schema == nil means it is not explicit in ReplicateDoDb, thus no renaming
+				// or schema.TableSchemaRename == "" means no renaming
+			}
+
+			if table != nil && table.TableRename != "" {
+				queryInfo.table.Table = table.TableRename
+			}
+			var columnMapFrom []string
+			if table != nil {
+				columnMapFrom = table.ColumnMapFrom
+			}
+			// mapping
+			schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
+			if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 ||
+				len(columnMapFrom) > 0 {
+				sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, columnMapFrom)
+				if nil != err {
+					return fmt.Errorf("ddl mapping failed: %v", err)
+				}
+			}
+
+			if skipBySqlFilter(queryInfo.ast, b.sqlFilter) {
+				b.logger.Debug("skipped a ddl event.", "query", query8)
+			} else {
+				if realSchema == "" || queryInfo.table.Table == "" {
+					b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
+						"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
+				}
+
+				if errConvertToUTF8 != nil {
+					return errors.Wrap(errConvertToUTF8, "DDL ConvertToUTF8")
+				}
+
+				event := common.NewQueryEventAffectTable(
+					currentSchemaRename,
+					b.setDtleQuery(sql),
+					common.NotDML,
+					queryInfo.table,
+					ev.Header.Timestamp,
+					evt.StatusVars,
+				)
+				if table != nil {
+					tableBs, err := common.EncodeTable(table)
+					if err != nil {
+						return errors.Wrap(err, "EncodeTable(table)")
+					}
+					event.Table = tableBs
+				}
+				b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, event)
+			}
 		}
+		b.entryContext.OriginalSize += len(ev.RawData)
+		b.sendEntry(entriesChannel)
 	}
 	return nil
 }
