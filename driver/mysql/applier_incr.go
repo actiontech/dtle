@@ -69,6 +69,8 @@ type ApplierIncr struct {
 	gtidItemMap base.GtidItemMap
 	sourceType  string
 	tableSpecs  []*common.TableSpec
+
+	inBigTx bool
 }
 
 func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
@@ -217,6 +219,15 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	binlogEntry := entryCtx.Entry
 
+	if a.inBigTx && binlogEntry.Index == 0 {
+		// src is resending an earlier BinlogEntry
+		if a.dbs[0].Tx != nil {
+			_ = a.dbs[0].Tx.Rollback()
+		}
+		a.mtsManager.lastEnqueue = 0
+		a.inBigTx = false
+	}
+
 	if binlogEntry.Coordinates.GetSid() == uuid.UUID([16]byte{0}) {
 		return a.handleEntryOracle(entryCtx)
 	}
@@ -318,6 +329,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 			a.prevDDL = hasDDL
 
 			if binlogEntry.IsPartOfBigTx() {
+				a.inBigTx = true
 				if !a.mtsManager.WaitForAllCommitted() {
 					return nil // shutdown
 				}
@@ -669,6 +681,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		} else {
 			a.mtsManager.Executed(binlogEntry)
 		}
+		a.inBigTx = false
 		dbApplier.Tx = nil
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
