@@ -797,7 +797,7 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 	}
 	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
 	b.logger.Debug("sendEntry", "gno", coordinate.GNO, "events", len(b.entryContext.Entry.Events),
-		"isBig", isBig)
+		"isBig", isBig, "index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	select {
 	case <-b.shutdownCh:
@@ -928,6 +928,8 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryConte
 		}
 
 		b.logger.Trace("b.HasBigTx.Wait. before")
+		// Wait if this job has un-acked big tx or
+		// there are too much global jobs with big tx.
 		for i := 0; atomic.LoadInt32(&b.BigTxCount) > 0 || g.BigTxReachMax(); i++ {
 			if b.shutdown {
 				break
