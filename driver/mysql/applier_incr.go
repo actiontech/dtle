@@ -43,12 +43,13 @@ type ApplierIncr struct {
 	ctx        context.Context
 	shutdownCh chan struct{}
 
-	memory2          *int64
-	printTps         bool
-	txLastNSeconds   uint32
-	appliedTxCount   uint32
-	timestampCtx     *TimestampContext
-	TotalDeltaCopied int64
+	memory2           *int64
+	printTps          bool
+	txLastNSeconds    uint32
+	appliedTxCount    uint32
+	appliedQueryCount uint64
+	timestampCtx      *TimestampContext
+	TotalDeltaCopied  int64
 
 	EntryExecutedHook func(entry *common.DataEntry)
 
@@ -652,6 +653,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			}
 		}
 		timestamp = event.Timestamp
+		atomic.AddUint64(&a.appliedQueryCount, uint64(1))
 	}
 
 	if binlogEntry.Final {

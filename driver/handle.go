@@ -256,6 +256,13 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	if nil != ru.HandledTxCount.ExtractedTxCount {
 		metrics.SetGaugeWithLabels([]string{"src_extracted_incr_tx_count"}, float32(*ru.HandledTxCount.ExtractedTxCount), labels)
 	}
+
+	if nil != ru.HandledQueryCount.AppliedQueryCount {
+		metrics.SetGaugeWithLabels([]string{"dest_applied_incr_query_count"}, float32(*ru.HandledQueryCount.AppliedQueryCount), labels)
+	}
+	if nil != ru.HandledQueryCount.ExtractedQueryCount {
+		metrics.SetGaugeWithLabels([]string{"src_extracted_incr_query_count"}, float32(*ru.HandledQueryCount.ExtractedQueryCount), labels)
+	}
 }
 
 func (h *taskHandle) Destroy() bool {

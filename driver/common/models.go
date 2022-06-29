@@ -44,21 +44,26 @@ type ThroughputStat struct {
 	Time uint64
 }
 type BufferStat struct {
-	BinlogEventQueueSize    int
-	ExtractorTxQueueSize    int
-	ApplierMsgQueueSize     int
-	ApplierTxQueueSize      int
-	SendByTimeout           int
-	SendBySizeFull          int
+	BinlogEventQueueSize int
+	ExtractorTxQueueSize int
+	ApplierMsgQueueSize  int
+	ApplierTxQueueSize   int
+	SendByTimeout        int
+	SendBySizeFull       int
 }
 type MemoryStat struct {
-	Full  int64
-	Incr  int64
+	Full int64
+	Incr int64
 }
 
 type TxCount struct {
 	ExtractedTxCount *uint32
 	AppliedTxCount   *uint32
+}
+
+type QueryCount struct {
+	ExtractedQueryCount *uint64
+	AppliedQueryCount   *uint64
 }
 
 type TaskStatistics struct {
@@ -79,4 +84,5 @@ type TaskStatistics struct {
 	Timestamp          int64
 	MemoryStat         MemoryStat
 	HandledTxCount     TxCount
+	HandledQueryCount  QueryCount
 }

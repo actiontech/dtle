@@ -967,8 +967,10 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 	}
 
 	var txCount uint32
+	var queryCount uint64
 	if a.ai != nil {
 		txCount = a.ai.appliedTxCount
+		queryCount = a.ai.appliedQueryCount
 	}
 	taskResUsage := common.TaskStatistics{
 		ExecMasterRowCount: totalRowsReplay,
@@ -1002,6 +1004,9 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 		},
 		HandledTxCount: common.TxCount{
 			AppliedTxCount: &txCount,
+		},
+		HandledQueryCount: common.QueryCount{
+			AppliedQueryCount: &queryCount,
 		},
 	}
 	if a.natsConn != nil {

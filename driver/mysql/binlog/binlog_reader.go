@@ -1937,7 +1937,6 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		} else {
 			b.logger.Debug("event has not passed 'where'")
 		}
-
 		if b.entryContext.OriginalSize >= bigTxSplittingSize {
 			b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
 			b.entryContext.Entry.Final = false
