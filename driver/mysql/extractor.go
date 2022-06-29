@@ -56,8 +56,9 @@ type Extractor struct {
 	// Original comment: TotalRowsCopied returns the accurate number of rows being copied (affected)
 	// This is not exactly the same as the rows being iterated via chunks, but potentially close enough.
 	// TODO What is the difference between mysqlContext.RowsEstimate ?
-	TotalRowsCopied int64
-	natsAddr        string
+	TotalRowsCopied     int64
+	extractorQueryCount uint64
+	natsAddr            string
 
 	mysqlVersionDigit int
 	db                *gosql.DB
@@ -995,7 +996,6 @@ func (e *Extractor) StreamEvents() error {
 			for _, entry := range entries.Entries {
 				atomic.AddInt64(e.memory2, -int64(entry.Size()))
 			}
-
 			e.logger.Debug("publish.after", "gno", gno, "n", len(entries.Entries))
 			entries.Entries = nil
 			entriesSize = 0
@@ -1012,7 +1012,7 @@ func (e *Extractor) StreamEvents() error {
 			select {
 			case entryCtx := <-e.dataChannel:
 				binlogEntry := entryCtx.Entry
-
+				atomic.AddUint64(&e.extractorQueryCount, uint64(len(binlogEntry.Events)))
 				entries.Entries = append(entries.Entries, binlogEntry)
 				entriesSize += entryCtx.OriginalSize
 
@@ -1525,6 +1525,9 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 		HandledTxCount: common.TxCount{
 			ExtractedTxCount: &extractedTxCount,
 		},
+		HandledQueryCount: common.QueryCount{
+			ExtractedQueryCount: &e.extractorQueryCount,
+		},
 	}
 	if e.natsConn != nil {
 		taskResUsage.MsgStat = e.natsConn.Statistics
@@ -1615,7 +1618,7 @@ func (e *Extractor) Shutdown() error {
 
 func (e *Extractor) sendFullComplete() (err error) {
 	dumpMsg, err := common.Encode(&common.DumpStatResult{
-		Coord: e.initialBinlogCoordinates,
+		Coord:      e.initialBinlogCoordinates,
 		TableSpecs: e.tableSpecs,
 	})
 	if err != nil {
