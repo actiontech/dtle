@@ -60,7 +60,6 @@ type Extractor struct {
 	natsAddr        string
 
 	mysqlVersionDigit int
-	NetWriteTimeout   int
 	db                *gosql.DB
 	singletonDB       *gosql.DB
 	dumpers           []*dumper
@@ -724,7 +723,6 @@ func (e *Extractor) initDBConnections() (err error) {
 		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
 
 	e.MySQLVersion = someSysVars.Version
-	e.NetWriteTimeout = someSysVars.NetWriteTimeout
 	e.lowerCaseTableNames = someSysVars.LowerCaseTableNames
 	e.mysqlVersionDigit, err = common.MysqlVersionInDigit(e.MySQLVersion)
 	if err != nil {
@@ -802,9 +800,7 @@ func (e *Extractor) getSchemaTablesAndMeta() error {
 // initBinlogReader creates and connects the reader: we hook up to a MySQL server as a replica
 // Cooperate with `initiateStreaming()` using `e.streamerReadyCh`. Any err will be sent thru the chan.
 func (e *Extractor) initBinlogReader(binlogCoordinates *common.MySQLCoordinates) {
-	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"),
-		e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames,
-		e.NetWriteTimeout, e.ctx)
+	binlogReader, err := binlog.NewBinlogReader(e.execCtx, e.mysqlContext, e.logger.ResetNamed("reader"), e.replicateDoDb, e.sqleContext, e.memory2, e.db, e.targetGtid, e.lowerCaseTableNames, e.ctx)
 	if err != nil {
 		e.logger.Error("err at initBinlogReader: NewBinlogReader", "err", err)
 		e.streamerReadyCh <- err
