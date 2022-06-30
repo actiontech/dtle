@@ -1,4 +1,4 @@
-From docker-registry:5000/centos:centos7
+From reg.actiontech.com/actiontech/centos:centos7
 RUN yum install -y rpm-build ruby-devel git vim wget gcc make
 RUN gem install fpm
 
