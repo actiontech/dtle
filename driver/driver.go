@@ -127,6 +127,8 @@ var (
 		"SkipCreateDbTable":    hclspec.NewAttr("SkipCreateDbTable", "bool", false),
 		"SkipPrivilegeCheck":   hclspec.NewAttr("SkipPrivilegeCheck", "bool", false),
 		"SkipIncrementalCopy":  hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
+		"SlaveNetWriteTimeout": hclspec.NewDefault(hclspec.NewAttr("SlaveNetWriteTimeout", "number", false),
+			hclspec.NewLiteral(`28800`)), // 8 hours
 		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Host":     hclspec.NewAttr("Host", "string", true),
 			"Port":     hclspec.NewAttr("Port", "number", true),
