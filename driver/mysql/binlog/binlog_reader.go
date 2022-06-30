@@ -101,7 +101,6 @@ type BinlogReader struct {
 
 	serverUUID          string
 	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
-	netWriteTimeout     int
 
 	targetGtid          gomysql.GTIDSet
 	currentGtidSet      gomysql.GTIDSet
@@ -184,7 +183,7 @@ func NewBinlogReader(
 	execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType,
 	replicateDoDb map[string]*common.SchemaContext, sqleContext *sqle.Context,
 	memory *int64, db *gosql.DB, targetGtid string, lctn mysqlconfig.LowerCaseTableNamesValue,
-	nwTimeout int, ctx context.Context) (binlogReader *BinlogReader, err error) {
+	ctx context.Context) (binlogReader *BinlogReader, err error) {
 
 	sqlFilter, err := parseSqlFilter(cfg.SqlFilter)
 	if err != nil {
@@ -206,7 +205,6 @@ func NewBinlogReader(
 		memory:               memory,
 		db:                   db,
 		lowerCaseTableNames:  lctn,
-		netWriteTimeout:      nwTimeout,
 	}
 
 	binlogReader.serverUUID, err = sql.GetServerUUID(db)
@@ -258,8 +256,8 @@ func NewBinlogReader(
 
 			ParseTime: false, // must be false, or gencode will complain.
 
-			MemLimitSize: int64(g.MemAvailable * 10 / 2),
-			MemLimitSeconds: binlogReader.netWriteTimeout / 2,
+			MemLimitSize: int64(g.MemAvailable / 5),
+			MemLimitSeconds: 2,
 
 			Option: func(conn *gmclient.Conn) error {
 				_, err := conn.Execute("set session net_write_timeout = ?", cfg.SlaveNetWriteTimeout)
