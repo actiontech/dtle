@@ -10,6 +10,7 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"encoding/binary"
+	gmclient "github.com/go-mysql-org/go-mysql/client"
 	"os"
 	"path"
 	"path/filepath"
@@ -259,6 +260,14 @@ func NewBinlogReader(
 
 			MemLimitSize: int64(g.MemAvailable * 10 / 2),
 			MemLimitSeconds: binlogReader.netWriteTimeout / 2,
+
+			Option: func(conn *gmclient.Conn) error {
+				_, err := conn.Execute("set session net_write_timeout = ?", cfg.SlaveNetWriteTimeout)
+				if err != nil {
+					return err
+				}
+				return nil
+			},
 		}
 		binlogReader.binlogSyncer = replication.NewBinlogSyncer(binlogSyncerConfig)
 	}
@@ -934,8 +943,8 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryConte
 			if b.shutdown {
 				break
 			}
-			if i >= b.netWriteTimeout * 1000 / 10 / 2 {
-				b.logger.Info("reach netWriteTimeout limit. allow reading one event")
+			maxWaitMs := 1000
+			if i >= maxWaitMs / 10 {
 				break
 			}
 			time.Sleep(10 * time.Millisecond)

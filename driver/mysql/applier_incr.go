@@ -220,6 +220,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	binlogEntry := entryCtx.Entry
 
 	if a.inBigTx && binlogEntry.Index == 0 {
+		a.logger.Info("found resent BinlogEntry inBigTx", "gno", binlogEntry.Coordinates.GetGNO())
 		// src is resending an earlier BinlogEntry
 		if a.dbs[0].Tx != nil {
 			_ = a.dbs[0].Tx.Rollback()
