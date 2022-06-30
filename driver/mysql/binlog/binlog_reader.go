@@ -803,7 +803,9 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 	case <-b.shutdownCh:
 		return
 	case entriesChannel <- b.entryContext:
-		atomic.AddUint32(&b.extractedTxCount, 1)
+		if b.entryContext.Entry.Final {
+			atomic.AddUint32(&b.extractedTxCount, 1)
+		}	
 	}
 }
 

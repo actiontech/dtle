@@ -686,6 +686,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
 		}
+		logger.Debug("applier tx committed", "gno", binlogEntry.Coordinates.GetGNO())
 		atomic.AddUint32(&a.appliedTxCount, 1)
 	}
 	a.EntryExecutedHook(binlogEntry)
