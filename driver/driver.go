@@ -649,6 +649,7 @@ func (d *Driver) TaskStats(ctx context.Context, taskID string, interval time.Dur
 }
 
 func (d *Driver) handleStats(ctx context.Context, interval time.Duration, ch chan *drivers.TaskResourceUsage) {
+	defer close(ch)
 	timer := time.NewTimer(0)
 	for {
 		select {

@@ -101,32 +101,27 @@ func (sm *StoreManager) GetGtidForJob(jobName string) (string, error) {
 	return string(p.Value), nil
 }
 
-func (sm *StoreManager) WatchSourceType(jobName string, stopCh chan struct{}) (string, error) {
-	sm.logger.Debug("watchSourceType")
+func (sm *StoreManager) GetSourceType(jobName string, stopCh chan struct{}) (string, error) {
+	sm.logger.Debug("GetSourceType")
 
+	waitCh := make(chan struct{}, 0)
+	defer close(waitCh)
 	var err error
 	key := fmt.Sprintf("dtle/%v/SourceType", jobName)
-	ch, err := sm.consulStore.Watch(key, stopCh)
+	ch, err := sm.consulStore.Watch(key, waitCh)
 	if err != nil {
 		return "", err
 	}
-	loop := true
-	for loop {
-		select {
-		case <-stopCh:
-			return "", fmt.Errorf("shutdown")
-		case kv := <-ch:
-			if kv == nil {
-				return "", errors.Wrap(ErrNoConsul, "watchSourceType")
-			}
-			s := string(kv.Value)
-			if s == "" {
-				continue
-			}
-			return s, nil
+	select {
+	case kv := <-ch:
+		if kv == nil {
+			return "", errors.Wrap(ErrNoConsul, "WaitKv")
+		} else {
+			return string(kv.Value), nil
 		}
+	case <-stopCh:
+		return "", fmt.Errorf("shutdown")
 	}
-	return "", nil
 }
 
 func (sm *StoreManager) PutSourceType(jobName, sourceType string) error {
@@ -206,7 +201,6 @@ func (sm *StoreManager) DstPutNats(jobName string, natsAddr string, stopCh chan 
 
 func (sm *StoreManager) SrcWatchNats(jobName string, stopCh chan struct{},
 	onWatchError func(error)) (natsAddr string, err error) {
-
 	sm.logger.Debug("SrcWatchNats")
 
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
@@ -379,9 +373,11 @@ func (sm *StoreManager) SaveJobInfo(job JobListItemV2) error {
 }
 
 func (sm *StoreManager) WaitOnJob(currentJob string, waitJob string, stopCh chan struct{}) error {
+	waitCh := make(chan struct{}, 0)
+	defer close(waitCh)
 	key1 := fmt.Sprintf("dtleJobList/%v", waitJob)
 	// NB: it is OK to watch on non-existing keys.
-	ch, err := sm.consulStore.Watch(key1, stopCh)
+	ch, err := sm.consulStore.Watch(key1, waitCh)
 	if err != nil {
 		return err
 	}
@@ -423,18 +419,22 @@ func (sm *StoreManager) PutTargetGtid(subject string, value string) error {
 }
 
 func (sm *StoreManager) WatchTargetGtid(subject string, stopCh chan struct{}) (string, error) {
+	waitCh := make(chan struct{}, 0)
 	key := fmt.Sprintf("dtle/%v/targetGtid", subject)
-	ch, err := sm.consulStore.Watch(key, stopCh)
+	ch, err := sm.consulStore.Watch(key, waitCh)
 	if err != nil {
 		return "", err
 	}
-
-	kv := <-ch
-	if kv == nil {
-		return "", fmt.Errorf("WatchTargetGtid. got nil kv. might have been shutdown")
+	defer close(waitCh)
+	select {
+	case kv := <-ch:
+		if kv == nil {
+			return "", fmt.Errorf("WatchTargetGtid. got nil kv. might have been shutdown")
+		}
+		return string(kv.Value), nil
+	case <-stopCh:
+		return "", fmt.Errorf("shutdown")
 	}
-
-	return string(kv.Value), nil
 }
 
 func (sm *StoreManager) GetTargetGtid(subject string) (string, error) {
