@@ -276,7 +276,7 @@ func (a *Applier) Run() {
 		return
 	}
 
-	sourceType, err := a.storeManager.WatchSourceType(a.subject, a.shutdownCh)
+	sourceType, err := a.storeManager.GetSourceType(a.subject, a.shutdownCh)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "watchSourceType"))
 		return
