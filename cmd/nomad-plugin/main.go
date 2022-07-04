@@ -6,6 +6,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/shirou/gopsutil/v3/mem"
 
@@ -44,6 +45,15 @@ func main() {
 		if g.BigTxMaxJobs == 0 {
 			g.BigTxMaxJobs = 1
 		}
+
+		go func() {
+			for {
+				time.Sleep(120 * time.Second)
+				if g.BigTxReachMax() {
+					logger.Info("BigTxReachMax", "value", g.BigTxMaxJobs)
+				}
+			}
+		}()
 
 		logger.Info("dtle starting", "version", versionStr, "pid", pid)
 		logger.Info("env", "GODEBUG", os.Getenv("GODEBUG"), "GOMAXPROCS", runtime.GOMAXPROCS(0))
