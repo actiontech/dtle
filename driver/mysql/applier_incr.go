@@ -432,10 +432,8 @@ func (a *ApplierIncr) heterogeneousReplay() {
 	}
 }
 
-// buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
-// event entry on the original table.
 func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int,
-	tableItem *common.ApplierTableItem) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
+	tableItem *common.ApplierTableItem) (stmt *gosql.Stmt, query string, args []interface{}, err error) {
 	// Large piece of code deleted here. See git annotate.
 	var tableColumns = tableItem.Columns
 	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
@@ -455,17 +453,17 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 		{
 			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[0])
 			if err != nil {
-				return nil, "", nil, -1, err
+				return nil, "", nil, err
 			}
 			a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 			if hasUK {
 				stmt, err := doPrepareIfNil(tableItem.PsDelete, query)
 				if err != nil {
-					return nil, "", nil, -1, err
+					return nil, "", nil, err
 				}
-				return stmt, "", uniqueKeyArgs, -1, nil
+				return stmt, "", uniqueKeyArgs, nil
 			} else {
-				return nil, query, uniqueKeyArgs, -1, nil
+				return nil, query, uniqueKeyArgs, nil
 			}
 		}
 	case common.InsertDML:
@@ -473,19 +471,19 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 			// TODO no need to generate query string every time
 			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[0])
 			if err != nil {
-				return nil, "", nil, -1, err
+				return nil, "", nil, err
 			}
 			stmt, err := doPrepareIfNil(tableItem.PsInsert, query)
 			if err != nil {
-				return nil, "", nil, -1, err
+				return nil, "", nil, err
 			}
-			return stmt, "", sharedArgs, 1, err
+			return stmt, "", sharedArgs, err
 		}
 	case common.UpdateDML:
 		{
 			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[1], dmlEvent.Rows[0])
 			if err != nil {
-				return nil, "", nil, -1, err
+				return nil, "", nil, err
 			}
 			args = append(args, sharedArgs...)
 			args = append(args, uniqueKeyArgs...)
@@ -493,16 +491,16 @@ func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx in
 			if hasUK {
 				stmt, err := doPrepareIfNil(tableItem.PsUpdate, query)
 				if err != nil {
-					return nil, "", nil, -1, err
+					return nil, "", nil, err
 				}
 
-				return stmt, "", args, 0, err
+				return stmt, "", args, err
 			} else {
-				return nil, query, args, 0, err
+				return nil, query, args, err
 			}
 		}
 	}
-	return nil, "", args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
+	return nil, "", args, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
@@ -512,7 +510,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 	dbApplier := a.dbs[workerIdx]
 
-	var totalDelta int64
 	var err error
 	var timestamp uint32
 	txSid := binlogEntry.Coordinates.GetSid()
@@ -628,7 +625,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				}
 			}
 			logger.Debug("a dml event")
-			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx,
+			stmt, query, args, err := a.buildDMLEventQuery(event, workerIdx,
 				binlogEntryCtx.TableItems[i])
 			if err != nil {
 				logger.Error("buildDMLEventQuery error", "err", err)
@@ -656,7 +653,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			} else {
 				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "nr", nr)
 			}
-			totalDelta += rowDelta
 
 			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOn)
