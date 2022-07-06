@@ -1585,7 +1585,7 @@ func (e *Extractor) Shutdown() error {
 	e.shutdown = true
 	close(e.shutdownCh)
 
-	if atomic.LoadInt32(&e.binlogReader.BigTxCount) > 1 {
+	if e.binlogReader != nil && atomic.LoadInt32(&e.binlogReader.BigTxCount) > 1 {
 		g.SubBigTxJob()
 	}
 
