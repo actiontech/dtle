@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -372,10 +374,58 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 				d.logger.Error("error in SetupNatsServer", "err", err, "natsAddr", d.config.NatsBind)
 				// TODO mark driver unhealthy
 			}
-
+			// clean relay binlog data
+			go d.loopCleanRelayDir()
 		}()
 	}
 	return nil
+}
+
+func (d *Driver) loopCleanRelayDir() {
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	cleanDataDir := func() {
+		jobs, err := d.storeManager.FindJobList()
+		if err != nil {
+			d.logger.Error("list jobs failed", "err", err)
+			return
+		}
+
+		files, err := ioutil.ReadDir(path.Join(d.config.DataDir, "binlog"))
+		if err != nil {
+			d.logger.Error("read dir failed", "dataDir", d.config.DataDir, "err", err)
+			return
+		}
+
+		for _, file := range files {
+			existUnuseDir := true
+			for i := range jobs {
+				if jobs[i].JobId == file.Name() {
+					existUnuseDir = false
+				}
+			}
+			if !existUnuseDir {
+				continue
+			}
+			if err := os.RemoveAll(path.Join(d.config.DataDir, "binlog", file.Name())); err != nil {
+				d.logger.Warn("remove dir failed", "err", err)
+			}
+		}
+	}
+
+	jobKeysCh, err := d.storeManager.WatchTree("/dtleJobList/", stopCh)
+	if err != nil {
+		d.logger.Error("watch job tree error", "err", err)
+	}
+	for {
+		select {
+		case <-jobKeysCh:
+			cleanDataDir()
+		case <-time.After(time.Hour * 12):
+			cleanDataDir()
+		}
+	}
 }
 
 var setupApiServerFn func(logger g.LoggerType, driverConfig *DriverConfig) error
