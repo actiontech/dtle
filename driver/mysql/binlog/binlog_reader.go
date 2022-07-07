@@ -26,8 +26,6 @@ import (
 	"github.com/pingcap/tidb/parser/model"
 	"github.com/pkg/errors"
 
-	"github.com/cznic/mathutil"
-
 	"fmt"
 	"regexp"
 	"strconv"
@@ -1787,7 +1785,7 @@ func (b *BinlogReader) onMeetTarget() {
 }
 
 func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *replication.RowsEvent,
-	entriesChannel chan<- *common.EntryContext) error {
+	entriesChannel chan<- *common.EntryContext) (err error) {
 
 	schemaName := string(rowsEvent.Table.Schema)
 	tableName := string(rowsEvent.Table.Table)
@@ -1839,115 +1837,73 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 	// It is hard to calculate exact row size. We use estimation.
 	avgRowSize := len(ev.RawData) / len(rowsEvent.Rows)
 
-	for i, row := range rowsEvent.Rows {
-		//for _, col := range row {
-		//	b.logger.Debug("*** column type", "col", col, "type", hclog.Fmt("%T", col))
-		//}
-		b.logger.Trace("a row", "value", row[:mathutil.Min(len(row), g.LONG_LOG_LIMIT)])
-		if dml == common.UpdateDML && i%2 == 1 {
-			// An update has two rows (WHERE+SET)
-			// We do both at the same time
-			continue
+	if table != nil && table.Table.TableRename != "" {
+		dmlEvent.TableName = table.Table.TableRename
+		b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
+	}
+	schemaContext := b.findCurrentSchema(schemaName)
+	if schemaContext != nil && schemaContext.TableSchemaRename != "" {
+		b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schemaContext.TableSchemaRename)
+		dmlEvent.DatabaseName = schemaContext.TableSchemaRename
+	}
+
+	if table != nil && !table.DefChangedSent {
+		b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
+		if table.Table == nil {
+			b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
+				"schema", schemaName, "table", tableName)
+		} else {
+			tableBs, err := common.EncodeTable(table.Table)
+			if err != nil {
+				return errors.Wrap(err, "EncodeTable(table)")
+			}
+			dmlEvent.Table = tableBs
+		}
+
+		table.DefChangedSent = true
+	}
+
+	for _, row := range rowsEvent.Rows {
+		whereTrue := true
+		if table != nil && !table.WhereCtx.IsDefault {
+			whereTrue, err = table.WhereTrue(row)
+			if err != nil {
+				return err
+			}
 		}
 		switch dml {
-		case common.InsertDML:
-			{
-				dmlEvent.Rows = [][]interface{}{row}
+		case common.InsertDML, common.DeleteDML:
+			if whereTrue {
+				b.entryContext.OriginalSize += avgRowSize
+				dmlEvent.Rows = append(dmlEvent.Rows, row)
+			} else {
+				b.logger.Debug("event has not passed 'where'")
 			}
 		case common.UpdateDML:
-			{
-				dmlEvent.Rows = [][]interface{}{row, rowsEvent.Rows[i+1]}
-			}
-		case common.DeleteDML:
-			{
-				dmlEvent.Rows = [][]interface{}{row}
-			}
-		}
-
-		whereTrue := true
-		var err error
-		if table != nil && !table.WhereCtx.IsDefault {
-			switch dml {
-			case common.InsertDML:
-				whereTrue, err = table.WhereTrue(dmlEvent.Rows[0])
-				if err != nil {
-					return err
-				}
-			case common.UpdateDML:
-				before, err := table.WhereTrue(dmlEvent.Rows[0])
-				if err != nil {
-					return err
-				}
-				after, err := table.WhereTrue(dmlEvent.Rows[1])
-				if err != nil {
-					return err
-				}
-				if !before && !after {
-					whereTrue = false
-				} else if !before {
-					dmlEvent.DML = common.InsertDML
-					dmlEvent.Rows = dmlEvent.Rows[1:]
-				} else if !after {
-					dmlEvent.DML = common.DeleteDML
-					dmlEvent.Rows = dmlEvent.Rows[0:1]
-				} else {
-					// before == after == true
-				}
-			case common.DeleteDML:
-				whereTrue, err = table.WhereTrue(dmlEvent.Rows[0])
-				if err != nil {
-					return err
-				}
-			}
-		}
-		if table != nil && table.Table.TableRename != "" {
-			dmlEvent.TableName = table.Table.TableRename
-			b.logger.Debug("dml table mapping", "from", dmlEvent.TableName, "to", table.Table.TableRename)
-		}
-		schemaContext := b.findCurrentSchema(schemaName)
-		if schemaContext != nil && schemaContext.TableSchemaRename != "" {
-			b.logger.Debug("dml schema mapping", "from", dmlEvent.DatabaseName, "to", schemaContext.TableSchemaRename)
-			dmlEvent.DatabaseName = schemaContext.TableSchemaRename
-		}
-
-		if table != nil && !table.DefChangedSent {
-			b.logger.Debug("send table structure", "schema", schemaName, "table", tableName)
-			if table.Table == nil {
-				b.logger.Warn("DTLE_BUG binlog_reader: table.Table is nil",
-					"schema", schemaName, "table", tableName)
+			if whereTrue {
+				b.entryContext.OriginalSize += avgRowSize
+				dmlEvent.Rows = append(dmlEvent.Rows, row)
 			} else {
-				tableBs, err := common.EncodeTable(table.Table)
-				if err != nil {
-					return errors.Wrap(err, "EncodeTable(table)")
-				}
-				dmlEvent.Table = tableBs
+				dmlEvent.Rows = append(dmlEvent.Rows, nil)
+				b.logger.Debug("event has not passed 'where'")
 			}
-
-			table.DefChangedSent = true
 		}
+	}
 
-		if whereTrue {
-			// TODO review
-			b.entryContext.OriginalSize += avgRowSize * len(dmlEvent.Rows)
-
-			// The channel will do the throttling. Whoever is reding from the channel
-			// decides whether action is taken sycnhronously (meaning we wait before
-			// next iteration) or asynchronously (we keep pushing more events)
-			// In reality, reads will be synchronous
-			if table != nil && len(table.Table.ColumnMap) > 0 {
-				for iRow := range dmlEvent.Rows {
-					newRow := make([]interface{}, len(table.Table.ColumnMap))
-					for iCol := range table.Table.ColumnMap {
-						idx := table.Table.ColumnMap[iCol]
-						newRow[iCol] = dmlEvent.Rows[iRow][idx]
-					}
-					dmlEvent.Rows[iRow] = newRow
-				}
+	if table != nil && len(table.Table.ColumnMap) > 0 {
+		for iRow := range dmlEvent.Rows {
+			newRow := make([]interface{}, len(table.Table.ColumnMap))
+			for iCol := range table.Table.ColumnMap {
+				idx := table.Table.ColumnMap[iCol]
+				newRow[iCol] = dmlEvent.Rows[iRow][idx]
 			}
-			b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
-		} else {
-			b.logger.Debug("event has not passed 'where'")
+			dmlEvent.Rows[iRow] = newRow
 		}
+	}
+
+	if len(dmlEvent.Rows) > 0 {
+		b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
+
 		if b.entryContext.OriginalSize >= bigTxSplittingSize {
 			b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
 			b.entryContext.Entry.Final = false
@@ -1963,9 +1919,9 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 			}
 		}
 	}
+
 	return nil
 }
-
 
 func (b *BinlogReader) removeFKChildSchema(schema string) {
 	for _, schemaContext := range b.tables {
@@ -1979,6 +1935,7 @@ func (b *BinlogReader) removeFKChildSchema(schema string) {
 		}
 	}
 }
+
 func (b *BinlogReader) removeFKChild(childSchema string, childTable string) {
 	for _, schemaContext := range b.tables {
 		for _, tableContext := range schemaContext.TableMap {

@@ -432,79 +432,6 @@ func (a *ApplierIncr) heterogeneousReplay() {
 	}
 }
 
-// buildDMLEventQuery creates a query to operate on the ghost table, based on an intercepted binlog
-// event entry on the original table.
-func (a *ApplierIncr) buildDMLEventQuery(dmlEvent common.DataEvent, workerIdx int,
-	tableItem *common.ApplierTableItem) (stmt *gosql.Stmt, query string, args []interface{}, rowsDelta int64, err error) {
-	// Large piece of code deleted here. See git annotate.
-	var tableColumns = tableItem.Columns
-	doPrepareIfNil := func(stmts []*gosql.Stmt, query string) (*gosql.Stmt, error) {
-		var err error
-		if stmts[workerIdx] == nil {
-			a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
-			stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
-			if err != nil {
-				a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
-			}
-		}
-		return stmts[workerIdx], err
-	}
-
-	switch dmlEvent.DML {
-	case common.DeleteDML:
-		{
-			query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[0])
-			if err != nil {
-				return nil, "", nil, -1, err
-			}
-			a.logger.Debug("BuildDMLDeleteQuery", "query", query)
-			if hasUK {
-				stmt, err := doPrepareIfNil(tableItem.PsDelete, query)
-				if err != nil {
-					return nil, "", nil, -1, err
-				}
-				return stmt, "", uniqueKeyArgs, -1, nil
-			} else {
-				return nil, query, uniqueKeyArgs, -1, nil
-			}
-		}
-	case common.InsertDML:
-		{
-			// TODO no need to generate query string every time
-			query, sharedArgs, err := sql.BuildDMLInsertQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[0])
-			if err != nil {
-				return nil, "", nil, -1, err
-			}
-			stmt, err := doPrepareIfNil(tableItem.PsInsert, query)
-			if err != nil {
-				return nil, "", nil, -1, err
-			}
-			return stmt, "", sharedArgs, 1, err
-		}
-	case common.UpdateDML:
-		{
-			query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(dmlEvent.DatabaseName, dmlEvent.TableName, tableColumns, tableItem.ColumnMapTo, dmlEvent.Rows[1], dmlEvent.Rows[0])
-			if err != nil {
-				return nil, "", nil, -1, err
-			}
-			args = append(args, sharedArgs...)
-			args = append(args, uniqueKeyArgs...)
-
-			if hasUK {
-				stmt, err := doPrepareIfNil(tableItem.PsUpdate, query)
-				if err != nil {
-					return nil, "", nil, -1, err
-				}
-
-				return stmt, "", args, 0, err
-			} else {
-				return nil, query, args, 0, err
-			}
-		}
-	}
-	return nil, "", args, 0, fmt.Errorf("Unknown dml event type: %+v", dmlEvent.DML)
-}
-
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.EntryContext) error {
 	logger := a.logger.Named("ApplyBinlogEvent")
@@ -512,7 +439,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 	dbApplier := a.dbs[workerIdx]
 
-	var totalDelta int64
 	var err error
 	var timestamp uint32
 	txSid := binlogEntry.Coordinates.GetSid()
@@ -530,8 +456,8 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 	}()
 	for i, event := range binlogEntry.Events {
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GetGNO(), "event", i)
-		switch event.DML {
-		case common.NotDML:
+
+		if event.DML == common.NotDML {
 			var err error
 			logger.Debug("not dml", "query", event.Query)
 
@@ -613,7 +539,9 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					return err
 				}
 			}
-		default: // is DML
+		} else {
+			logger.Debug("a dml event")
+
 			flag := uint16(0)
 			if len(event.Flags) > 0 {
 				flag = binary.LittleEndian.Uint16(event.Flags)
@@ -627,36 +555,124 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					return errors.Wrap(err, "querySetFKChecksOff")
 				}
 			}
-			logger.Debug("a dml event")
-			stmt, query, args, rowDelta, err := a.buildDMLEventQuery(event, workerIdx,
-				binlogEntryCtx.TableItems[i])
-			if err != nil {
-				logger.Error("buildDMLEventQuery error", "err", err)
-				return err
+
+			tableItem := binlogEntryCtx.TableItems[i]
+
+			prepareIfNilAndExecute := func(hasUK bool, stmts []*gosql.Stmt, query string, args []interface{}) (err error) {
+				var r gosql.Result
+
+				if hasUK {
+					if stmts[workerIdx] == nil {
+						a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
+						stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
+						if err != nil {
+							a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
+							return err
+						}
+					}
+
+					r, err = stmts[workerIdx].ExecContext(a.ctx, args...)
+				} else {
+					r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, query, args...)
+				}
+
+				if err != nil {
+					logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GetGNO()),
+						"err", err)
+					return err
+				}
+
+				nr, err := r.RowsAffected()
+				if err != nil {
+					logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "err", err)
+				} else {
+					logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "nr", nr)
+				}
+				return nil
 			}
 
-			logger.Debug("buildDMLEventQuery.after", "nArgs", len(args))
+			switch event.DML {
+			case common.InsertDML:
+				for _, row := range event.Rows {
+					query, sharedArgs, err := sql.BuildDMLInsertQuery(
+						event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, row)
+					if err != nil {
+						return err
+					}
 
-			var r gosql.Result
-			if stmt != nil {
-				r, err = stmt.ExecContext(a.ctx, args...)
-			} else {
-				r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, query, args...)
-			}
+					err = prepareIfNilAndExecute(true, tableItem.PsInsert, query, sharedArgs)
+					if err != nil {
+						return err
+					}
+				}
+			case common.DeleteDML:
+				for _, row := range event.Rows {
+					query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(
+						event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, row)
+					if err != nil {
+						return err
+					}
+					a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 
-			if err != nil {
-				logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GetGNO()),
-					"err", err)
-				return err
-			}
+					err = prepareIfNilAndExecute(hasUK, tableItem.PsDelete, query, uniqueKeyArgs)
+					if err != nil {
+						return err
+					}
+				}
+			case common.UpdateDML:
+				if len(event.Rows) % 2 != 0 {
+					return fmt.Errorf("bad update event. row number is not 2N %v gno %v",
+						len(event.Rows), binlogEntry.Coordinates.GetGNO())
+				}
+				for i := 0; i < len(event.Rows); i += 2 {
+					rowBefore := event.Rows[i]
+					rowAfter  := event.Rows[i+1]
 
-			nr, err := r.RowsAffected()
-			if err != nil {
-				logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "err", err)
-			} else {
-				logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "nr", nr)
+					if len(rowBefore) == 0 && len(rowAfter) == 0 {
+						return fmt.Errorf("bad update event. row number is not 2N %v gno %v",
+							len(event.Rows), binlogEntry.Coordinates.GetGNO())
+					}
+
+					if len(rowBefore) == 0 { // insert
+						query, sharedArgs, err := sql.BuildDMLInsertQuery(
+							event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowAfter)
+						if err != nil {
+							return err
+						}
+
+						err = prepareIfNilAndExecute(true, tableItem.PsInsert, query, sharedArgs)
+						if err != nil {
+							return err
+						}
+					} else if len(rowAfter) == 0 { // delete
+						query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(
+							event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowBefore)
+						if err != nil {
+							return err
+						}
+						a.logger.Debug("BuildDMLDeleteQuery", "query", query)
+
+						err = prepareIfNilAndExecute(hasUK, tableItem.PsDelete, query, uniqueKeyArgs)
+						if err != nil {
+							return err
+						}
+					} else {
+						query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowAfter, rowBefore)
+						if err != nil {
+							return err
+						}
+
+						var args []interface{}
+						args = append(args, sharedArgs...)
+						args = append(args, uniqueKeyArgs...)
+
+						err = prepareIfNilAndExecute(hasUK, tableItem.PsUpdate, query, args)
+						if err != nil {
+							return err
+						}
+					}
+				}
 			}
-			totalDelta += rowDelta
 
 			if noFKCheckFlag && a.mysqlContext.ForeignKeyChecks {
 				_, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, querySetFKChecksOn)
@@ -665,6 +681,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				}
 			}
 		}
+
 		timestamp = event.Timestamp
 		atomic.AddUint64(&a.appliedQueryCount, uint64(1))
 	}
