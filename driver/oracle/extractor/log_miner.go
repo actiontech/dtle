@@ -597,9 +597,30 @@ func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.DataEntry {
 			e.logger.Error("parse timestamp", "err", err)
 		}
 		dataEvent.Timestamp = uint32(times.Unix())
-		entry.Events = append(entry.Events, dataEvent)
+		mergedDataEvent(entry, dataEvent)
 	}
 	return entry
+}
+
+func mergedDataEvent(entry *common.DataEntry, dataEvent common.DataEvent) {
+	// first event   -> append
+	// not dml event -> append
+	// new event (dml type/schema/table) is the same with entry last dataEvent,merged
+	lastEventIndex := len(entry.Events) - 1
+	if lastEventIndex < 0 || dataEvent.DML == common.NotDML {
+
+	} else {
+		lastEvent := entry.Events[lastEventIndex]
+		if lastEvent.DML == dataEvent.DML &&
+			lastEvent.TableName == dataEvent.TableName &&
+			lastEvent.DatabaseName == dataEvent.DatabaseName {
+			for i := range dataEvent.Rows {
+				entry.Events[lastEventIndex].Rows = append(entry.Events[lastEventIndex].Rows, dataEvent.Rows[i])
+			}
+			return
+		}
+	}
+	entry.Events = append(entry.Events, dataEvent)
 }
 
 type LogMinerStream struct {
