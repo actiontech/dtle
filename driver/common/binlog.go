@@ -159,7 +159,8 @@ func (b *DataEvent) String() string {
 
 type ApplierTableItem struct {
 	Columns     *ColumnList
-	PsInsert    []*sql.Stmt
+	PsInsert1   []*sql.Stmt
+	PsInsertN   []*sql.Stmt
 	PsDelete    []*sql.Stmt
 	PsUpdate    []*sql.Stmt
 	ColumnMapTo []string
@@ -167,10 +168,11 @@ type ApplierTableItem struct {
 
 func NewApplierTableItem(parallelWorkers int) *ApplierTableItem {
 	return &ApplierTableItem{
-		Columns:  nil,
-		PsInsert: make([]*sql.Stmt, parallelWorkers),
-		PsDelete: make([]*sql.Stmt, parallelWorkers),
-		PsUpdate: make([]*sql.Stmt, parallelWorkers),
+		Columns:   nil,
+		PsInsert1: make([]*sql.Stmt, parallelWorkers),
+		PsInsertN: make([]*sql.Stmt, parallelWorkers),
+		PsDelete:  make([]*sql.Stmt, parallelWorkers),
+		PsUpdate:  make([]*sql.Stmt, parallelWorkers),
 	}
 }
 func (ait *ApplierTableItem) Reset() {
@@ -183,7 +185,7 @@ func (ait *ApplierTableItem) Reset() {
 			}
 		}
 	}
-	closeStmts(ait.PsInsert)
+	closeStmts(ait.PsInsert1)
 	closeStmts(ait.PsDelete)
 	closeStmts(ait.PsUpdate)
 

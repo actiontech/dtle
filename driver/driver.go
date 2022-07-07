@@ -140,6 +140,8 @@ var (
 				hclspec.NewLiteral(`"utf8mb4"`)),
 		})),
 		"WaitOnJob": hclspec.NewAttr("WaitOnJob", "string", false),
+		"NBulkInsert": hclspec.NewDefault(hclspec.NewAttr("NBulkInsert", "number", false),
+			hclspec.NewLiteral(`4`)),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Topic":   hclspec.NewAttr("Topic", "string", true),
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),

@@ -151,41 +151,69 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 	return result, columnArgs, hasUK, nil
 }
 
-func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, args []interface{}) (result string, sharedArgs []interface{}, err error) {
-	if !(len(args) >= tableColumns.Len() || len(args) == len(columnMapTo)) {
-		return result, sharedArgs, fmt.Errorf("args count differs from table column count in BuildDMLInsertQuery %v %v %v",
-			len(args), tableColumns.Len(), len(columnMapTo))
-	}
+func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string,
+	rows [][]interface{}) (result string, sharedArgs []interface{}, err error) {
 
-	databaseName = umconf.EscapeName(databaseName)
-	tableName = umconf.EscapeName(tableName)
+	if len(rows) == 0 {
+		return "", nil, fmt.Errorf("BuildDMLInsertQuery: rows is empty %v.%v", databaseName, tableName)
+	}
 
 	var placeholders []string
 
-	for i := range args {
-		column := getColumnWithMapTo(i, columnMapTo, tableColumns)
-		var token string
-		var arg interface{}
-		if column != nil {
-			if column.TimezoneConversion != nil {
-				token = fmt.Sprintf("convert_tz(?, '%s', '%s')", column.TimezoneConversion.ToTimezone, "+00:00")
-			} else {
-				token = "?"
+	for iRow := range rows {
+		args := rows[iRow]
+
+		if iRow == 0 {
+			if !(len(args) >= tableColumns.Len() || len(args) == len(columnMapTo)) {
+				return "", nil, fmt.Errorf("BuildDMLInsertQuery: args count differs from table column count %v %v %v",
+					len(args), tableColumns.Len(), len(columnMapTo))
 			}
-			arg = column.ConvertArg(args[i])
 		} else {
-			token = "?"
-			arg = args[i]
+			if len(args) != len(rows[0]) {
+				return "", nil, fmt.Errorf("BuildDMLInsertQuery: args count differs from args0 %v %v %v",
+					len(args), len(rows[0]))
+			}
 		}
-		placeholders = append(placeholders, token)
-		sharedArgs = append(sharedArgs, arg)
+
+		for i := range args {
+			column := getColumnWithMapTo(i, columnMapTo, tableColumns)
+
+			if iRow == 0 {
+				if column != nil && column.TimezoneConversion != nil {
+					placeholders = append(placeholders,
+						fmt.Sprintf("convert_tz(?, '%s', '%s')", column.TimezoneConversion.ToTimezone, "+00:00"))
+				} else {
+					placeholders = append(placeholders, "?")
+				}
+			}
+
+			if column != nil {
+				sharedArgs = append(sharedArgs, column.ConvertArg(args[i]))
+			} else {
+				sharedArgs = append(sharedArgs, args[i])
+			}
+		}
 	}
 
-	result = fmt.Sprintf(`replace into %s.%s %s values (%s)`, databaseName, tableName,
-		umconf.BuildInsertColumnList(columnMapTo),
-		strings.Join(placeholders, ", "),
-	)
-	return result, sharedArgs, nil
+	placeholdersStr := strings.Join(placeholders, ",")
+
+	sb := strings.Builder{}
+	sb.WriteString("replace into ")
+	sb.WriteString(umconf.EscapeName(databaseName))
+	sb.WriteByte('.')
+	sb.WriteString(umconf.EscapeName(tableName))
+	sb.WriteByte(' ')
+	sb.WriteString(umconf.BuildInsertColumnList(columnMapTo))
+	sb.WriteString(" values (")
+	for i := 0; i < len(rows); i++ {
+		if i > 0 {
+			sb.WriteString("),(")
+		}
+		sb.WriteString(placeholdersStr)
+	}
+	sb.WriteByte(')')
+
+	return sb.String(), sharedArgs, nil
 }
 
 func getColumnWithMapTo(columnIndex int, columnMapTo []string, tableColumns *common.ColumnList) *umconf.Column {

@@ -593,14 +593,28 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 			switch event.DML {
 			case common.InsertDML:
-				for _, row := range event.Rows {
+				nRows := len(event.Rows)
+				for i := 0; i < nRows; {
+					var stmts []*gosql.Stmt
+					var rows [][]interface{}
+					if nRows-i < a.mysqlContext.NBulkInsert {
+						stmts = tableItem.PsInsert1
+						rows = event.Rows[i : i+1]
+						i += 1
+					} else {
+						stmts = tableItem.PsInsertN
+						rows = event.Rows[i : i+a.mysqlContext.NBulkInsert]
+						i += a.mysqlContext.NBulkInsert
+					}
+
 					query, sharedArgs, err := sql.BuildDMLInsertQuery(
-						event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, row)
+						event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rows)
 					if err != nil {
 						return err
 					}
+					a.logger.Debug("BuildDMLInsertQuery", "query", query)
 
-					err = prepareIfNilAndExecute(true, tableItem.PsInsert, query, sharedArgs)
+					err = prepareIfNilAndExecute(true, stmts, query, sharedArgs)
 					if err != nil {
 						return err
 					}
@@ -635,12 +649,12 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 					if len(rowBefore) == 0 { // insert
 						query, sharedArgs, err := sql.BuildDMLInsertQuery(
-							event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowAfter)
+							event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, event.Rows[i+1:i+2])
 						if err != nil {
 							return err
 						}
 
-						err = prepareIfNilAndExecute(true, tableItem.PsInsert, query, sharedArgs)
+						err = prepareIfNilAndExecute(true, tableItem.PsInsert1, query, sharedArgs)
 						if err != nil {
 							return err
 						}
