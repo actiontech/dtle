@@ -620,6 +620,10 @@ func (sm *StoreManager) GetOracleSCNPosForJob(jobName string) (oldestUncommitted
 	return
 }
 
+func (sm *StoreManager) WatchTree(dir string, stopCh <-chan struct{}) (<-chan []*store.KVPair, error) {
+	return sm.consulStore.WatchTree(dir, stopCh)
+}
+
 // consul store item
 
 func NewDefaultRole(tenant string) *Role {

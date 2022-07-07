@@ -939,6 +939,7 @@ func (tsc *TimestampContext) GetDelay() (d int64) {
 	tsc.logger.Debug("TimestampContext.GetDelay", "delay", tsc.delay)
 	return tsc.delay
 }
+
 func (tsc *TimestampContext) Handle() {
 	interval := 15 * time.Second
 	t := time.NewTicker(interval)
@@ -1570,7 +1571,6 @@ func (e *Extractor) onError(state int, err error) {
 	}
 	_ = e.Shutdown()
 }
-
 // Shutdown is used to tear down the extractor
 func (e *Extractor) Shutdown() error {
 	e.logger.Debug("extractor shutdown")
