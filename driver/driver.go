@@ -386,15 +386,15 @@ func (d *Driver) loopCleanRelayDir() {
 	defer close(stopCh)
 
 	cleanDataDir := func() {
-		jobs, err := d.storeManager.FindJobList()
-		if err != nil {
-			d.logger.Error("list jobs failed", "err", err)
-			return
-		}
-
 		files, err := ioutil.ReadDir(path.Join(d.config.DataDir, "binlog"))
 		if err != nil {
 			d.logger.Error("read dir failed", "dataDir", d.config.DataDir, "err", err)
+			return
+		}
+
+		jobs, err := d.storeManager.FindJobList()
+		if err != nil {
+			d.logger.Error("list jobs failed", "err", err)
 			return
 		}
 
@@ -418,13 +418,17 @@ func (d *Driver) loopCleanRelayDir() {
 	if err != nil {
 		d.logger.Error("watch job tree error", "err", err)
 	}
+	cleanDuration := 12 * time.Hour
+	cleanDelay := time.NewTimer(cleanDuration)
+	defer cleanDelay.Stop()
 	for {
 		select {
 		case <-jobKeysCh:
 			cleanDataDir()
-		case <-time.After(time.Hour * 12):
+		case <-cleanDelay.C:
 			cleanDataDir()
 		}
+		cleanDelay.Reset(cleanDuration)
 	}
 }
 
