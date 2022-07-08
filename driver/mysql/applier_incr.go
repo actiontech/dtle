@@ -558,20 +558,20 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 			tableItem := binlogEntryCtx.TableItems[i]
 
-			prepareIfNilAndExecute := func(hasUK bool, stmts []*gosql.Stmt, query string, args []interface{}) (err error) {
+			prepareIfNilAndExecute := func(hasUK bool, pstmt **gosql.Stmt, query string, args []interface{}) (err error) {
 				var r gosql.Result
 
 				if hasUK {
-					if stmts[workerIdx] == nil {
+					if *pstmt == nil {
 						a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
-						stmts[workerIdx], err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
+						*pstmt, err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
 						if err != nil {
 							a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
 							return err
 						}
 					}
 
-					r, err = stmts[workerIdx].ExecContext(a.ctx, args...)
+					r, err = (*pstmt).ExecContext(a.ctx, args...)
 				} else {
 					r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, query, args...)
 				}
@@ -595,40 +595,41 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			case common.InsertDML:
 				nRows := len(event.Rows)
 				for i := 0; i < nRows; {
-					var stmts []*gosql.Stmt
+					var pstmt **gosql.Stmt
 					var rows [][]interface{}
 					if nRows-i < a.mysqlContext.NBulkInsert {
-						stmts = tableItem.PsInsert1
+						pstmt = &tableItem.PsInsert1[workerIdx]
 						rows = event.Rows[i : i+1]
 						i += 1
 					} else {
-						stmts = tableItem.PsInsertN
+						pstmt = &tableItem.PsInsertN[workerIdx]
 						rows = event.Rows[i : i+a.mysqlContext.NBulkInsert]
 						i += a.mysqlContext.NBulkInsert
 					}
 
-					query, sharedArgs, err := sql.BuildDMLInsertQuery(
-						event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rows)
+					query, sharedArgs, err := sql.BuildDMLInsertQuery(event.DatabaseName, event.TableName,
+						tableItem.Columns, tableItem.ColumnMapTo, rows, *pstmt)
 					if err != nil {
 						return err
 					}
 					a.logger.Debug("BuildDMLInsertQuery", "query", query)
 
-					err = prepareIfNilAndExecute(true, stmts, query, sharedArgs)
+					err = prepareIfNilAndExecute(true, pstmt, query, sharedArgs)
 					if err != nil {
 						return err
 					}
 				}
 			case common.DeleteDML:
 				for _, row := range event.Rows {
-					query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(
-						event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, row)
+					pstmt := &tableItem.PsDelete[workerIdx]
+					query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(event.DatabaseName, event.TableName,
+						tableItem.Columns, tableItem.ColumnMapTo, row, *pstmt)
 					if err != nil {
 						return err
 					}
 					a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 
-					err = prepareIfNilAndExecute(hasUK, tableItem.PsDelete, query, uniqueKeyArgs)
+					err = prepareIfNilAndExecute(hasUK, pstmt, query, uniqueKeyArgs)
 					if err != nil {
 						return err
 					}
@@ -648,30 +649,33 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					}
 
 					if len(rowBefore) == 0 { // insert
-						query, sharedArgs, err := sql.BuildDMLInsertQuery(
-							event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, event.Rows[i+1:i+2])
+						pstmt := &tableItem.PsInsert1[workerIdx]
+						query, sharedArgs, err := sql.BuildDMLInsertQuery(event.DatabaseName, event.TableName,
+							tableItem.Columns, tableItem.ColumnMapTo, event.Rows[i+1:i+2], *pstmt)
 						if err != nil {
 							return err
 						}
 
-						err = prepareIfNilAndExecute(true, tableItem.PsInsert1, query, sharedArgs)
+						err = prepareIfNilAndExecute(true, pstmt, query, sharedArgs)
 						if err != nil {
 							return err
 						}
 					} else if len(rowAfter) == 0 { // delete
-						query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(
-							event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowBefore)
+						pstmt := &tableItem.PsDelete[workerIdx]
+						query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(event.DatabaseName, event.TableName,
+							tableItem.Columns, tableItem.ColumnMapTo, rowBefore, *pstmt)
 						if err != nil {
 							return err
 						}
 						a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 
-						err = prepareIfNilAndExecute(hasUK, tableItem.PsDelete, query, uniqueKeyArgs)
+						err = prepareIfNilAndExecute(hasUK, pstmt, query, uniqueKeyArgs)
 						if err != nil {
 							return err
 						}
 					} else {
-						query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowAfter, rowBefore)
+						pstmt := &tableItem.PsUpdate[workerIdx]
+						query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowAfter, rowBefore, *pstmt)
 						if err != nil {
 							return err
 						}
@@ -680,7 +684,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 						args = append(args, sharedArgs...)
 						args = append(args, uniqueKeyArgs...)
 
-						err = prepareIfNilAndExecute(hasUK, tableItem.PsUpdate, query, args)
+						err = prepareIfNilAndExecute(hasUK, pstmt, query, args)
 						if err != nil {
 							return err
 						}

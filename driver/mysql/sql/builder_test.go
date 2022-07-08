@@ -102,7 +102,7 @@ func TestBuildDMLInsertQuery(t *testing.T) {
 		})
 		args := []interface{}{3, "testName", "first", 17, 23}
 
-		query, explodedArgs, err := BuildDMLInsertQuery(databaseName, tableName, uniqueKeyColumns, []string{}, args)
+		query, explodedArgs, err := BuildDMLInsertQuery(databaseName, tableName, uniqueKeyColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `replace into mydb.tbl  values (?, ?, ?, ?, ?)`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
@@ -183,7 +183,7 @@ func TestBuildDMLInsertQuerySignedUnsigned(t *testing.T) {
 	{
 		// testing signed
 		args := []interface{}{3, "testname", "first", int8(-1), 23}
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `replace into mydb.tbl  values (?, ?, ?, ?, ?)`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
@@ -193,7 +193,7 @@ func TestBuildDMLInsertQuerySignedUnsigned(t *testing.T) {
 		// testing unsigned
 		args := []interface{}{3, "testname", "first", int8(-1), 23}
 		tableColumns.SetUnsigned("position")
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			replace into mydb.tbl  values (?, ?, ?, ?, ?)`
@@ -204,7 +204,7 @@ func TestBuildDMLInsertQuerySignedUnsigned(t *testing.T) {
 		// testing unsigned
 		args := []interface{}{3, "testname", "first", int32(-1), 23}
 		tableColumns.SetUnsigned("position")
-		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			replace into mydb.tbl  values (?, ?, ?, ?, ?)`
@@ -287,7 +287,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 		},
 	})
 	{
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete  from
@@ -368,7 +368,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 				Scale:              0,
 			},
 		})
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete	from
@@ -449,7 +449,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 				Scale:              0,
 			},
 		})
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete
@@ -465,7 +465,7 @@ func TestBuildDMLDeleteQuery(t *testing.T) {
 	{
 		args := []interface{}{"first", 17}
 
-		_, _, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
+		_, _, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNotNil(err)
 	}
 }
@@ -544,7 +544,7 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 	{
 		// test signed (expect no change)
 		args := []interface{}{-1, "testname", "first", 3, 23}
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete
@@ -561,7 +561,7 @@ func TestBuildDMLDeleteQuerySignedUnsigned(t *testing.T) {
 		// test unsigned
 		args := []interface{}{int8(-1), "testname", "first", 3, 23}
 		tableColumns.SetUnsigned("position")
-		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args)
+		query, uniqueKeyArgs, _, err := BuildDMLDeleteQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			delete 
@@ -650,7 +650,7 @@ func TestBuildDMLUpdateQuery(t *testing.T) {
 	valueArgs := []interface{}{3, "testname", "newval", 17, 23}
 	whereArgs := []interface{}{3, "testname", "findme", 17, 56}
 	{
-		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs)
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			update 
@@ -818,7 +818,7 @@ func TestBuildDMLUpdateQuerySignedUnsigned(t *testing.T) {
 				Scale:              0,
 			},
 		})
-		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs)
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			update
@@ -905,7 +905,7 @@ func TestBuildDMLUpdateQuerySignedUnsigned(t *testing.T) {
 		// test unsigned
 		tableColumns.SetUnsigned("age")
 		tableColumns.SetUnsigned("position")
-		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs)
+		query, sharedArgs, uniqueKeyArgs, _, err := BuildDMLUpdateQuery(databaseName, tableName, tableColumns, []string{}, valueArgs, whereArgs, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
 			update

@@ -8,6 +8,7 @@ package sql
 
 import (
 	"bytes"
+	gosql "database/sql"
 	"fmt"
 	"github.com/actiontech/dtle/g"
 	"strings"
@@ -82,7 +83,9 @@ func BuildValueComparison(columnEscaped string, value string, comparisonSign Val
 	return comparison, err
 }
 
-func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, args []interface{}) (result string, columnArgs []interface{}, hasUK bool, err error) {
+func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string,
+	args []interface{}, stmt *gosql.Stmt) (result string, columnArgs []interface{}, hasUK bool, err error) {
+
 	if !(len(args) >= tableColumns.Len() || len(args) == len(columnMapTo)) {
 		return result, columnArgs, hasUK, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v %v %v",
 			len(args), tableColumns.Len(), len(columnMapTo))
@@ -141,18 +144,22 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 		columnArgs = uniqueKeyArgs
 	}
 
-	databaseName = umconf.EscapeName(databaseName)
-	tableName = umconf.EscapeName(tableName)
-	result = fmt.Sprintf(`delete from %s.%s where
+	if hasUK && stmt != nil {
+		result = ""
+	} else {
+		databaseName = umconf.EscapeName(databaseName)
+		tableName = umconf.EscapeName(tableName)
+		result = fmt.Sprintf(`delete from %s.%s where
 %s limit 1`, databaseName, tableName,
-		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
-	)
+			fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
+		)
+	}
 	// hasUK: true: use saved PS to execute; false: execute a new query.
 	return result, columnArgs, hasUK, nil
 }
 
 func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string,
-	rows [][]interface{}) (result string, sharedArgs []interface{}, err error) {
+	rows [][]interface{}, stmt *gosql.Stmt) (result string, sharedArgs []interface{}, err error) {
 
 	if len(rows) == 0 {
 		return "", nil, fmt.Errorf("BuildDMLInsertQuery: rows is empty %v.%v", databaseName, tableName)
@@ -195,25 +202,30 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 		}
 	}
 
-	placeholdersStr := strings.Join(placeholders, ",")
+	if stmt != nil {
+		result = ""
+	} else {
+		placeholdersStr := strings.Join(placeholders, ",")
 
-	sb := strings.Builder{}
-	sb.WriteString("replace into ")
-	sb.WriteString(umconf.EscapeName(databaseName))
-	sb.WriteByte('.')
-	sb.WriteString(umconf.EscapeName(tableName))
-	sb.WriteByte(' ')
-	sb.WriteString(umconf.BuildInsertColumnList(columnMapTo))
-	sb.WriteString(" values (")
-	for i := 0; i < len(rows); i++ {
-		if i > 0 {
-			sb.WriteString("),(")
+		sb := strings.Builder{}
+		sb.WriteString("replace into ")
+		sb.WriteString(umconf.EscapeName(databaseName))
+		sb.WriteByte('.')
+		sb.WriteString(umconf.EscapeName(tableName))
+		sb.WriteByte(' ')
+		sb.WriteString(umconf.BuildInsertColumnList(columnMapTo))
+		sb.WriteString(" values (")
+		for i := 0; i < len(rows); i++ {
+			if i > 0 {
+				sb.WriteString("),(")
+			}
+			sb.WriteString(placeholdersStr)
 		}
-		sb.WriteString(placeholdersStr)
-	}
-	sb.WriteByte(')')
+		sb.WriteByte(')')
 
-	return sb.String(), sharedArgs, nil
+		result = sb.String()
+	}
+	return result, sharedArgs, nil
 }
 
 func getColumnWithMapTo(columnIndex int, columnMapTo []string, tableColumns *common.ColumnList) *umconf.Column {
@@ -225,7 +237,7 @@ func getColumnWithMapTo(columnIndex int, columnMapTo []string, tableColumns *com
 	return nil
 }
 
-func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, valueArgs, whereArgs []interface{}) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
+func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns *common.ColumnList, columnMapTo []string, valueArgs, whereArgs []interface{}, stmt *gosql.Stmt) (result string, sharedArgs, columnArgs []interface{}, hasUK bool, err error) {
 	//if len(valueArgs) < tableColumns.Len() {
 	//	return result, sharedArgs, columnArgs, hasUK, fmt.Errorf("value args count differs from table column count in BuildDMLUpdateQuery %v, %v",
 	//		len(valueArgs), tableColumns.Len())
@@ -309,12 +321,16 @@ func BuildDMLUpdateQuery(databaseName, tableName string, tableColumns *common.Co
 		columnArgs = uniqueKeyArgs
 	}
 
-	result = fmt.Sprintf(`update %s.%s set
+	if hasUK && stmt != nil {
+		result = ""
+	} else {
+		result = fmt.Sprintf(`update %s.%s set
 %s
 where
 %s limit 1`, databaseName, tableName,
-		strings.Join(setTokens, ", "),
-		fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
-	)
+			strings.Join(setTokens, ", "),
+			fmt.Sprintf("(%s)", strings.Join(comparisons, " and ")),
+		)
+	}
 	return result, sharedArgs, columnArgs, hasUK, nil
 }
