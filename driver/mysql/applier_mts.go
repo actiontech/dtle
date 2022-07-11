@@ -175,7 +175,11 @@ func HashTx(entryCtx *common.EntryContext) (hashes []uint64) {
 
 			}
 			for i := range event.Rows {
-				addPKE(event.Rows[i])
+				if len(event.Rows[i]) == 0 {
+					// #829 filtered update
+				} else {
+					addPKE(event.Rows[i])
+				}
 			}
 		}
 	}
