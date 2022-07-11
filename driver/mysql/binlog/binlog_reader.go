@@ -189,20 +189,20 @@ func NewBinlogReader(
 	}
 
 	binlogReader = &BinlogReader{
-		ctx:                  ctx,
-		execCtx:              execCtx,
-		logger:               logger,
-		currentCoord:         common.MySQLCoordinates{},
-		currentCoordMutex:    &sync.Mutex{},
-		mysqlContext:         cfg,
-		ReMap:                make(map[string]*regexp.Regexp),
-		shutdownCh:           make(chan struct{}),
-		tables:               make(map[string]*common.SchemaContext),
-		sqlFilter:            sqlFilter,
-		maybeSqleContext:     sqleContext,
-		memory:               memory,
-		db:                   db,
-		lowerCaseTableNames:  lctn,
+		ctx:                 ctx,
+		execCtx:             execCtx,
+		logger:              logger,
+		currentCoord:        common.MySQLCoordinates{},
+		currentCoordMutex:   &sync.Mutex{},
+		mysqlContext:        cfg,
+		ReMap:               make(map[string]*regexp.Regexp),
+		shutdownCh:          make(chan struct{}),
+		tables:              make(map[string]*common.SchemaContext),
+		sqlFilter:           sqlFilter,
+		maybeSqleContext:    sqleContext,
+		memory:              memory,
+		db:                  db,
+		lowerCaseTableNames: lctn,
 	}
 
 	binlogReader.serverUUID, err = sql.GetServerUUID(db)
@@ -254,7 +254,7 @@ func NewBinlogReader(
 
 			ParseTime: false, // must be false, or gencode will complain.
 
-			MemLimitSize: int64(g.MemAvailable / 5),
+			MemLimitSize:    int64(g.MemAvailable / 5),
 			MemLimitSeconds: 2,
 
 			Option: func(conn *gmclient.Conn) error {
@@ -295,12 +295,12 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates
 		}
 
 		relayConfig := &dmrelay.Config{
-			EnableGTID:  true,
-			RelayDir:    b.getBinlogDir(),
-			ServerID:    uint32(b.serverId),
-			Flavor:      "mysql",
-			From:        dbConfig,
-			BinLogName:  "",
+			EnableGTID: true,
+			RelayDir:   b.getBinlogDir(),
+			ServerID:   uint32(b.serverId),
+			Flavor:     "mysql",
+			From:       dbConfig,
+			BinLogName: "",
 			BinlogGTID: coordinates.GtidSet,
 			ReaderRetry: dmretry.ReaderRetryConfig{
 				// value from dm/relay/relay_test.go
@@ -473,7 +473,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
-		mysqlCoordinates := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+		mysqlCoordinates := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 		mysqlCoordinates.LogPos = b.currentCoord.LogPos
 
 		b.sendEntry(entriesChannel)
@@ -498,7 +498,7 @@ func queryIsCommit(query string) bool {
 
 func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 	entriesChannel chan<- *common.EntryContext) error {
-    mysqlCoordinateTx := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
+	mysqlCoordinateTx := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	gno := mysqlCoordinateTx.GNO
 	evt := ev.Event.(*replication.QueryEvent)
 	query0 := string(evt.Query)
@@ -770,11 +770,11 @@ func (b *BinlogReader) checkDtleQueryOSID(query string) error {
 
 	b.logger.Debug("query osid", "osid", ss[1], "gno", b.entryContext.Entry.Coordinates.GetFieldValue("GNO"))
 
-	b.entryContext.Entry.Coordinates.SetField("OSID",ss[1]) 
+	b.entryContext.Entry.Coordinates.SetField("OSID", ss[1])
 	return nil
 }
 func (b *BinlogReader) setDtleQuery(query string) string {
-	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	if coordinate.OSID == "" {
 		uuidStr := uuid.UUID(coordinate.SID).String()
 		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, coordinate.GNO)
@@ -800,7 +800,7 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 			g.AddBigTxJob()
 		}
 	}
-	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	b.logger.Debug("sendEntry", "gno", coordinate.GNO, "events", len(b.entryContext.Entry.Events),
 		"isBig", isBig, "index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
@@ -810,7 +810,7 @@ func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 	case entriesChannel <- b.entryContext:
 		if b.entryContext.Entry.Final {
 			atomic.AddUint32(&b.extractedTxCount, 1)
-		}	
+		}
 	}
 }
 
@@ -942,7 +942,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryConte
 				break
 			}
 			maxWaitMs := 1000
-			if i >= maxWaitMs / 10 {
+			if i >= maxWaitMs/10 {
 				break
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -1126,8 +1126,8 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 	if rewrite {
 		bs := bytes.NewBuffer(nil)
 		r := &parserformat.RestoreCtx{
-			Flags:     common.ParserRestoreFlag,
-			In:        bs,
+			Flags: common.ParserRestoreFlag,
+			In:    bs,
 		}
 		err = stmt.Restore(r)
 		if err != nil {
@@ -1237,7 +1237,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 						if err != nil {
 							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err, "sid", sidByte)
 						} else {
-							coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx) 
+							coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 							coordinate.OSID = sid.String()
 							b.logger.Debug("found an osid", "osid", coordinate.OSID)
 						}
@@ -1791,14 +1791,14 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 	tableName := string(rowsEvent.Table.Table)
 	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
-		"gno",coordinate.GNO,
+		"gno", coordinate.GNO,
 		"flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags)
 
 	dml := common.ToEventDML(ev.Header.EventType)
 	skip, table := b.skipRowEvent(rowsEvent, dml)
 	if skip {
 		b.logger.Debug("skip rowsEvent", "schema", schemaName, "table", tableName,
-			"gno",coordinate.GNO)
+			"gno", coordinate.GNO)
 		return nil
 	}
 
@@ -1863,29 +1863,58 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		table.DefChangedSent = true
 	}
 
-	for _, row := range rowsEvent.Rows {
-		whereTrue := true
+	checkWhere := func(row []interface{}) (bool, error) {
 		if table != nil && !table.WhereCtx.IsDefault {
-			whereTrue, err = table.WhereTrue(row)
-			if err != nil {
-				return err
-			}
+			return table.WhereTrue(row)
+		} else {
+			return true, nil
 		}
+	}
+
+	if dml == common.UpdateDML && len(rowsEvent.Rows) % 2 != 0 {
+		return fmt.Errorf("bad RowsEvent. expect 2N rows for an update event. got %v. gno %v",
+			len(rowsEvent.Rows), coordinate.GNO)
+	}
+	for i := 0; i < len(rowsEvent.Rows); i++ {
+		row0 := rowsEvent.Rows[i]
+		whereTrue0, err := checkWhere(row0)
+		if err != nil {
+			return err
+		}
+
 		switch dml {
 		case common.InsertDML, common.DeleteDML:
-			if whereTrue {
+			if whereTrue0 {
 				b.entryContext.OriginalSize += avgRowSize
-				dmlEvent.Rows = append(dmlEvent.Rows, row)
+				dmlEvent.Rows = append(dmlEvent.Rows, row0)
 			} else {
 				b.logger.Debug("event has not passed 'where'")
 			}
 		case common.UpdateDML:
-			if whereTrue {
-				b.entryContext.OriginalSize += avgRowSize
-				dmlEvent.Rows = append(dmlEvent.Rows, row)
+			i += 1
+			row1 := rowsEvent.Rows[i]
+			whereTrue1, err := checkWhere(row1)
+			if err != nil {
+				return err
+			}
+
+			if !whereTrue0 && !whereTrue1 {
+				// append no rows
 			} else {
-				dmlEvent.Rows = append(dmlEvent.Rows, nil)
-				b.logger.Debug("event has not passed 'where'")
+				if whereTrue0 {
+					b.entryContext.OriginalSize += avgRowSize
+					dmlEvent.Rows = append(dmlEvent.Rows, row0)
+				} else {
+					dmlEvent.Rows = append(dmlEvent.Rows, nil)
+					b.logger.Debug("event has not passed 'where' update.from")
+				}
+				if whereTrue1 {
+					b.entryContext.OriginalSize += avgRowSize
+					dmlEvent.Rows = append(dmlEvent.Rows, row1)
+				} else {
+					dmlEvent.Rows = append(dmlEvent.Rows, nil)
+					b.logger.Debug("event has not passed 'where' update.to")
+				}
 			}
 		}
 	}
