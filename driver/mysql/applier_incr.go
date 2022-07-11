@@ -597,14 +597,18 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				for i := 0; i < nRows; {
 					var pstmt **gosql.Stmt
 					var rows [][]interface{}
-					if nRows-i < a.mysqlContext.NBulkInsert {
+					if nRows-i >= a.mysqlContext.BulkInsert2 {
+						pstmt = &tableItem.PsInsert2[workerIdx]
+						rows = event.Rows[i : i+a.mysqlContext.BulkInsert2]
+						i += a.mysqlContext.BulkInsert2
+					} else if nRows-i >= a.mysqlContext.BulkInsert1 {
 						pstmt = &tableItem.PsInsert1[workerIdx]
+						rows = event.Rows[i : i+a.mysqlContext.BulkInsert1]
+						i += a.mysqlContext.BulkInsert1
+					} else {
+						pstmt = &tableItem.PsInsert0[workerIdx]
 						rows = event.Rows[i : i+1]
 						i += 1
-					} else {
-						pstmt = &tableItem.PsInsertN[workerIdx]
-						rows = event.Rows[i : i+a.mysqlContext.NBulkInsert]
-						i += a.mysqlContext.NBulkInsert
 					}
 
 					query, sharedArgs, err := sql.BuildDMLInsertQuery(event.DatabaseName, event.TableName,
@@ -649,7 +653,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					}
 
 					if len(rowBefore) == 0 { // insert
-						pstmt := &tableItem.PsInsert1[workerIdx]
+						pstmt := &tableItem.PsInsert0[workerIdx]
 						query, sharedArgs, err := sql.BuildDMLInsertQuery(event.DatabaseName, event.TableName,
 							tableItem.Columns, tableItem.ColumnMapTo, event.Rows[i+1:i+2], *pstmt)
 						if err != nil {

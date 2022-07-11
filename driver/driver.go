@@ -140,8 +140,10 @@ var (
 				hclspec.NewLiteral(`"utf8mb4"`)),
 		})),
 		"WaitOnJob": hclspec.NewAttr("WaitOnJob", "string", false),
-		"NBulkInsert": hclspec.NewDefault(hclspec.NewAttr("NBulkInsert", "number", false),
+		"BulkInsert1": hclspec.NewDefault(hclspec.NewAttr("BulkInsert1", "number", false),
 			hclspec.NewLiteral(`4`)),
+		"BulkInsert2": hclspec.NewDefault(hclspec.NewAttr("BulkInsert2", "number", false),
+			hclspec.NewLiteral(`8`)),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Topic":   hclspec.NewAttr("Topic", "string", true),
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
@@ -569,6 +571,10 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 	errMsgs := []string{}
 	addErrMsgs := func(msg string) {
 		errMsgs = append(errMsgs, fmt.Sprintf("	* %v", msg))
+	}
+
+	if config.BulkInsert1 <= 0 || config.BulkInsert1 >= config.BulkInsert2 {
+		return fmt.Errorf("expect 0 < BulkInsert1 < BulkInsert2. %v %v", config.BulkInsert1, config.BulkInsert2)
 	}
 
 	if (config.ConnectionConfig == nil && config.KafkaConfig == nil) ||

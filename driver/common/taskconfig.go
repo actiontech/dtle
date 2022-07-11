@@ -54,7 +54,8 @@ type DtleTaskConfig struct {
 	AutoGtid             bool          `codec:"AutoGtid"`
 	BinlogRelay          bool          `codec:"BinlogRelay"`
 	WaitOnJob            string        `codec:"WaitOnJob"`
-	NBulkInsert          int           `codec:"NBulkInsert"`
+	BulkInsert1          int           `codec:"BulkInsert1"`
+	BulkInsert2          int           `codec:"BulkInsert2"`
 	SlaveNetWriteTimeout int           `codec:"SlaveNetWriteTimeout"`
 
 	ParallelWorkers       int  `codec:"ParallelWorkers"`
