@@ -24,7 +24,6 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -55,6 +54,7 @@ type JetStreamStats struct {
 	ReservedMemory uint64            `json:"reserved_memory"`
 	ReservedStore  uint64            `json:"reserved_storage"`
 	Accounts       int               `json:"accounts"`
+	HAAssets       int               `json:"ha_assets"`
 	API            JetStreamAPIStats `json:"api"`
 }
 
@@ -585,18 +585,14 @@ func (a *Account) enableAllJetStreamServiceImportsAndMappings() error {
 	// Check if we have a Domain specified.
 	// If so add in a subject mapping that will allow local connected clients to reach us here as well.
 	if opts := s.getOpts(); opts.JetStreamDomain != _EMPTY_ {
-		src := fmt.Sprintf(jsDomainAPI, opts.JetStreamDomain)
-		found := false
+		mappings := generateJSMappingTable(opts.JetStreamDomain)
 		a.mu.RLock()
 		for _, m := range a.mappings {
-			if src == m.src {
-				found = true
-				break
-			}
+			delete(mappings, m.src)
 		}
 		a.mu.RUnlock()
-		if !found {
-			if err := a.AddMapping(src, jsAllAPI); err != nil {
+		for src, dest := range mappings {
+			if err := a.AddMapping(src, dest); err != nil {
 				s.Errorf("Error adding JetStream domain mapping: %v", err)
 			}
 		}
@@ -785,12 +781,22 @@ func (s *Server) migrateEphemerals() {
 	}
 	js.mu.Unlock()
 
+	// In case we have stale pending requests.
+	hdr := []byte("NATS/1.0 409 Consumer Migration\r\n\r\n")
+
 	// Process the consumers.
 	for _, ca := range consumers {
 		// Locate the consumer itself.
 		if acc, err := s.LookupAccount(ca.Client.Account); err == nil && acc != nil {
 			if mset, err := acc.lookupStream(ca.Stream); err == nil && mset != nil {
 				if o := mset.lookupConsumer(ca.Name); o != nil {
+					if pr := o.pendingRequestReplies(); len(pr) > 0 {
+						o.mu.Lock()
+						for _, reply := range pr {
+							o.outq.send(newJSPubMsg(reply, _EMPTY_, _EMPTY_, hdr, nil, nil, 0))
+						}
+						o.mu.Unlock()
+					}
 					state := o.readStoreState()
 					o.deleteWithoutAdvisory()
 					js.mu.Lock()
@@ -963,7 +969,7 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 
 	jsa := &jsAccount{js: js, account: a, limits: *limits, streams: make(map[string]*stream), sendq: sendq}
 	jsa.utimer = time.AfterFunc(usageTick, jsa.sendClusterUsageUpdateTimer)
-	jsa.storeDir = path.Join(js.config.StoreDir, a.Name)
+	jsa.storeDir = filepath.Join(js.config.StoreDir, a.Name)
 
 	js.accounts[a.Name] = jsa
 	js.mu.Unlock()
@@ -991,9 +997,9 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 	s.Debugf("  Max Storage:     %s", friendlyBytes(limits.MaxStore))
 
 	// Clean up any old snapshots that were orphaned while staging.
-	os.RemoveAll(path.Join(js.config.StoreDir, snapStagingDir))
+	os.RemoveAll(filepath.Join(js.config.StoreDir, snapStagingDir))
 
-	sdir := path.Join(jsa.storeDir, streamsDir)
+	sdir := filepath.Join(jsa.storeDir, streamsDir)
 	if _, err := os.Stat(sdir); os.IsNotExist(err) {
 		if err := os.MkdirAll(sdir, defaultDirPerms); err != nil {
 			return fmt.Errorf("could not create storage streams directory - %v", err)
@@ -1009,7 +1015,7 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 
 	// Check templates first since messsage sets will need proper ownership.
 	// FIXME(dlc) - Make this consistent.
-	tdir := path.Join(jsa.storeDir, tmplsDir)
+	tdir := filepath.Join(jsa.storeDir, tmplsDir)
 	if stat, err := os.Stat(tdir); err == nil && stat.IsDir() {
 		key := sha256.Sum256([]byte("templates"))
 		hh, err := highwayhash.New64(key[:])
@@ -1018,8 +1024,8 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 		}
 		fis, _ := ioutil.ReadDir(tdir)
 		for _, fi := range fis {
-			metafile := path.Join(tdir, fi.Name(), JetStreamMetaFile)
-			metasum := path.Join(tdir, fi.Name(), JetStreamMetaFileSum)
+			metafile := filepath.Join(tdir, fi.Name(), JetStreamMetaFile)
+			metasum := filepath.Join(tdir, fi.Name(), JetStreamMetaFileSum)
 			buf, err := ioutil.ReadFile(metafile)
 			if err != nil {
 				s.Warnf("  Error reading StreamTemplate metafile %q: %v", metasum, err)
@@ -1064,14 +1070,14 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 	// Now recover the streams.
 	fis, _ := ioutil.ReadDir(sdir)
 	for _, fi := range fis {
-		mdir := path.Join(sdir, fi.Name())
+		mdir := filepath.Join(sdir, fi.Name())
 		key := sha256.Sum256([]byte(fi.Name()))
 		hh, err := highwayhash.New64(key[:])
 		if err != nil {
 			return err
 		}
-		metafile := path.Join(mdir, JetStreamMetaFile)
-		metasum := path.Join(mdir, JetStreamMetaFileSum)
+		metafile := filepath.Join(mdir, JetStreamMetaFile)
+		metasum := filepath.Join(mdir, JetStreamMetaFileSum)
 		if _, err := os.Stat(metafile); os.IsNotExist(err) {
 			s.Warnf("  Missing stream metafile for %q", metafile)
 			continue
@@ -1098,7 +1104,7 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 		}
 
 		// Check if we are encrypted.
-		if key, err := ioutil.ReadFile(path.Join(mdir, JetStreamMetaFileKey)); err == nil {
+		if key, err := ioutil.ReadFile(filepath.Join(mdir, JetStreamMetaFileKey)); err == nil {
 			s.Debugf("  Stream metafile is encrypted, reading encrypted keyfile")
 			if len(key) != metaKeySize {
 				s.Warnf("  Bad stream encryption key length of %d", len(key))
@@ -1160,21 +1166,21 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 		}
 
 		state := mset.state()
-		s.Noticef("  Restored %s messages for stream %q", comma(int64(state.Msgs)), fi.Name())
+		s.Noticef("  Restored %s messages for stream '%s > %s'", comma(int64(state.Msgs)), mset.accName(), mset.name())
 
 		// Now do the consumers.
-		odir := path.Join(sdir, fi.Name(), consumerDir)
+		odir := filepath.Join(sdir, fi.Name(), consumerDir)
 		consumers = append(consumers, &ce{mset, odir})
 	}
 
 	for _, e := range consumers {
 		ofis, _ := ioutil.ReadDir(e.odir)
 		if len(ofis) > 0 {
-			s.Noticef("  Recovering %d consumers for stream - %q", len(ofis), e.mset.name())
+			s.Noticef("  Recovering %d consumers for stream - '%s > %s'", len(ofis), e.mset.accName(), e.mset.name())
 		}
 		for _, ofi := range ofis {
-			metafile := path.Join(e.odir, ofi.Name(), JetStreamMetaFile)
-			metasum := path.Join(e.odir, ofi.Name(), JetStreamMetaFileSum)
+			metafile := filepath.Join(e.odir, ofi.Name(), JetStreamMetaFile)
+			metasum := filepath.Join(e.odir, ofi.Name(), JetStreamMetaFileSum)
 			if _, err := os.Stat(metafile); os.IsNotExist(err) {
 				s.Warnf("    Missing consumer metafile %q", metafile)
 				continue
@@ -1190,7 +1196,7 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 			}
 
 			// Check if we are encrypted.
-			if key, err := ioutil.ReadFile(path.Join(e.odir, ofi.Name(), JetStreamMetaFileKey)); err == nil {
+			if key, err := ioutil.ReadFile(filepath.Join(e.odir, ofi.Name(), JetStreamMetaFileKey)); err == nil {
 				s.Debugf("  Consumer metafile is encrypted, reading encrypted keyfile")
 				// Decode the buffer before proceeding.
 				if buf, err = s.decryptMeta(key, buf, a.Name, e.mset.name()+tsep+ofi.Name()); err != nil {
@@ -1231,7 +1237,7 @@ func (a *Account) EnableJetStream(limits *JetStreamAccountLimits) error {
 	}
 
 	// Make sure to cleanup any old remaining snapshots.
-	os.RemoveAll(path.Join(jsa.storeDir, snapsDir))
+	os.RemoveAll(filepath.Join(jsa.storeDir, snapsDir))
 
 	s.Debugf("JetStream state for account %q recovered", a.Name)
 
@@ -1728,12 +1734,14 @@ func (js *jetStream) usageStats() *JetStreamStats {
 	stats.Accounts = len(js.accounts)
 	stats.ReservedMemory = (uint64)(js.memReserved)
 	stats.ReservedStore = (uint64)(js.storeReserved)
+	s := js.srv
 	js.mu.RUnlock()
 	stats.API.Total = (uint64)(atomic.LoadInt64(&js.apiTotal))
 	stats.API.Errors = (uint64)(atomic.LoadInt64(&js.apiErrors))
 	stats.API.Inflight = (uint64)(atomic.LoadInt64(&js.apiInflight))
 	stats.Memory = (uint64)(atomic.LoadInt64(&js.memUsed))
 	stats.Store = (uint64)(atomic.LoadInt64(&js.storeUsed))
+	stats.HAAssets = s.numRaftNodes()
 	return &stats
 }
 

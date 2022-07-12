@@ -26,7 +26,7 @@ require (
 	github.com/mojocn/base64Captcha v1.3.4
 	github.com/nats-io/gnatsd v1.4.1 // indirect
 	github.com/nats-io/go-nats v1.7.2
-	github.com/nats-io/nats-server/v2 v2.7.0
+	github.com/nats-io/nats-server/v2 v2.7.4
 	github.com/nats-io/nats-streaming-server v0.23.2
 	github.com/outbrain/golib v0.0.0-20180830062331-ab954725f502
 	github.com/pingcap/dm v0.0.0-00010101000000-000000000000

@@ -893,7 +893,7 @@ type SubDetail struct {
 func newSubDetail(sub *subscription) SubDetail {
 	sd := newClientSubDetail(sub)
 	if sub.client.acc != nil {
-		sd.Account = sub.client.acc.GetName()
+		sd.Account = sub.client.acc.Name
 	}
 	return sd
 }
@@ -1243,35 +1243,39 @@ func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	fmt.Fprintf(w, `<html lang="en">
    <head>
-    <link rel="shortcut icon" href="https://nats.io/img/favicon.ico">
+    <link rel="shortcut icon" href="https://nats.io/favicon.ico">
     <style type="text/css">
-      body { font-family: "Century Gothic", CenturyGothic, AppleGothic, sans-serif; font-size: 22; }
-      a { margin-left: 32px; }
+      body { font-family: ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif; font-size: 18; font-weight: light-bold; margin-left: 32 }
+      a { display:block; margin-left: 7px; padding-bottom: 6px; color: rgb(72 72 92); text-decoration: none }
+      a:hover { font-weight: 600; color: rgb(59 50 202) }
+      a.help { display:inline; font-weight: 600; color: rgb(59 50 202); font-size: 20}
+      a.last { padding-bottom: 16px }
     </style>
   </head>
   <body>
-    <img src="https://nats.io/img/logo.png" alt="NATS">
+  <svg xmlns="http://www.w3.org/2000/svg" role="img" width="325" height="110" viewBox="-4.14 -3.89 436.28 119.03"><style>.st1{fill:#fff}.st2{fill:#34a574}</style><path fill="#27aae1" d="M4.3 84.6h42.2L70.7 107V84.6H103v-80H4.3v80zm15.9-61.3h18.5l35.6 33.2V23.3h11.8v42.9H68.2L32 32.4v33.8H20.2V23.3z"/><path d="M32 32.4l36.2 33.8h17.9V23.3H74.3v33.2L38.7 23.3H20.2v42.9H32z" class="st1"/><path d="M159.8 30.7L147 49h25.6z" class="st2"/><path d="M111.3 84.6H210v-80h-98.7v80zm41-61.5H168l30.8 43.2h-14.1l-5.8-8.3h-38.1l-5.8 8.3h-13.5l30.8-43.2z" class="st2"/><path d="M140.8 57.9h38.1l5.8 8.3h14.1L168 23.1h-15.7l-30.8 43.2H135l5.8-8.4zm19-27.2L172.6 49H147l12.8-18.3z" class="st1"/><path fill="#375c93" d="M218.3 84.6H317v-80h-98.7v80zm15.5-61.3h66.7V33h-27.2v33.2h-12.2V33h-27.3v-9.7z"/><path d="M261.1 66.2h12.2V33h27.2v-9.7h-66.7V33h27.3z" class="st1"/><path fill="#8dc63f" d="M325.3 4.6v80H424v-80h-98.7zm76.5 56.7c-3.2 3.2-10.2 5.7-26.8 5.7-12.3 0-24.1-1.9-30.7-4.7v-10c6.3 2.8 20.1 5.5 30.7 5.5 9.3 0 15.8-.3 17.5-2.1.6-.6.7-1.3.7-2 0-.8-.2-1.3-.7-1.8-1-1-2.6-1.7-17.4-2.1-15.7-.4-23.4-2-27-5.6-1.7-1.7-2.6-4.4-2.6-7.5 0-3.3.6-6.2 3.3-8.9 3.6-3.6 10.7-5.3 25.1-5.3 10.8 0 21.6 1.7 27.3 4v10.1c-6.5-2.8-17.8-4.8-27.2-4.8-10.4 0-14.8.6-16.2 2-.5.5-.8 1.1-.8 1.9 0 .9.2 1.5.7 2 1.3 1.3 6.1 1.7 17.3 1.9 16.4.4 23.5 1.8 27 5.2 1.8 1.8 2.8 4.7 2.8 7.7.1 3.2-.6 6.4-3 8.8z"/><path d="M375.2 39.5c-11.2-.2-16-.6-17.3-1.9-.5-.5-.7-1.1-.7-2 0-.8.3-1.4.8-1.9 1.3-1.3 5.8-2 16.2-2 9.4 0 20.7 2 27.2 4.8v-10c-5.7-2.3-16.6-4-27.3-4-14.5 0-21.6 1.8-25.1 5.3-2.7 2.7-3.3 5.6-3.3 8.9 0 3.1 1 5.8 2.6 7.5 3.6 3.6 11.3 5.2 27 5.6 14.8.4 16.4 1.1 17.4 2.1.5.5.7 1 .7 1.8 0 .7-.1 1.3-.7 2-1.8 1.8-8.3 2.1-17.5 2.1-10.6 0-24.3-2.6-30.7-5.5v10.1c6.6 2.8 18.4 4.7 30.7 4.7 16.6 0 23.6-2.5 26.8-5.7 2.4-2.4 3.1-5.6 3.1-8.9 0-3.1-1-5.9-2.8-7.7-3.6-3.5-10.7-4.9-27.1-5.3z" class="st1"/></svg>
     <br/>
-	<a href=.%s>varz</a><br/>
-	<a href=.%s>connz</a><br/>
-	<a href=.%s>routez</a><br/>
-	<a href=.%s>gatewayz</a><br/>
-	<a href=.%s>leafz</a><br/>
-	<a href=.%s>subsz</a><br/>
-	<a href=.%s>accountz</a><br/>
-	<a href=.%s>jsz</a><br/>
-    <br/>
-    <a href=https://docs.nats.io/nats-server/configuration/monitoring>help</a>
+	<a href=.%s>General</a>
+	<a href=.%s>JetStream</a>
+	<a href=.%s>Connections</a>
+	<a href=.%s>Accounts</a>
+	<a href=.%s>Subscriptions</a>
+	<a href=.%s>Routes</a>
+	<a href=.%s>LeafNodes</a>
+	<a href=.%s>Gateways</a>
+	<a href=.%s class=last>Health Probe</a>
+    <a href=https://docs.nats.io/running-a-nats-service/nats_admin/monitoring class="help">Help</a>
   </body>
 </html>`,
 		s.basePath(VarzPath),
-		s.basePath(ConnzPath),
-		s.basePath(RoutezPath),
-		s.basePath(GatewayzPath),
-		s.basePath(LeafzPath),
-		s.basePath(SubszPath),
-		s.basePath(AccountzPath),
 		s.basePath(JszPath),
+		s.basePath(ConnzPath),
+		s.basePath(AccountzPath),
+		s.basePath(SubszPath),
+		s.basePath(RoutezPath),
+		s.basePath(LeafzPath),
+		s.basePath(GatewayzPath),
+		s.basePath(HealthzPath),
 	)
 }
 
@@ -2131,7 +2135,8 @@ type ExtImport struct {
 
 type ExtExport struct {
 	jwt.Export
-	ApprovedAccounts []string `json:"approved_accounts,omitempty"`
+	ApprovedAccounts []string             `json:"approved_accounts,omitempty"`
+	RevokedAct       map[string]time.Time `json:"revoked_activations,omitempty"`
 }
 
 type ExtVrIssues struct {
@@ -2162,7 +2167,6 @@ type AccountInfo struct {
 	Claim       *jwt.AccountClaims   `json:"decoded_jwt,omitempty"`
 	Vr          []ExtVrIssues        `json:"validation_result_jwt,omitempty"`
 	RevokedUser map[string]time.Time `json:"revoked_user,omitempty"`
-	RevokedAct  map[string]time.Time `json:"revoked_activations,omitempty"`
 	Sublist     *SublistStats        `json:"sublist_stats,omitempty"`
 	Responses   map[string]ExtImport `json:"responses,omitempty"`
 }
@@ -2260,6 +2264,17 @@ func (s *Server) accountInfo(accName string) (*AccountInfo, error) {
 			vrIssues[i] = ExtVrIssues{v.Description, v.Blocking, v.TimeCheck}
 		}
 	}
+	collectRevocations := func(revocations map[string]int64) map[string]time.Time {
+		l := len(revocations)
+		if l == 0 {
+			return nil
+		}
+		rev := make(map[string]time.Time, l)
+		for k, v := range revocations {
+			rev[k] = time.Unix(v, 0)
+		}
+		return rev
+	}
 	exports := []ExtExport{}
 	for k, v := range a.exports.services {
 		e := ExtExport{
@@ -2276,6 +2291,7 @@ func (s *Server) accountInfo(accName string) (*AccountInfo, error) {
 			for name := range v.approved {
 				e.ApprovedAccounts = append(e.ApprovedAccounts, name)
 			}
+			e.RevokedAct = collectRevocations(v.actsRevoked)
 		}
 		exports = append(exports, e)
 	}
@@ -2292,6 +2308,7 @@ func (s *Server) accountInfo(accName string) (*AccountInfo, error) {
 			for name := range v.approved {
 				e.ApprovedAccounts = append(e.ApprovedAccounts, name)
 			}
+			e.RevokedAct = collectRevocations(v.actsRevoked)
 		}
 		exports = append(exports, e)
 	}
@@ -2342,13 +2359,6 @@ func (s *Server) accountInfo(accName string) (*AccountInfo, error) {
 		}
 		mappings[src] = dests
 	}
-	collectRevocations := func(revocations map[string]int64) map[string]time.Time {
-		rev := map[string]time.Time{}
-		for k, v := range a.usersRevoked {
-			rev[k] = time.Unix(v, 0)
-		}
-		return rev
-	}
 	return &AccountInfo{
 		accName,
 		a.updated,
@@ -2369,7 +2379,6 @@ func (s *Server) accountInfo(accName string) (*AccountInfo, error) {
 		claim,
 		vrIssues,
 		collectRevocations(a.usersRevoked),
-		collectRevocations(a.actsRevoked),
 		a.sl.Stats(),
 		responses,
 	}, nil
@@ -2388,11 +2397,13 @@ type JSzOptions struct {
 }
 
 type StreamDetail struct {
-	Name     string          `json:"name"`
-	Cluster  *ClusterInfo    `json:"cluster,omitempty"`
-	Config   *StreamConfig   `json:"config,omitempty"`
-	State    StreamState     `json:"state,omitempty"`
-	Consumer []*ConsumerInfo `json:"consumer_detail,omitempty"`
+	Name     string              `json:"name"`
+	Cluster  *ClusterInfo        `json:"cluster,omitempty"`
+	Config   *StreamConfig       `json:"config,omitempty"`
+	State    StreamState         `json:"state,omitempty"`
+	Consumer []*ConsumerInfo     `json:"consumer_detail,omitempty"`
+	Mirror   *StreamSourceInfo   `json:"mirror,omitempty"`
+	Sources  []*StreamSourceInfo `json:"sources,omitempty"`
 }
 
 type AccountDetail struct {
@@ -2469,6 +2480,8 @@ func (s *Server) accountDetail(jsa *jsAccount, optStreams, optConsumers, optCfg 
 				State:   stream.state(),
 				Cluster: ci,
 				Config:  cfg,
+				Mirror:  stream.mirrorInfo(),
+				Sources: stream.sourcesInfo(),
 			}
 			if optConsumers {
 				for _, consumer := range stream.getPublicConsumers() {
@@ -2682,9 +2695,98 @@ func (s *Server) HandleJsz(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := json.MarshalIndent(l, "", "  ")
 	if err != nil {
-		s.Errorf("Error marshaling response to /leafz request: %v", err)
+		s.Errorf("Error marshaling response to /jsz request: %v", err)
 	}
 
 	// Handle response
+	ResponseHandler(w, r, b)
+}
+
+type HealthStatus struct {
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+// https://tools.ietf.org/id/draft-inadarei-api-health-check-05.html
+func (s *Server) HandleHealthz(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	s.httpReqStats[HealthzPath]++
+	s.mu.Unlock()
+
+	var health = &HealthStatus{Status: "ok"}
+
+	if err := s.readyForConnections(time.Millisecond); err != nil {
+		health.Status = "error"
+		health.Error = err.Error()
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else if js := s.getJetStream(); js != nil {
+		// Check JetStream status here.
+		js.mu.RLock()
+		clustered, cc := !js.standAlone, js.cluster
+		js.mu.RUnlock()
+		if clustered {
+			// We do more checking for clustered mode to allow for proper rolling updates.
+			// We will make sure that we have seen the meta leader and that we are current with all assets.
+			node := js.getMetaGroup()
+			if node.GroupLeader() == _EMPTY_ {
+				health.Status = "unavailable"
+				health.Error = "JetStream has not established contact with a meta leader"
+				w.WriteHeader(http.StatusServiceUnavailable)
+			} else if !node.Current() {
+				health.Status = "unavailable"
+				health.Error = "JetStream is not current with the meta leader"
+				w.WriteHeader(http.StatusServiceUnavailable)
+			} else {
+				// If we are here we are current and have seen our meta leader.
+				// Now check assets.
+				var _a [512]*jsAccount
+				accounts := _a[:0]
+				js.mu.RLock()
+				// Collect accounts.
+				for _, jsa := range js.accounts {
+					accounts = append(accounts, jsa)
+				}
+				js.mu.RUnlock()
+
+				var streams []*stream
+			Err:
+				// Walk our accounts and assets.
+				for _, jsa := range accounts {
+					if len(streams) > 0 {
+						streams = streams[:0]
+					}
+					jsa.mu.RLock()
+					accName := jsa.account.Name
+					for _, stream := range jsa.streams {
+						streams = append(streams, stream)
+					}
+					jsa.mu.RUnlock()
+					// Now walk the streams themselves.
+					js.mu.RLock()
+					for _, stream := range streams {
+						// Skip non-replicated.
+						if stream.cfg.Replicas <= 1 {
+							continue
+						}
+						sname := stream.name()
+						if !cc.isStreamCurrent(accName, sname) {
+							health.Status = "unavailable"
+							health.Error = fmt.Sprintf("JetStream stream %q for account %q is not current", sname, accName)
+							w.WriteHeader(http.StatusServiceUnavailable)
+							js.mu.RUnlock()
+							break Err
+						}
+					}
+					js.mu.RUnlock()
+				}
+			}
+		}
+	}
+
+	b, err := json.Marshal(health)
+	if err != nil {
+		s.Errorf("Error marshaling response to /healthz request: %v", err)
+	}
+
 	ResponseHandler(w, r, b)
 }

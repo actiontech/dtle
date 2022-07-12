@@ -25,7 +25,6 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -197,6 +196,9 @@ type raft struct {
 	stepdown *ipQueue // of string
 	leadc    chan bool
 	quit     chan struct{}
+
+	// Random generator, used to generate inboxes for instance
+	prand *rand.Rand
 }
 
 // cacthupState structure that holds our subscription, and catchup term and index
@@ -340,6 +342,7 @@ func (s *Server) startRaftNode(cfg *RaftConfig) (RaftNode, error) {
 	sq := s.sys.sq
 	sacc := s.sys.account
 	hash := s.sys.shash
+	pub := s.info.ID
 	s.mu.Unlock()
 
 	ps, err := readPeerState(cfg.Store)
@@ -351,6 +354,12 @@ func (s *Server) startRaftNode(cfg *RaftConfig) (RaftNode, error) {
 	}
 
 	qpfx := fmt.Sprintf("RAFT [%s - %s] ", hash[:idLen], cfg.Name)
+	rsrc := time.Now().UnixNano()
+	if len(pub) >= 32 {
+		if h, _ := highwayhash.New64([]byte(pub[:32])); h != nil {
+			rsrc += int64(h.Sum64())
+		}
+	}
 	n := &raft{
 		created:  time.Now(),
 		id:       hash[:idLen],
@@ -383,6 +392,7 @@ func (s *Server) startRaftNode(cfg *RaftConfig) (RaftNode, error) {
 		leadc:    make(chan bool, 1),
 		observer: cfg.Observer,
 		extSt:    ps.domainExt,
+		prand:    rand.New(rand.NewSource(rsrc)),
 	}
 	n.c.registerWithAccount(sacc)
 
@@ -398,13 +408,13 @@ func (s *Server) startRaftNode(cfg *RaftConfig) (RaftNode, error) {
 		n.vote = vote
 	}
 
-	if err := os.MkdirAll(path.Join(n.sd, snapshotsDir), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Join(n.sd, snapshotsDir), 0750); err != nil {
 		return nil, fmt.Errorf("could not create snapshots directory - %v", err)
 	}
 
 	// Can't recover snapshots if memory based.
 	if _, ok := n.wal.(*memStore); ok {
-		os.Remove(path.Join(n.sd, snapshotsDir, "*"))
+		os.Remove(filepath.Join(n.sd, snapshotsDir, "*"))
 	} else {
 		// See if we have any snapshots and if so load and process on startup.
 		n.setupLastSnapshot()
@@ -444,12 +454,6 @@ func (s *Server) startRaftNode(cfg *RaftConfig) (RaftNode, error) {
 	// Send nil entry to signal the upper layers we are done doing replay/restore.
 	n.apply.push(nil)
 
-	// Setup our internal subscriptions.
-	if err := n.createInternalSubs(); err != nil {
-		n.shutdown(true)
-		return nil, err
-	}
-
 	// Make sure to track ourselves.
 	n.trackPeer(n.id)
 	// Track known peers
@@ -458,6 +462,12 @@ func (s *Server) startRaftNode(cfg *RaftConfig) (RaftNode, error) {
 		if peer != n.id {
 			n.peers[peer] = &lps{0, 0}
 		}
+	}
+
+	// Setup our internal subscriptions.
+	if err := n.createInternalSubs(); err != nil {
+		n.shutdown(true)
+		return nil, err
 	}
 
 	n.debug("Started")
@@ -515,6 +525,12 @@ func (s *Server) unregisterRaftNode(group string) {
 	if s.raftNodes != nil {
 		delete(s.raftNodes, group)
 	}
+}
+
+func (s *Server) numRaftNodes() int {
+	s.rnMu.Lock()
+	defer s.rnMu.Unlock()
+	return len(s.raftNodes)
 }
 
 func (s *Server) lookupRaftNode(group string) RaftNode {
@@ -896,9 +912,9 @@ func (n *raft) InstallSnapshot(data []byte) error {
 		data:      data,
 	}
 
-	snapDir := path.Join(n.sd, snapshotsDir)
+	snapDir := filepath.Join(n.sd, snapshotsDir)
 	sn := fmt.Sprintf(snapFileT, snap.lastTerm, snap.lastIndex)
-	sfile := path.Join(snapDir, sn)
+	sfile := filepath.Join(snapDir, sn)
 	// Remember our latest snapshot file.
 	n.snapfile = sfile
 
@@ -921,7 +937,7 @@ func (n *raft) InstallSnapshot(data []byte) error {
 	for _, fi := range psnaps {
 		pn := fi.Name()
 		if pn != sn {
-			os.Remove(path.Join(snapDir, pn))
+			os.Remove(filepath.Join(snapDir, pn))
 		}
 	}
 
@@ -951,7 +967,7 @@ func termAndIndexFromSnapFile(sn string) (term, index uint64, err error) {
 }
 
 func (n *raft) setupLastSnapshot() {
-	snapDir := path.Join(n.sd, snapshotsDir)
+	snapDir := filepath.Join(n.sd, snapshotsDir)
 	psnaps, err := ioutil.ReadDir(snapDir)
 	if err != nil {
 		return
@@ -960,7 +976,7 @@ func (n *raft) setupLastSnapshot() {
 	var lterm, lindex uint64
 	var latest string
 	for _, sf := range psnaps {
-		sfile := path.Join(snapDir, sf.Name())
+		sfile := filepath.Join(snapDir, sf.Name())
 		var term, index uint64
 		term, index, err := termAndIndexFromSnapFile(sf.Name())
 		if err == nil {
@@ -981,7 +997,7 @@ func (n *raft) setupLastSnapshot() {
 
 	// Now cleanup any old entries
 	for _, sf := range psnaps {
-		sfile := path.Join(snapDir, sf.Name())
+		sfile := filepath.Join(snapDir, sf.Name())
 		if sfile != latest {
 			n.debug("Removing old snapshot: %q", sfile)
 			os.Remove(sfile)
@@ -1317,9 +1333,9 @@ func (n *raft) shutdown(shouldDelete bool) {
 
 	// Delete our peer state and vote state and any snapshots.
 	if shouldDelete {
-		os.Remove(path.Join(n.sd, peerStateFile))
-		os.Remove(path.Join(n.sd, termVoteFile))
-		os.RemoveAll(path.Join(n.sd, snapshotsDir))
+		os.Remove(filepath.Join(n.sd, peerStateFile))
+		os.Remove(filepath.Join(n.sd, termVoteFile))
+		os.RemoveAll(filepath.Join(n.sd, snapshotsDir))
 	}
 	n.Unlock()
 
@@ -1338,9 +1354,10 @@ func (n *raft) shutdown(shouldDelete bool) {
 	}
 }
 
+// Lock should be held (due to use of random generator)
 func (n *raft) newInbox() string {
 	var b [replySuffixLen]byte
-	rn := rand.Int63()
+	rn := n.prand.Int63()
 	for i, l := 0, rn; i < len(b); i++ {
 		b[i] = digits[l%base]
 		l /= base
@@ -1371,6 +1388,8 @@ func (n *raft) unsubscribe(sub *subscription) {
 }
 
 func (n *raft) createInternalSubs() error {
+	n.Lock()
+	defer n.Unlock()
 	n.vsubj, n.vreply = fmt.Sprintf(raftVoteSubj, n.group), n.newInbox()
 	n.asubj, n.areply = fmt.Sprintf(raftAppendSubj, n.group), n.newInbox()
 	n.psubj = fmt.Sprintf(raftPropSubj, n.group)
@@ -3007,7 +3026,7 @@ func (n *raft) writePeerState(ps *peerState) {
 
 // Writes out our peer state outside of a specific raft context.
 func writePeerState(sd string, ps *peerState) error {
-	psf := path.Join(sd, peerStateFile)
+	psf := filepath.Join(sd, peerStateFile)
 	if _, err := os.Stat(psf); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -3018,7 +3037,7 @@ func writePeerState(sd string, ps *peerState) error {
 }
 
 func readPeerState(sd string) (ps *peerState, err error) {
-	buf, err := ioutil.ReadFile(path.Join(sd, peerStateFile))
+	buf, err := ioutil.ReadFile(filepath.Join(sd, peerStateFile))
 	if err != nil {
 		return nil, err
 	}
@@ -3031,7 +3050,7 @@ const termVoteLen = idLen + 8
 // readTermVote will read the largest term and who we voted from to stable storage.
 // Lock should be held.
 func (n *raft) readTermVote() (term uint64, voted string, err error) {
-	buf, err := ioutil.ReadFile(path.Join(n.sd, termVoteFile))
+	buf, err := ioutil.ReadFile(filepath.Join(n.sd, termVoteFile))
 	if err != nil {
 		return 0, noVote, err
 	}
@@ -3080,8 +3099,8 @@ func (n *raft) fileWriter() {
 	defer s.grWG.Done()
 
 	n.RLock()
-	tvf := path.Join(n.sd, termVoteFile)
-	psf := path.Join(n.sd, peerStateFile)
+	tvf := filepath.Join(n.sd, termVoteFile)
+	psf := filepath.Join(n.sd, peerStateFile)
 	n.RUnlock()
 
 	for s.isRunning() {

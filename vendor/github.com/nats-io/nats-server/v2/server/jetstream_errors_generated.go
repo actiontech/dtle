@@ -104,6 +104,9 @@ const (
 	// JSConsumerInvalidSamplingErrF failed to parse consumer sampling configuration: {err}
 	JSConsumerInvalidSamplingErrF ErrorIdentifier = 10095
 
+	// JSConsumerMaxDeliverBackoffErr max deliver is required to be > length of backoff values
+	JSConsumerMaxDeliverBackoffErr ErrorIdentifier = 10116
+
 	// JSConsumerMaxPendingAckPolicyRequiredErr consumer requires ack policy for max ack pending
 	JSConsumerMaxPendingAckPolicyRequiredErr ErrorIdentifier = 10082
 
@@ -257,6 +260,9 @@ const (
 	// JSStreamHeaderExceedsMaximumErr header size exceeds maximum allowed of 64k
 	JSStreamHeaderExceedsMaximumErr ErrorIdentifier = 10097
 
+	// JSStreamInfoMaxSubjectsErr subject details would exceed maximum allowed
+	JSStreamInfoMaxSubjectsErr ErrorIdentifier = 10117
+
 	// JSStreamInvalidConfigF Stream configuration validation error string ({err})
 	JSStreamInvalidConfigF ErrorIdentifier = 10052
 
@@ -383,6 +389,7 @@ var (
 		JSConsumerInvalidDeliverSubject:            {Code: 400, ErrCode: 10112, Description: "invalid push consumer deliver subject"},
 		JSConsumerInvalidPolicyErrF:                {Code: 400, ErrCode: 10094, Description: "{err}"},
 		JSConsumerInvalidSamplingErrF:              {Code: 400, ErrCode: 10095, Description: "failed to parse consumer sampling configuration: {err}"},
+		JSConsumerMaxDeliverBackoffErr:             {Code: 400, ErrCode: 10116, Description: "max deliver is required to be > length of backoff values"},
 		JSConsumerMaxPendingAckPolicyRequiredErr:   {Code: 400, ErrCode: 10082, Description: "consumer requires ack policy for max ack pending"},
 		JSConsumerMaxRequestBatchNegativeErr:       {Code: 400, ErrCode: 10114, Description: "consumer max request batch needs to be > 0"},
 		JSConsumerMaxRequestExpiresToSmall:         {Code: 400, ErrCode: 10115, Description: "consumer max request expires needs to be >= 1ms"},
@@ -434,6 +441,7 @@ var (
 		JSStreamExternalDelPrefixOverlapsErrF:      {Code: 400, ErrCode: 10022, Description: "stream external delivery prefix {prefix} overlaps with stream subject {subject}"},
 		JSStreamGeneralErrorF:                      {Code: 500, ErrCode: 10051, Description: "{err}"},
 		JSStreamHeaderExceedsMaximumErr:            {Code: 400, ErrCode: 10097, Description: "header size exceeds maximum allowed of 64k"},
+		JSStreamInfoMaxSubjectsErr:                 {Code: 500, ErrCode: 10117, Description: "subject details would exceed maximum allowed"},
 		JSStreamInvalidConfigF:                     {Code: 500, ErrCode: 10052, Description: "{err}"},
 		JSStreamInvalidErr:                         {Code: 500, ErrCode: 10096, Description: "stream not valid"},
 		JSStreamInvalidExternalDeliverySubjErrF:    {Code: 400, ErrCode: 10024, Description: "stream external delivery prefix {prefix} must not contain wildcards"},
@@ -841,6 +849,16 @@ func NewJSConsumerInvalidSamplingError(err error, opts ...ErrorOption) *ApiError
 		ErrCode:     e.ErrCode,
 		Description: strings.NewReplacer(args...).Replace(e.Description),
 	}
+}
+
+// NewJSConsumerMaxDeliverBackoffError creates a new JSConsumerMaxDeliverBackoffErr error: "max deliver is required to be > length of backoff values"
+func NewJSConsumerMaxDeliverBackoffError(opts ...ErrorOption) *ApiError {
+	eopts := parseOpts(opts)
+	if ae, ok := eopts.err.(*ApiError); ok {
+		return ae
+	}
+
+	return ApiErrors[JSConsumerMaxDeliverBackoffErr]
 }
 
 // NewJSConsumerMaxPendingAckPolicyRequiredError creates a new JSConsumerMaxPendingAckPolicyRequiredErr error: "consumer requires ack policy for max ack pending"
@@ -1429,6 +1447,16 @@ func NewJSStreamHeaderExceedsMaximumError(opts ...ErrorOption) *ApiError {
 	}
 
 	return ApiErrors[JSStreamHeaderExceedsMaximumErr]
+}
+
+// NewJSStreamInfoMaxSubjectsError creates a new JSStreamInfoMaxSubjectsErr error: "subject details would exceed maximum allowed"
+func NewJSStreamInfoMaxSubjectsError(opts ...ErrorOption) *ApiError {
+	eopts := parseOpts(opts)
+	if ae, ok := eopts.err.(*ApiError); ok {
+		return ae
+	}
+
+	return ApiErrors[JSStreamInfoMaxSubjectsErr]
 }
 
 // NewJSStreamInvalidConfigError creates a new JSStreamInvalidConfigF error: "{err}"

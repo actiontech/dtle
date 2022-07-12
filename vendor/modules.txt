@@ -374,10 +374,11 @@ github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.2.0
 ## explicit
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.13.4
+# github.com/klauspost/compress v1.14.4
 github.com/klauspost/compress
 github.com/klauspost/compress/fse
 github.com/klauspost/compress/huff0
+github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/s2
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
@@ -413,7 +414,7 @@ github.com/mattn/go-runewidth
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mb0/glob v0.0.0-20160210091149-1eb79d2de6c4
 github.com/mb0/glob
-# github.com/minio/highwayhash v1.0.1
+# github.com/minio/highwayhash v1.0.2
 github.com/minio/highwayhash
 # github.com/mitchellh/copystructure v1.0.0
 github.com/mitchellh/copystructure
@@ -446,7 +447,7 @@ github.com/nats-io/go-nats/encoders/builtin
 github.com/nats-io/go-nats/util
 # github.com/nats-io/jwt/v2 v2.2.1-0.20220113022732-58e87895b296
 github.com/nats-io/jwt/v2
-# github.com/nats-io/nats-server/v2 v2.7.0
+# github.com/nats-io/nats-server/v2 v2.7.4
 ## explicit
 github.com/nats-io/nats-server/v2/conf
 github.com/nats-io/nats-server/v2/internal/ldap
@@ -461,7 +462,7 @@ github.com/nats-io/nats-streaming-server/server
 github.com/nats-io/nats-streaming-server/spb
 github.com/nats-io/nats-streaming-server/stores
 github.com/nats-io/nats-streaming-server/util
-# github.com/nats-io/nats.go v1.13.1-0.20211122170419-d7c1d78a50fc
+# github.com/nats-io/nats.go v1.13.1-0.20220308171302-2f2f6968e98d
 github.com/nats-io/nats.go
 github.com/nats-io/nats.go/encoders/builtin
 github.com/nats-io/nats.go/util

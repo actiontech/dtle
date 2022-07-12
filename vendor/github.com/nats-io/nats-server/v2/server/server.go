@@ -107,7 +107,10 @@ type Info struct {
 
 // Server is our main struct.
 type Server struct {
+	// Fields accessed with atomic operations need to be 64-bit aligned
 	gcid uint64
+	// How often user logon fails due to the issuer account not being pinned.
+	pinnedAccFail uint64
 	stats
 	mu                  sync.Mutex
 	kp                  nkeys.KeyPair
@@ -266,9 +269,6 @@ type Server struct {
 	// Keep track of what that user name is for config reload purposes.
 	sysAccOnlyNoAuthUser string
 
-	// How often user logon fails due to the issuer account not being pinned.
-	pinnedAccFail uint64
-
 	// This is a central logger for IPQueues when the number of pending
 	// messages reaches a certain thresold (per queue)
 	ipqLog *srvIPQueueLogger
@@ -283,9 +283,11 @@ type srvIPQueueLogger struct {
 // For tracking JS nodes.
 type nodeInfo struct {
 	name    string
+	version string
 	cluster string
 	domain  string
 	id      string
+	tags    jwt.TagList
 	cfg     *JetStreamConfig
 	stats   *JetStreamStats
 	offline bool
@@ -407,9 +409,11 @@ func NewServer(opts *Options) (*Server, error) {
 		ourNode := string(getHash(serverName))
 		s.nodeToInfo.Store(ourNode, nodeInfo{
 			serverName,
+			VERSION,
 			opts.Cluster.Name,
 			opts.JetStreamDomain,
 			info.ID,
+			opts.Tags,
 			&JetStreamConfig{MaxMemory: opts.JetStreamMaxMemory, MaxStore: opts.JetStreamMaxStore},
 			nil,
 			false, true,
@@ -527,6 +531,39 @@ func NewServer(opts *Options) (*Server, error) {
 	s.handleSignals()
 
 	return s, nil
+}
+
+var semVerRe = regexp.MustCompile(`\Av?([0-9]+)\.?([0-9]+)?\.?([0-9]+)?`)
+
+func versionComponents(version string) (major, minor, patch int, err error) {
+	m := semVerRe.FindStringSubmatch(version)
+	if m == nil {
+		return 0, 0, 0, errors.New("invalid semver")
+	}
+	major, err = strconv.Atoi(m[1])
+	if err != nil {
+		return -1, -1, -1, err
+	}
+	minor, err = strconv.Atoi(m[2])
+	if err != nil {
+		return -1, -1, -1, err
+	}
+	patch, err = strconv.Atoi(m[3])
+	if err != nil {
+		return -1, -1, -1, err
+	}
+	return major, minor, patch, err
+}
+
+func versionAtLeast(version string, emajor, eminor, epatch int) bool {
+	major, minor, patch, err := versionComponents(version)
+	if err != nil {
+		return false
+	}
+	if major < emajor || minor < eminor || patch < epatch {
+		return false
+	}
+	return true
 }
 
 func (s *Server) logRejectedTLSConns() {
@@ -1073,13 +1110,6 @@ func (s *Server) logPid() error {
 	return ioutil.WriteFile(s.getOpts().PidFile, []byte(pidStr), 0660)
 }
 
-// NewAccountsAllowed returns whether or not new accounts can be created on the fly.
-func (s *Server) NewAccountsAllowed() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.opts.AllowNewAccounts
-}
-
 // numReservedAccounts will return the number of reserved accounts configured in the server.
 // Currently this is 1, one for the global default account.
 func (s *Server) numReservedAccounts() int {
@@ -1375,10 +1405,12 @@ func (s *Server) registerAccountNoLock(acc *Account) *Account {
 			if jsEnabled {
 				s.Warnf("Skipping Default Domain %q, set for JetStream enabled account %q", defDomain, accName)
 			} else if defDomain != _EMPTY_ {
-				dest := fmt.Sprintf(jsDomainAPI, defDomain)
-				s.Noticef("Adding default domain mapping %q -> %q to account %q %p", jsAllAPI, dest, accName, acc)
-				if err := acc.AddMapping(jsAllAPI, dest); err != nil {
-					s.Errorf("Error adding JetStream default domain mapping: %v", err)
+				for src, dest := range generateJSMappingTable(defDomain) {
+					// flip src and dest around so the domain is inserted
+					s.Noticef("Adding default domain mapping %q -> %q to account %q %p", dest, src, accName, acc)
+					if err := acc.AddMapping(dest, src); err != nil {
+						s.Errorf("Error adding JetStream default domain mapping: %v", err)
+					}
 				}
 			}
 		}
@@ -2230,6 +2262,7 @@ const (
 	StackszPath  = "/stacksz"
 	AccountzPath = "/accountz"
 	JszPath      = "/jsz"
+	HealthzPath  = "/healthz"
 )
 
 func (s *Server) basePath(p string) string {
@@ -2305,8 +2338,8 @@ func (s *Server) startMonitoring(secure bool) error {
 		return fmt.Errorf("can't listen to the monitor port: %v", err)
 	}
 
-	s.Noticef("Starting %s monitor on %s", monitorProtocol,
-		net.JoinHostPort(opts.HTTPHost, strconv.Itoa(httpListener.Addr().(*net.TCPAddr).Port)))
+	rport := httpListener.Addr().(*net.TCPAddr).Port
+	s.Noticef("Starting %s monitor on %s", monitorProtocol, net.JoinHostPort(opts.HTTPHost, strconv.Itoa(rport)))
 
 	mux := http.NewServeMux()
 
@@ -2332,6 +2365,9 @@ func (s *Server) startMonitoring(secure bool) error {
 	mux.HandleFunc(s.basePath(AccountzPath), s.HandleAccountz)
 	// Jsz
 	mux.HandleFunc(s.basePath(JszPath), s.HandleJsz)
+	// Healthz
+	mux.HandleFunc(s.basePath(HealthzPath), s.HandleHealthz)
+
 	// Do not set a WriteTimeout because it could cause cURL/browser
 	// to return empty response or unable to display page if the
 	// server needs more time to build the response.
@@ -2362,7 +2398,6 @@ func (s *Server) startMonitoring(secure bool) error {
 			}
 		}
 		srv.Close()
-		srv.Handler = nil
 		s.mu.Lock()
 		s.httpHandler = nil
 		s.mu.Unlock()
@@ -2908,7 +2943,7 @@ func (s *Server) readyForConnections(d time.Duration) error {
 		s.mu.Lock()
 		chk["server"] = info{ok: s.listener != nil, err: s.listenerErr}
 		chk["route"] = info{ok: (opts.Cluster.Port == 0 || s.routeListener != nil), err: s.routeListenerErr}
-		chk["gateway"] = info{ok: (opts.Gateway.Name == "" || s.gatewayListener != nil), err: s.gatewayListenerErr}
+		chk["gateway"] = info{ok: (opts.Gateway.Name == _EMPTY_ || s.gatewayListener != nil), err: s.gatewayListenerErr}
 		chk["leafNode"] = info{ok: (opts.LeafNode.Port == 0 || s.leafNodeListener != nil), err: s.leafNodeListenerErr}
 		chk["websocket"] = info{ok: (opts.Websocket.Port == 0 || s.websocket.listener != nil), err: s.websocket.listenerErr}
 		chk["mqtt"] = info{ok: (opts.MQTT.Port == 0 || s.mqtt.listener != nil), err: s.mqtt.listenerErr}
@@ -2923,7 +2958,9 @@ func (s *Server) readyForConnections(d time.Duration) error {
 		if numOK == len(chk) {
 			return nil
 		}
-		time.Sleep(25 * time.Millisecond)
+		if d > 25*time.Millisecond {
+			time.Sleep(25 * time.Millisecond)
+		}
 	}
 
 	failed := make([]string, 0, len(chk))
@@ -3582,32 +3619,6 @@ func (s *Server) shouldReportConnectErr(firstConnect bool, attempts int) bool {
 		return true
 	}
 	return false
-}
-
-// Invoked for route, leaf and gateway connections. Set the very first
-// PING to a lower interval to capture the initial RTT.
-// After that the PING interval will be set to the user defined value.
-// Client lock should be held.
-func (s *Server) setFirstPingTimer(c *client) {
-	opts := s.getOpts()
-	d := opts.PingInterval
-
-	if !opts.DisableShortFirstPing {
-		if c.kind != CLIENT {
-			if d > firstPingInterval {
-				d = firstPingInterval
-			}
-			if c.kind == GATEWAY {
-				d = adjustPingIntervalForGateway(d)
-			}
-		} else if d > firstClientPingInterval {
-			d = firstClientPingInterval
-		}
-	}
-	// We randomize the first one by an offset up to 20%, e.g. 2m ~= max 24s.
-	addDelay := rand.Int63n(int64(d / 5))
-	d += time.Duration(addDelay)
-	c.ping.tmr = time.AfterFunc(d, c.processPingTimer)
 }
 
 func (s *Server) updateRemoteSubscription(acc *Account, sub *subscription, delta int32) {
