@@ -107,8 +107,12 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		d.Logger.Error(newErr.Error())
 		return 0, err
 	}
-
 	columns, err := rows.Columns()
+	if err != nil {
+		return 0, err
+	}
+
+	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
 		return 0, err
 	}
@@ -125,8 +129,9 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		if err != nil {
 			return 0, err
 		}
-
-		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
+		if dumpValueConverter(rowValuesRaw, columnTypes) {
+			entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
+		}
 	}
 
 	nRows = int64(len(entry.ValuesX))

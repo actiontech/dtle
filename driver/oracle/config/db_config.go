@@ -6,7 +6,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/sijms/go-ora/v2"
+	_ "github.com/godror/godror"
+	// _ "github.com/sijms/go-ora/v2"
 )
 
 type OracleConfig struct {
@@ -33,7 +34,8 @@ func OpenDb(meta *OracleConfig) (*sql.DB, error) {
 	if meta.ServiceName == "" {
 		meta.ServiceName = "xe"
 	}
-	sqlDb, err := sql.Open("oracle", fmt.Sprintf("oracle://%s:%s@%s:%d/%s", meta.User, meta.Password, meta.Host, meta.Port, meta.ServiceName))
+	sqlDb, err := sql.Open("godror", fmt.Sprintf(`user="%s" password="%s" connectString="%s:%d/%s"`, meta.User, meta.Password, meta.Host, meta.Port, meta.ServiceName))
+	// sqlDb, err := sql.Open("godror", fmt.Sprintf("oracle://%s:%s@%s:%d/%s", meta.User, meta.Password, meta.Host, meta.Port, meta.ServiceName))
 	if err != nil {
 		return nil, fmt.Errorf("error on open oracle database :%v", err)
 	}
