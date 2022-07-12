@@ -177,7 +177,7 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 			}
 		} else {
 			if len(args) != len(rows[0]) {
-				return "", nil, fmt.Errorf("BuildDMLInsertQuery: args count differs from args0 %v %v %v",
+				return "", nil, fmt.Errorf("BuildDMLInsertQuery: args count differs from args0 %v %v",
 					len(args), len(rows[0]))
 			}
 		}

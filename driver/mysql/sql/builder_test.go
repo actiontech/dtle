@@ -100,11 +100,11 @@ func TestBuildDMLInsertQuery(t *testing.T) {
 				Scale:              0,
 			},
 		})
-		args := []interface{}{3, "testName", "first", 17, 23}
+		args := [][]interface{}{{3, "testName", "first", 17, 23}}
 
 		query, explodedArgs, err := BuildDMLInsertQuery(databaseName, tableName, uniqueKeyColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
-		expected := `replace into mydb.tbl  values (?, ?, ?, ?, ?)`
+		expected := `replace into mydb.tbl  values (?,?,?,?,?)`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(explodedArgs, []interface{}{3, "testName", "first", 17, 23}))
 	}
@@ -182,32 +182,32 @@ func TestBuildDMLInsertQuerySignedUnsigned(t *testing.T) {
 	})
 	{
 		// testing signed
-		args := []interface{}{3, "testname", "first", int8(-1), 23}
+		args := [][]interface{}{{3, "testname", "first", int8(-1), 23}}
 		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
-		expected := `replace into mydb.tbl  values (?, ?, ?, ?, ?)`
+		expected := `replace into mydb.tbl  values (?,?,?,?,?)`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "first", int8(-1), 23}))
 	}
 	{
 		// testing unsigned
-		args := []interface{}{3, "testname", "first", int8(-1), 23}
+		args := [][]interface{}{{3, "testname", "first", int8(-1), 23}}
 		tableColumns.SetUnsigned("position")
 		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
-			replace into mydb.tbl  values (?, ?, ?, ?, ?)`
+			replace into mydb.tbl  values (?,?,?,?,?)`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "first", uint8(255), 23}))
 	}
 	{
 		// testing unsigned
-		args := []interface{}{3, "testname", "first", int32(-1), 23}
+		args := [][]interface{}{{3, "testname", "first", int32(-1), 23}}
 		tableColumns.SetUnsigned("position")
 		query, sharedArgs, err := BuildDMLInsertQuery(databaseName, tableName, tableColumns, []string{}, args, nil)
 		test.S(t).ExpectNil(err)
 		expected := `
-			replace into mydb.tbl  values (?, ?, ?, ?, ?)`
+			replace into mydb.tbl  values (?,?,?,?,?)`
 		test.S(t).ExpectEquals(normalizeQuery(query), normalizeQuery(expected))
 		test.S(t).ExpectTrue(reflect.DeepEqual(sharedArgs, []interface{}{3, "testname", "first", uint32(4294967295), 23}))
 	}
