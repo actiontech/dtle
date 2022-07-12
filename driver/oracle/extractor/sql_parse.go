@@ -1,12 +1,14 @@
 package extractor
 
 import (
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/actiontech/dtle/driver/common"
 	"github.com/actiontech/dtle/g"
@@ -458,4 +460,40 @@ func colDefaultString(defaultCol *oracle_ast.ColumnDefault) string {
 		defValue = fmt.Sprintf("DEFAULT %s", defaultCol.Value)
 	}
 	return defValue
+}
+
+const mysqlDateType string = "2006-01-02 15:04:05.999999"
+
+func dumpValueConverter(rowValues []*[]byte, columnTypes []*sql.ColumnType) bool {
+	for i, columnType := range columnTypes {
+		if rowValues[i] == nil {
+			continue
+		}
+		switch columnType.DatabaseTypeName() {
+		// BINARY_DOUBLE
+		case "DOUBLE":
+			upperRowVal := strings.ToUpper(string(*rowValues[i]))
+			if upperRowVal == "+INF" ||
+				upperRowVal == "-INF" ||
+				upperRowVal == "NAN" {
+				rowValues[i] = nil
+			}
+		// DATE , TIMESTAMP
+		case "DATE", "TIMESTAMP":
+			rowVal := string(*rowValues[i])
+			t1, err := time.Parse(time.RFC3339Nano, rowVal)
+			if err != nil {
+				// todo log
+				return false
+			}
+			t2 := t1.Format(mysqlDateType)
+			row := []byte(t2)
+			rowValues[i] = &row
+		// INTERVAL_DAY INTERVAL_YEAR
+		case "INTERVAL DAY TO SECOND", "INTERVAL YEAR TO MONTH":
+			// todo
+			continue
+		}
+	}
+	return true
 }

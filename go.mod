@@ -15,6 +15,7 @@ require (
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/go-sql-driver/mysql v1.6.0
+	github.com/godror/godror v0.33.3
 	github.com/hashicorp/go-hclog v1.0.0
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
@@ -23,6 +24,7 @@ require (
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mitchellh/mapstructure v1.3.3
 	github.com/mojocn/base64Captcha v1.3.4
+	github.com/nats-io/gnatsd v1.4.1 // indirect
 	github.com/nats-io/go-nats v1.7.2
 	github.com/nats-io/nats-server/v2 v2.7.0
 	github.com/nats-io/nats-streaming-server v0.23.2
@@ -35,7 +37,6 @@ require (
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
 	github.com/shirou/gopsutil/v3 v3.21.11
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
-	github.com/sijms/go-ora/v2 v2.2.17
 	github.com/sjjian/oracle-sql-parser v0.0.0-20211213072517-76c7fe105991
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
