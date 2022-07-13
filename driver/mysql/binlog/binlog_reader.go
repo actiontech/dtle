@@ -1921,6 +1921,10 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 
 	if table != nil && len(table.Table.ColumnMap) > 0 {
 		for iRow := range dmlEvent.Rows {
+			if len(dmlEvent.Rows[iRow]) == 0 {
+				continue
+			}
+
 			newRow := make([]interface{}, len(table.Table.ColumnMap))
 			for iCol := range table.Table.ColumnMap {
 				idx := table.Table.ColumnMap[iCol]
