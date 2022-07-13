@@ -101,27 +101,17 @@ func (sm *StoreManager) GetGtidForJob(jobName string) (string, error) {
 	return string(p.Value), nil
 }
 
-func (sm *StoreManager) GetSourceType(jobName string, stopCh chan struct{}) (string, error) {
+func (sm *StoreManager) GetSourceType(jobName string) (string, error) {
 	sm.logger.Debug("GetSourceType")
 
-	waitCh := make(chan struct{}, 0)
-	defer close(waitCh)
 	var err error
 	key := fmt.Sprintf("dtle/%v/SourceType", jobName)
-	ch, err := sm.consulStore.Watch(key, waitCh)
+
+	kv, err := sm.consulStore.Get(key)
 	if err != nil {
 		return "", err
 	}
-	select {
-	case kv := <-ch:
-		if kv == nil {
-			return "", errors.Wrap(ErrNoConsul, "WaitKv")
-		} else {
-			return string(kv.Value), nil
-		}
-	case <-stopCh:
-		return "", fmt.Errorf("shutdown")
-	}
+	return string(kv.Value), nil
 }
 
 func (sm *StoreManager) PutSourceType(jobName, sourceType string) error {

@@ -237,7 +237,9 @@ func (a *Applier) updateGtidLoop() {
 	}
 }
 
-func (a *Applier) prepareGTID() (err error) {
+func (a *Applier) prepareGTID() {
+	var err error
+
 	a.checkJobFinish()
 	go a.watchTargetGtid()
 
@@ -276,7 +278,7 @@ func (a *Applier) Run() {
 		return
 	}
 
-	sourceType, err := a.storeManager.GetSourceType(a.subject, a.shutdownCh)
+	sourceType, err := a.storeManager.GetSourceType(a.subject)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "watchSourceType"))
 		return
