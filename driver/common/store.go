@@ -101,6 +101,22 @@ func (sm *StoreManager) GetGtidForJob(jobName string) (string, error) {
 	return string(p.Value), nil
 }
 
+func (sm *StoreManager) GetConfig(jobName string) (*MySQLDriverConfig, error) {
+	key := fmt.Sprintf("dtle/%v/Config", jobName)
+
+	kv, err := sm.consulStore.Get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	config := &MySQLDriverConfig{}
+	err = json.Unmarshal(kv.Value, config)
+	if err != nil {
+		return nil, err
+	}
+	return config, nil
+}
+
 func (sm *StoreManager) GetSourceType(jobName string) (string, error) {
 	sm.logger.Debug("GetSourceType")
 
@@ -256,6 +272,14 @@ func (sm *StoreManager) SrcWatchNats(jobName string, stopCh chan struct{},
 	return natsAddr, nil
 }
 
+func (sm *StoreManager) PutConfig(subject string, config *MySQLDriverConfig) error {
+	url := fmt.Sprintf("dtle/%v/Config", subject)
+	bs, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	return sm.consulStore.Put(url, bs, nil)
+}
 func (sm *StoreManager) PutKey(subject string, key string, value []byte) error {
 	url := fmt.Sprintf("dtle/%v/%v", subject, key)
 	return sm.consulStore.Put(url, value, nil)

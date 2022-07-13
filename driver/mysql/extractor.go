@@ -157,6 +157,11 @@ func (e *Extractor) Run() {
 		return
 	}
 
+	err = e.storeManager.PutConfig(e.subject, e.mysqlContext)
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "PutKey config"))
+	}
+
 	{
 		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
 		if jobStatus == common.TargetGtidFinished {

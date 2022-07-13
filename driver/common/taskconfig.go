@@ -36,6 +36,7 @@ func TaskTypeFromString(s string) string {
 }
 
 type DtleTaskConfig struct {
+	GetConfigFrom string `codec:"GetConfigFrom"`
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb        []*DataSource `codec:"ReplicateDoDb"`
 	ReplicateIgnoreDb    []*DataSource `codec:"ReplicateIgnoreDb"`
@@ -63,11 +64,12 @@ type DtleTaskConfig struct {
 	UseMySQLDependency    bool `codec:"UseMySQLDependency"`
 	ForeignKeyChecks      bool `codec:"ForeignKeyChecks"`
 
-	SkipCreateDbTable   bool                          `codec:"SkipCreateDbTable"`
-	SkipPrivilegeCheck  bool                          `codec:"SkipPrivilegeCheck"`
-	SkipIncrementalCopy bool                          `codec:"SkipIncrementalCopy"`
-	ConnectionConfig    *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
-	KafkaConfig         *KafkaConfig                  `codec:"KafkaConfig"`
+	SkipCreateDbTable    bool                          `codec:"SkipCreateDbTable"`
+	SkipPrivilegeCheck   bool                          `codec:"SkipPrivilegeCheck"`
+	SkipIncrementalCopy  bool                          `codec:"SkipIncrementalCopy"`
+	ConnectionConfig     *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
+	DestConnectionConfig *mysqlconfig.ConnectionConfig `codec:"DestConnectionConfig"`
+	KafkaConfig          *KafkaConfig                  `codec:"KafkaConfig"`
 	// support oracle extractor/applier
 	OracleConfig *config.OracleConfig `codec:"OracleConfig"`
 }
@@ -87,13 +89,6 @@ func (d *DtleTaskConfig) SetDefaultForEmpty() {
 	}
 	if d.GroupTimeout == 0 {
 		d.GroupTimeout = DefaultSrcGroupTimeout
-	}
-
-	if d.ConnectionConfig == nil {
-		d.ConnectionConfig = &mysqlconfig.ConnectionConfig{}
-	}
-	if d.ConnectionConfig.Charset == "" {
-		d.ConnectionConfig.Charset = "utf8mb4"
 	}
 
 	if d.KafkaConfig != nil {
