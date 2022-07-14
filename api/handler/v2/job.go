@@ -387,17 +387,6 @@ func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrU
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
 	destTaskConfigInNomadFormat := buildDatabaseDestTaskConfigMap(jobParams.DestTask)
-	if jobParams.SrcTask.OracleSrcTaskConfig != nil {
-		// todo for oracle->MySQL applier
-		oracleConfig := make(map[string]interface{})
-		oracleConfig["Host"] = jobParams.SrcTask.ConnectionConfig.Host
-		oracleConfig["Port"] = jobParams.SrcTask.ConnectionConfig.Port
-		oracleConfig["User"] = jobParams.SrcTask.ConnectionConfig.User
-		oracleConfig["Password"] = jobParams.SrcTask.ConnectionConfig.Password
-		oracleConfig["Scn"] = 0
-		oracleConfig["ServiceName"] = jobParams.SrcTask.ConnectionConfig.ServiceName
-		destTaskConfigInNomadFormat["OracleConfig"] = oracleConfig
-	}
 
 	destTask, destDataCenter, err := buildNomadTaskGroupItem(destTaskConfigInNomadFormat, jobParams.DestTask.TaskName, jobParams.DestTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
