@@ -75,6 +75,7 @@ import "C"
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
@@ -179,16 +180,7 @@ type drv struct {
 	mu            sync.RWMutex
 }
 
-const oneContext = false
-
-func NewDriver() *drv {
-	var d drv
-	if !oneContext || defaultDrv == nil {
-		return &d
-	}
-	d.dpiContext = defaultDrv.dpiContext
-	return &d
-}
+func NewDriver() *drv { return &drv{} }
 func (d *drv) Close() error {
 	if d == nil {
 		return nil
@@ -204,18 +196,11 @@ func (d *drv) Close() error {
 		}
 		done <- nil
 	}()
-	var err error
 	select {
-	case err = <-done:
+	case <-done:
 	case <-time.After(5 * time.Second):
-		err = fmt.Errorf("Driver.Close: %w", context.DeadlineExceeded)
 	}
 
-	if oneContext &&
-		// As we use one global dpiContext, don't destroy it
-		(dpiCtx == nil || (d != defaultDrv && defaultDrv.dpiContext == dpiCtx)) {
-		return err
-	}
 	go func() {
 		if C.dpiContext_destroy(dpiCtx) == C.DPI_FAILURE {
 			done <- fmt.Errorf("error destroying dpiContext %p", dpiCtx)
@@ -637,13 +622,15 @@ func (d *drv) getPool(P commonAndPoolParams) (*connPool, error) {
 	}
 
 	var usernameKey string
+	var passwordHash [sha256.Size]byte
 	if !P.Heterogeneous && !P.ExternalAuth {
 		// skip username being part of key in heterogeneous pools
 		usernameKey = P.Username
+		passwordHash = sha256.Sum256([]byte(P.Password.Secret())) // See issue #245
 	}
 	// determine key to use for pool
-	poolKey := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s\t%d\t%s",
-		usernameKey, P.ConnectString, P.MinSessions, P.MaxSessions,
+	poolKey := fmt.Sprintf("%s\t%x\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%t\t%t\t%t\t%s\t%d\t%s",
+		usernameKey, passwordHash[:4], P.ConnectString, P.MinSessions, P.MaxSessions,
 		P.SessionIncrement, P.WaitTimeout, P.MaxLifeTime, P.SessionTimeout,
 		P.Heterogeneous, P.EnableEvents, P.ExternalAuth,
 		P.Timezone, P.MaxSessionsPerShard, P.PingInterval,
@@ -1125,7 +1112,7 @@ func (c connector) Driver() driver.Driver { return c.drv }
 //
 // From Go 1.17 sql.DB.Close() will call this method.
 func (c connector) Close() error {
-	if c.drv == nil || oneContext || c.drv == defaultDrv {
+	if c.drv == nil || c.drv == defaultDrv {
 		return nil
 	}
 	return c.drv.Close()
