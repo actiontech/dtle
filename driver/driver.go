@@ -392,7 +392,7 @@ func (d *Driver) loopCleanRelayDir() {
 	cleanDataDir := func() {
 		files, err := ioutil.ReadDir(path.Join(d.config.DataDir, "binlog"))
 		if err != nil {
-			d.logger.Error("read dir failed", "dataDir", d.config.DataDir, "err", err)
+			d.logger.Info("read dir failed", "dataDir", d.config.DataDir, "err", err)
 			return
 		}
 
@@ -539,10 +539,9 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "DecodeDriverConfig")
 	}
 
-	// todo
-	//if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
-	//	return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
-	//}
+	if err := d.verifyDriverConfig(dtleTaskConfig); nil != err {
+		return nil, nil, fmt.Errorf("invalide driver config, errors: %v", err)
+	}
 	dtleTaskConfig.SetDefaultForEmpty()
 
 	handle := drivers.NewTaskHandle(taskHandleVersion)
@@ -577,9 +576,14 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 		return fmt.Errorf("expect 0 < BulkInsert1 < BulkInsert2. %v %v", config.BulkInsert1, config.BulkInsert2)
 	}
 
-	if (config.ConnectionConfig == nil && config.KafkaConfig == nil) ||
-		(config.ConnectionConfig != nil && config.KafkaConfig != nil) {
-		addErrMsgs("one and only one of ConnectionConfig or KafkaConfig should be set")
+	connectConfigNum := 0
+	for _, notNil := range []bool{config.ConnectionConfig != nil, config.KafkaConfig != nil, config.OracleConfig != nil} {
+		if notNil {
+			connectConfigNum += 1
+		}
+	}
+	if connectConfigNum != 1 {
+		addErrMsgs("one and only one of connection config should be set")
 	}
 
 	for _, doDb := range config.ReplicateDoDb {
