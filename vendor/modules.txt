@@ -207,7 +207,7 @@ github.com/go-playground/validator
 # github.com/go-sql-driver/mysql v1.6.0
 ## explicit
 github.com/go-sql-driver/mysql
-# github.com/godror/godror v0.33.3
+# github.com/godror/godror v0.33.4-0.20220713161431-268adc0d5f6b
 ## explicit
 github.com/godror/godror
 github.com/godror/godror/dsn

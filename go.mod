@@ -15,7 +15,7 @@ require (
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/go-sql-driver/mysql v1.6.0
-	github.com/godror/godror v0.33.3
+	github.com/godror/godror v0.33.4-0.20220713161431-268adc0d5f6b
 	github.com/hashicorp/go-hclog v1.0.0
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
