@@ -197,6 +197,26 @@ func SliceStringContains(list []string, item string) bool {
 	return false
 }
 
+// SliceStringHasPrefix returns true if any string in list starts with prefix
+func SliceStringHasPrefix(list []string, prefix string) bool {
+	for _, s := range list {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// StringHasPrefixInSlice returns true if string starts with any prefix in list
+func StringHasPrefixInSlice(s string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func SliceSetDisjoint(first, second []string) (bool, []string) {
 	contained := make(map[string]struct{}, len(first))
 	for _, k := range first {
@@ -550,4 +570,31 @@ func PathEscapesSandbox(sandboxDir, path string) bool {
 		return true
 	}
 	return false
+}
+
+// StopFunc is used to stop a time.Timer created with NewSafeTimer
+type StopFunc func()
+
+// NewSafeTimer creates a time.Timer but does not panic if duration is <= 0.
+//
+// Using a time.Timer is recommended instead of time.After when it is necessary
+// to avoid leaking goroutines (e.g. in a select inside a loop).
+//
+// Returns the time.Timer and also a StopFunc, forcing the caller to deal
+// with stopping the time.Timer to avoid leaking a goroutine.
+func NewSafeTimer(duration time.Duration) (*time.Timer, StopFunc) {
+	if duration <= 0 {
+		// Avoid panic by using the smallest positive value. This is close enough
+		// to the behavior of time.After(0), which this helper is intended to
+		// replace.
+		// https://go.dev/play/p/EIkm9MsPbHY
+		duration = 1
+	}
+
+	t := time.NewTimer(duration)
+	cancel := func() {
+		t.Stop()
+	}
+
+	return t, cancel
 }

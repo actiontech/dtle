@@ -756,12 +756,14 @@ func (r *ControllerDeleteSnapshotRequest) Validate() error {
 type ControllerListSnapshotsRequest struct {
 	MaxEntries    int32
 	StartingToken string
+	Secrets       structs.CSISecrets
 }
 
 func (r *ControllerListSnapshotsRequest) ToCSIRepresentation() *csipbv1.ListSnapshotsRequest {
 	return &csipbv1.ListSnapshotsRequest{
 		MaxEntries:    r.MaxEntries,
 		StartingToken: r.StartingToken,
+		Secrets:       r.Secrets,
 	}
 }
 
@@ -785,7 +787,7 @@ func NewListSnapshotsResponse(resp *csipbv1.ListSnapshotsResponse) *ControllerLi
 					SizeBytes:      snap.GetSizeBytes(),
 					ID:             snap.GetSnapshotId(),
 					SourceVolumeID: snap.GetSourceVolumeId(),
-					CreateTime:     int64(snap.GetCreationTime().GetNanos()),
+					CreateTime:     snap.GetCreationTime().GetSeconds(),
 					IsReady:        snap.GetReadyToUse(),
 				},
 			})
