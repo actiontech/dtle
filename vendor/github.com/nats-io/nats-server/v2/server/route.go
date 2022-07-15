@@ -1035,20 +1035,17 @@ func (c *client) processRemoteSub(argo []byte, hasOrigin bool) (err error) {
 		acc = v.(*Account)
 	}
 	if acc == nil {
-		expire := false
 		isNew := false
-		if !srv.NewAccountsAllowed() {
-			// if the option of retrieving accounts later exists, create an expired one.
-			// When a client comes along, expiration will prevent it from being used,
-			// cause a fetch and update the account to what is should be.
-			if staticResolver {
-				c.Errorf("Unknown account %q for remote subject %q", accountName, sub.subject)
-				return
-			}
-			c.Debugf("Unknown account %q for remote subject %q", accountName, sub.subject)
-			expire = true
+		// if the option of retrieving accounts later exists, create an expired one.
+		// When a client comes along, expiration will prevent it from being used,
+		// cause a fetch and update the account to what is should be.
+		if staticResolver {
+			c.Errorf("Unknown account %q for remote subject %q", accountName, sub.subject)
+			return
 		}
-		if acc, isNew = srv.LookupOrRegisterAccount(accountName); isNew && expire {
+		c.Debugf("Unknown account %q for remote subject %q", accountName, sub.subject)
+
+		if acc, isNew = srv.LookupOrRegisterAccount(accountName); isNew {
 			acc.mu.Lock()
 			acc.expired = true
 			acc.incomplete = true
@@ -1349,7 +1346,7 @@ func (s *Server) createRoute(conn net.Conn, rURL *url.URL) *client {
 	}
 
 	// Set the Ping timer
-	s.setFirstPingTimer(c)
+	c.setFirstPingTimer()
 
 	// For routes, the "client" is added to s.routes only when processing
 	// the INFO protocol, that is much later.
@@ -1422,7 +1419,8 @@ func (s *Server) addRoute(c *client, info *Info) (bool, bool) {
 		s.remotes[id] = c
 		// check to be consistent and future proof. but will be same domain
 		if s.sameDomain(info.Domain) {
-			s.nodeToInfo.Store(c.route.hash, nodeInfo{c.route.remoteName, s.info.Cluster, info.Domain, id, nil, nil, false, info.JetStream})
+			s.nodeToInfo.Store(c.route.hash,
+				nodeInfo{c.route.remoteName, s.info.Version, s.info.Cluster, info.Domain, id, nil, nil, nil, false, info.JetStream})
 		}
 		c.mu.Lock()
 		c.route.connectURLs = info.ClientConnectURLs

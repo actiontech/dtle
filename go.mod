@@ -16,7 +16,7 @@ require (
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/godror/godror v0.33.4-0.20220713161431-268adc0d5f6b
-	github.com/hashicorp/go-hclog v1.0.0
+	github.com/hashicorp/go-hclog v1.1.0
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
 	github.com/julienschmidt/httprouter v1.2.0
@@ -26,8 +26,8 @@ require (
 	github.com/mojocn/base64Captcha v1.3.4
 	github.com/nats-io/gnatsd v1.4.1 // indirect
 	github.com/nats-io/go-nats v1.7.2
-	github.com/nats-io/nats-server/v2 v2.7.0
-	github.com/nats-io/nats-streaming-server v0.23.2
+	github.com/nats-io/nats-server/v2 v2.7.4
+	github.com/nats-io/nats-streaming-server v0.24.3
 	github.com/outbrain/golib v0.0.0-20180830062331-ab954725f502
 	github.com/pingcap/dm v0.0.0-00010101000000-000000000000
 	github.com/pingcap/tidb v1.1.0-beta.0.20211025024448-36e694bfc536

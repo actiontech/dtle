@@ -23,7 +23,6 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -389,7 +388,7 @@ func (a *Account) addStreamWithAssignment(config *StreamConfig, fsConfig *FileSt
 	}
 
 	jsa.streams[cfg.Name] = mset
-	storeDir := path.Join(jsa.storeDir, streamsDir, cfg.Name)
+	storeDir := filepath.Join(jsa.storeDir, streamsDir, cfg.Name)
 	jsa.mu.Unlock()
 
 	// Bind to the user account.
@@ -464,7 +463,9 @@ func (a *Account) addStreamWithAssignment(config *StreamConfig, fsConfig *FileSt
 		// Send advisory.
 		var suppress bool
 		if !s.standAloneMode() && sa == nil {
-			suppress = true
+			if cfg.Replicas > 1 {
+				suppress = true
+			}
 		} else if sa != nil {
 			suppress = sa.responded
 		}
@@ -1048,11 +1049,8 @@ func (mset *stream) update(config *StreamConfig) error {
 	// Now update config and store's version of our config.
 	mset.cfg = *cfg
 
-	var suppress bool
-	if mset.isClustered() && mset.sa != nil {
-		suppress = mset.sa.responded
-	}
-	if mset.isLeader() && !suppress {
+	// If we are the leader never suppres update advisory, simply send.
+	if mset.isLeader() {
 		mset.sendUpdateAdvisoryLocked()
 	}
 	mset.mu.Unlock()
@@ -1286,7 +1284,15 @@ func (mset *stream) sourceInfo(si *sourceInfo) *StreamSourceInfo {
 	if si == nil {
 		return nil
 	}
-	ssi := &StreamSourceInfo{Name: si.name, Lag: si.lag, Active: time.Since(si.last), Error: si.err}
+
+	ssi := &StreamSourceInfo{Name: si.name, Lag: si.lag, Error: si.err}
+	// If we have not heard from the source, set Active to -1.
+	if si.last.IsZero() {
+		ssi.Active = -1
+	} else {
+		ssi.Active = time.Since(si.last)
+	}
+
 	var ext *ExternalStream
 	if mset.cfg.Mirror != nil {
 		ext = mset.cfg.Mirror.External
@@ -2923,10 +2929,10 @@ func (mset *stream) processJetStreamMsg(subject, reply string, hdr, msg []byte, 
 		if numConsumers == 0 {
 			noInterest = true
 		} else if mset.numFilter > 0 {
-			// Assume none.
+			// Assume no interest and check to disqualify.
 			noInterest = true
 			for _, o := range mset.consumers {
-				if o.cfg.FilterSubject != _EMPTY_ && subjectIsSubsetMatch(subject, o.cfg.FilterSubject) {
+				if o.cfg.FilterSubject == _EMPTY_ || subjectIsSubsetMatch(subject, o.cfg.FilterSubject) {
 					noInterest = false
 					break
 				}
@@ -3140,6 +3146,17 @@ func (mset *stream) setupSendCapabilities() {
 	go mset.internalLoop()
 }
 
+// Returns the associated account name.
+func (mset *stream) accName() string {
+	if mset == nil {
+		return _EMPTY_
+	}
+	mset.mu.RLock()
+	acc := mset.acc
+	mset.mu.RUnlock()
+	return acc.Name
+}
+
 // Name returns the stream name.
 func (mset *stream) name() string {
 	if mset == nil {
@@ -3167,7 +3184,6 @@ func (mset *stream) internalLoop() {
 	c.registerWithAccount(mset.acc)
 	defer c.closeConnection(ClientClosed)
 	outq, qch, msgs := mset.outq, mset.qch, mset.msgs
-	isClustered := mset.cfg.Replicas > 1
 
 	// For the ack msgs queue for interest retention.
 	var (
@@ -3223,6 +3239,11 @@ func (mset *stream) internalLoop() {
 			c.flushClients(0)
 			outq.recycle(&pms)
 		case <-msgs.ch:
+			// This can possibly change now so needs to be checked here.
+			mset.mu.RLock()
+			isClustered := mset.node != nil
+			mset.mu.RUnlock()
+
 			ims := msgs.pop()
 			for _, imi := range ims {
 				im := imi.(*inMsg)
@@ -3308,12 +3329,6 @@ func (mset *stream) stop(deleteFlag, advisory bool) error {
 		mset.infoSub = nil
 	}
 
-	// Quit channel.
-	if mset.qch != nil {
-		close(mset.qch)
-		mset.qch = nil
-	}
-
 	// Cluster cleanup
 	if n := mset.node; n != nil {
 		if deleteFlag {
@@ -3326,6 +3341,12 @@ func (mset *stream) stop(deleteFlag, advisory bool) error {
 	// Send stream delete advisory after the consumers.
 	if deleteFlag && advisory {
 		mset.sendDeleteAdvisoryLocked()
+	}
+
+	// Quit channel, do this after sending the delete advisory
+	if mset.qch != nil {
+		close(mset.qch)
+		mset.qch = nil
 	}
 
 	c := mset.client
@@ -3581,7 +3602,7 @@ func (a *Account) RestoreStream(ncfg *StreamConfig, r io.Reader) (*stream, error
 		return nil, err
 	}
 
-	sd := path.Join(jsa.storeDir, snapsDir)
+	sd := filepath.Join(jsa.storeDir, snapsDir)
 	if _, err := os.Stat(sd); os.IsNotExist(err) {
 		if err := os.MkdirAll(sd, defaultDirPerms); err != nil {
 			return nil, fmt.Errorf("could not create snapshots directory - %v", err)
@@ -3598,6 +3619,17 @@ func (a *Account) RestoreStream(ncfg *StreamConfig, r io.Reader) (*stream, error
 	}
 	defer os.RemoveAll(sdir)
 
+	logAndReturnError := func() error {
+		a.mu.RLock()
+		err := fmt.Errorf("unexpected content (account=%s)", a.Name)
+		if a.srv != nil {
+			a.srv.Errorf("Stream restore failed due to %v", err)
+		}
+		a.mu.RUnlock()
+		return err
+	}
+	sdirCheck := filepath.Clean(sdir) + string(os.PathSeparator)
+
 	tr := tar.NewReader(s2.NewReader(r))
 	for {
 		hdr, err := tr.Next()
@@ -3607,7 +3639,13 @@ func (a *Account) RestoreStream(ncfg *StreamConfig, r io.Reader) (*stream, error
 		if err != nil {
 			return nil, err
 		}
-		fpath := path.Join(sdir, filepath.Clean(hdr.Name))
+		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+			return nil, logAndReturnError()
+		}
+		fpath := filepath.Join(sdir, filepath.Clean(hdr.Name))
+		if !strings.HasPrefix(fpath, sdirCheck) {
+			return nil, logAndReturnError()
+		}
 		os.MkdirAll(filepath.Dir(fpath), defaultDirPerms)
 		fd, err := os.OpenFile(fpath, os.O_CREATE|os.O_RDWR, 0600)
 		if err != nil {
@@ -3623,7 +3661,7 @@ func (a *Account) RestoreStream(ncfg *StreamConfig, r io.Reader) (*stream, error
 	// Check metadata.
 	// The cfg passed in will be the new identity for the stream.
 	var fcfg FileStreamInfo
-	b, err := ioutil.ReadFile(path.Join(sdir, JetStreamMetaFile))
+	b, err := ioutil.ReadFile(filepath.Join(sdir, JetStreamMetaFile))
 	if err != nil {
 		return nil, err
 	}
@@ -3631,18 +3669,23 @@ func (a *Account) RestoreStream(ncfg *StreamConfig, r io.Reader) (*stream, error
 		return nil, err
 	}
 
+	// Check to make sure names match.
+	if fcfg.Name != cfg.Name {
+		return nil, errors.New("stream names do not match")
+	}
+
 	// See if this stream already exists.
 	if _, err := a.lookupStream(cfg.Name); err == nil {
 		return nil, NewJSStreamNameExistError()
 	}
 	// Move into the correct place here.
-	ndir := path.Join(jsa.storeDir, streamsDir, cfg.Name)
+	ndir := filepath.Join(jsa.storeDir, streamsDir, cfg.Name)
 	// Remove old one if for some reason it is still here.
 	if _, err := os.Stat(ndir); err == nil {
 		os.RemoveAll(ndir)
 	}
 	// Make sure our destination streams directory exists.
-	if err := os.MkdirAll(path.Join(jsa.storeDir, streamsDir), defaultDirPerms); err != nil {
+	if err := os.MkdirAll(filepath.Join(jsa.storeDir, streamsDir), defaultDirPerms); err != nil {
 		return nil, err
 	}
 	// Move into new location.
@@ -3663,11 +3706,11 @@ func (a *Account) RestoreStream(ncfg *StreamConfig, r io.Reader) (*stream, error
 	}
 
 	// Now do consumers.
-	odir := path.Join(ndir, consumerDir)
+	odir := filepath.Join(ndir, consumerDir)
 	ofis, _ := ioutil.ReadDir(odir)
 	for _, ofi := range ofis {
-		metafile := path.Join(odir, ofi.Name(), JetStreamMetaFile)
-		metasum := path.Join(odir, ofi.Name(), JetStreamMetaFileSum)
+		metafile := filepath.Join(odir, ofi.Name(), JetStreamMetaFile)
+		metasum := filepath.Join(odir, ofi.Name(), JetStreamMetaFileSum)
 		if _, err := os.Stat(metafile); os.IsNotExist(err) {
 			mset.stop(true, false)
 			return nil, fmt.Errorf("error restoring consumer [%q]: %v", ofi.Name(), err)

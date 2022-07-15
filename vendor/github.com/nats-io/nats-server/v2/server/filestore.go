@@ -1,4 +1,4 @@
-// Copyright 2019-2021 The NATS Authors
+// Copyright 2019-2022 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -29,7 +29,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"path"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -89,6 +89,7 @@ type fileStore struct {
 	aek     cipher.AEAD
 	lmb     *msgBlock
 	blks    []*msgBlock
+	psmc    map[string]uint64
 	hh      hash.Hash64
 	qch     chan struct{}
 	cfs     []*consumerFileStore
@@ -120,6 +121,7 @@ type msgBlock struct {
 	msgs    uint64 // User visible message count.
 	fss     map[string]*SimpleState
 	sfn     string
+	kfn     string
 	lwits   int64
 	lwts    int64
 	llts    int64
@@ -186,8 +188,12 @@ const (
 	indexScan = "%d.idx"
 	// used to load per subject meta information.
 	fssScan = "%d.fss"
+	// to look for orphans
+	fssScanAll = "*.fss"
 	// used to store our block encryption key.
 	keyScan = "%d.key"
+	// to look for orphans
+	keyScanAll = "*.key"
 	// This is where we keep state on consumers.
 	consumerDir = "obs"
 	// Index file for a consumer.
@@ -280,6 +286,7 @@ func newFileStoreWithCreated(fcfg FileStoreConfig, cfg StreamConfig, created tim
 	fs := &fileStore{
 		fcfg: fcfg,
 		cfg:  FileStreamInfo{Created: created, StreamConfig: cfg},
+		psmc: make(map[string]uint64),
 		prf:  prf,
 		qch:  make(chan struct{}),
 	}
@@ -288,8 +295,8 @@ func newFileStoreWithCreated(fcfg FileStoreConfig, cfg StreamConfig, created tim
 	fs.fip = !fcfg.AsyncFlush
 
 	// Check if this is a new setup.
-	mdir := path.Join(fcfg.StoreDir, msgDir)
-	odir := path.Join(fcfg.StoreDir, consumerDir)
+	mdir := filepath.Join(fcfg.StoreDir, msgDir)
+	odir := filepath.Join(fcfg.StoreDir, consumerDir)
 	if err := os.MkdirAll(mdir, defaultDirPerms); err != nil {
 		return nil, fmt.Errorf("could not create message storage directory - %v", err)
 	}
@@ -313,16 +320,17 @@ func newFileStoreWithCreated(fcfg FileStoreConfig, cfg StreamConfig, created tim
 	}
 
 	// Write our meta data iff does not exist.
-	meta := path.Join(fcfg.StoreDir, JetStreamMetaFile)
+	meta := filepath.Join(fcfg.StoreDir, JetStreamMetaFile)
 	if _, err := os.Stat(meta); err != nil && os.IsNotExist(err) {
 		if err := fs.writeStreamMeta(); err != nil {
 			return nil, err
 		}
 	}
+
 	// If we expect to be encrypted check that what we are restoring is not plaintext.
 	// This can happen on snapshot restores or conversions.
 	if fs.prf != nil {
-		keyFile := path.Join(fs.fcfg.StoreDir, JetStreamMetaFileKey)
+		keyFile := filepath.Join(fs.fcfg.StoreDir, JetStreamMetaFileKey)
 		if _, err := os.Stat(keyFile); err != nil && os.IsNotExist(err) {
 			if err := fs.writeStreamMeta(); err != nil {
 				return nil, err
@@ -445,7 +453,7 @@ func (fs *fileStore) writeStreamMeta() error {
 			return err
 		}
 		fs.aek = key
-		keyFile := path.Join(fs.fcfg.StoreDir, JetStreamMetaFileKey)
+		keyFile := filepath.Join(fs.fcfg.StoreDir, JetStreamMetaFileKey)
 		if _, err := os.Stat(keyFile); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -454,7 +462,7 @@ func (fs *fileStore) writeStreamMeta() error {
 		}
 	}
 
-	meta := path.Join(fs.fcfg.StoreDir, JetStreamMetaFile)
+	meta := filepath.Join(fs.fcfg.StoreDir, JetStreamMetaFile)
 	if _, err := os.Stat(meta); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -475,7 +483,7 @@ func (fs *fileStore) writeStreamMeta() error {
 	fs.hh.Reset()
 	fs.hh.Write(b)
 	checksum := hex.EncodeToString(fs.hh.Sum(nil))
-	sum := path.Join(fs.fcfg.StoreDir, JetStreamMetaFileSum)
+	sum := filepath.Join(fs.fcfg.StoreDir, JetStreamMetaFileSum)
 	if err := ioutil.WriteFile(sum, []byte(checksum), defaultFilePerms); err != nil {
 		return err
 	}
@@ -494,10 +502,10 @@ const indexHdrSize = 7*binary.MaxVarintLen64 + hdrLen + checksumSize
 func (fs *fileStore) recoverMsgBlock(fi os.FileInfo, index uint64) (*msgBlock, error) {
 	mb := &msgBlock{fs: fs, index: index, cexp: fs.fcfg.CacheExpire}
 
-	mdir := path.Join(fs.fcfg.StoreDir, msgDir)
-	mb.mfn = path.Join(mdir, fi.Name())
-	mb.ifn = path.Join(mdir, fmt.Sprintf(indexScan, index))
-	mb.sfn = path.Join(mdir, fmt.Sprintf(fssScan, index))
+	mdir := filepath.Join(fs.fcfg.StoreDir, msgDir)
+	mb.mfn = filepath.Join(mdir, fi.Name())
+	mb.ifn = filepath.Join(mdir, fmt.Sprintf(indexScan, index))
+	mb.sfn = filepath.Join(mdir, fmt.Sprintf(fssScan, index))
 
 	if mb.hh == nil {
 		key := sha256.Sum256(fs.hashKeyForBlock(index))
@@ -508,7 +516,7 @@ func (fs *fileStore) recoverMsgBlock(fi os.FileInfo, index uint64) (*msgBlock, e
 
 	// Check if encryption is enabled.
 	if fs.prf != nil {
-		ekey, err := ioutil.ReadFile(path.Join(mdir, fmt.Sprintf(keyScan, mb.index)))
+		ekey, err := ioutil.ReadFile(filepath.Join(mdir, fmt.Sprintf(keyScan, mb.index)))
 		if err != nil {
 			// We do not seem to have keys even though we should. Could be a plaintext conversion.
 			// Create the keys and we will double check below.
@@ -600,7 +608,9 @@ func (fs *fileStore) recoverMsgBlock(fi os.FileInfo, index uint64) (*msgBlock, e
 		// Note this only checks that the message blk file is not newer then this file.
 		if bytes.Equal(lchk[:], mb.lchk[:]) {
 			if fs.tms {
-				mb.readPerSubjectInfo()
+				if err = mb.readPerSubjectInfo(); err != nil {
+					return nil, err
+				}
 			}
 			fs.blks = append(fs.blks, mb)
 			return mb, nil
@@ -852,12 +862,12 @@ func (fs *fileStore) recoverMsgs() error {
 	defer fs.mu.Unlock()
 
 	// Check for any left over purged messages.
-	pdir := path.Join(fs.fcfg.StoreDir, purgeDir)
+	pdir := filepath.Join(fs.fcfg.StoreDir, purgeDir)
 	if _, err := os.Stat(pdir); err == nil {
 		os.RemoveAll(pdir)
 	}
 
-	mdir := path.Join(fs.fcfg.StoreDir, msgDir)
+	mdir := filepath.Join(fs.fcfg.StoreDir, msgDir)
 	fis, err := ioutil.ReadDir(mdir)
 	if err != nil {
 		return errNotReadable
@@ -879,6 +889,12 @@ func (fs *fileStore) recoverMsgs() error {
 				}
 				fs.state.Msgs += mb.msgs
 				fs.state.Bytes += mb.bytes
+				// Walk the fss for this mb and fill in fs.psmc
+				for subj, ss := range mb.fss {
+					if len(subj) > 0 {
+						fs.psmc[subj] += ss.Msgs
+					}
+				}
 			} else {
 				return err
 			}
@@ -895,6 +911,31 @@ func (fs *fileStore) recoverMsgs() error {
 
 	if err != nil {
 		return err
+	}
+
+	// We had a bug that would leave fss files around during a snapshot.
+	// Clean them up here if we see them.
+	if fms, err := filepath.Glob(filepath.Join(mdir, fssScanAll)); err == nil && len(fms) > 0 {
+		for _, fn := range fms {
+			os.Remove(fn)
+		}
+	}
+	// Same bug for keyfiles but for these we just need to identify orphans.
+	if kms, err := filepath.Glob(filepath.Join(mdir, keyScanAll)); err == nil && len(kms) > 0 {
+		valid := make(map[uint64]bool)
+		for _, mb := range fs.blks {
+			valid[mb.index] = true
+		}
+		for _, fn := range kms {
+			var index uint64
+			shouldRemove := true
+			if n, err := fmt.Sscanf(filepath.Base(fn), keyScan, &index); err == nil && n == 1 && valid[index] {
+				shouldRemove = false
+			}
+			if shouldRemove {
+				os.Remove(fn)
+			}
+		}
 	}
 
 	// Limits checks and enforcement.
@@ -988,6 +1029,7 @@ func (fs *fileStore) expireMsgsOnRecover() {
 			mb.msgs--
 			purged++
 			// Update fss
+			fs.removePerSubject(sm.subj)
 			mb.removeSeqPerSubject(sm.subj, seq)
 		}
 
@@ -1075,6 +1117,65 @@ func (fs *fileStore) GetSeqFromTime(t time.Time) uint64 {
 	return 0
 }
 
+// Find the first matching message.
+func (mb *msgBlock) firstMatching(filter string, wc bool, start uint64) (*fileStoredMsg, bool, error) {
+	mb.mu.Lock()
+	defer mb.mu.Unlock()
+
+	isAll, subs := filter == _EMPTY_ || filter == fwcs, []string{filter}
+	// If we have a wildcard match against all tracked subjects we know about.
+	if wc || isAll {
+		subs = subs[:0]
+		for subj := range mb.fss {
+			if isAll || subjectIsSubsetMatch(subj, filter) {
+				subs = append(subs, subj)
+			}
+		}
+	}
+	fseq := mb.last.seq + 1
+	for _, subj := range subs {
+		ss := mb.fss[subj]
+		if ss == nil || start > ss.Last || ss.First >= fseq {
+			continue
+		}
+		if ss.First < start {
+			fseq = start
+		} else {
+			fseq = ss.First
+		}
+	}
+	if fseq > mb.last.seq {
+		return nil, false, ErrStoreMsgNotFound
+	}
+
+	if mb.cacheNotLoaded() {
+		if err := mb.loadMsgsWithLock(); err != nil {
+			return nil, false, err
+		}
+	}
+
+	for seq := fseq; seq <= mb.last.seq; seq++ {
+		llseq := mb.llseq
+		sm, err := mb.cacheLookup(seq)
+		if err != nil {
+			continue
+		}
+		expireOk := seq == mb.last.seq && mb.llseq == seq-1
+		if len(subs) == 1 && sm.subj == subs[0] {
+			return sm, expireOk, nil
+		}
+		for _, subj := range subs {
+			if sm.subj == subj {
+				return sm, expireOk, nil
+			}
+		}
+		// If we are here we did not match, so put the llseq back.
+		mb.llseq = llseq
+	}
+
+	return nil, false, ErrStoreMsgNotFound
+}
+
 // This will traverse a message block and generate the filtered pending.
 func (mb *msgBlock) filteredPending(subj string, wc bool, seq uint64) (total, first, last uint64) {
 	mb.mu.Lock()
@@ -1084,18 +1185,19 @@ func (mb *msgBlock) filteredPending(subj string, wc bool, seq uint64) (total, fi
 
 // This will traverse a message block and generate the filtered pending.
 // Lock should be held.
-func (mb *msgBlock) filteredPendingLocked(subj string, wc bool, seq uint64) (total, first, last uint64) {
+func (mb *msgBlock) filteredPendingLocked(filter string, wc bool, seq uint64) (total, first, last uint64) {
 	if mb.fss == nil {
 		return 0, 0, 0
 	}
 
-	subs := []string{subj}
+	isAll := filter == _EMPTY_ || filter == fwcs
+	subs := []string{filter}
 	// If we have a wildcard match against all tracked subjects we know about.
-	if wc {
+	if wc || isAll {
 		subs = subs[:0]
-		for fsubj := range mb.fss {
-			if subjectIsSubsetMatch(fsubj, subj) {
-				subs = append(subs, fsubj)
+		for subj := range mb.fss {
+			if isAll || subjectIsSubsetMatch(subj, filter) {
+				subs = append(subs, subj)
 			}
 		}
 	}
@@ -1115,7 +1217,7 @@ func (mb *msgBlock) filteredPendingLocked(subj string, wc bool, seq uint64) (tot
 	for i, subj := range subs {
 		// If the starting seq is less then or equal that means we want all and we do not need to load any messages.
 		ss := mb.fss[subj]
-		if ss == nil {
+		if ss == nil || seq > ss.Last {
 			continue
 		}
 
@@ -1144,10 +1246,9 @@ func (mb *msgBlock) filteredPendingLocked(subj string, wc bool, seq uint64) (tot
 			shouldExpire = true
 		}
 
-		subs = subs[i:]
 		var all, lseq uint64
 		// Grab last applicable sequence as a union of all applicable subjects.
-		for _, subj := range subs {
+		for _, subj := range subs[i:] {
 			if ss := mb.fss[subj]; ss != nil {
 				all += ss.Msgs
 				if ss.Last > lseq {
@@ -1414,8 +1515,8 @@ func (fs *fileStore) newMsgBlockForWrite() (*msgBlock, error) {
 	}
 	mb.hh = hh
 
-	mdir := path.Join(fs.fcfg.StoreDir, msgDir)
-	mb.mfn = path.Join(mdir, fmt.Sprintf(blkScan, mb.index))
+	mdir := filepath.Join(fs.fcfg.StoreDir, msgDir)
+	mb.mfn = filepath.Join(mdir, fmt.Sprintf(blkScan, mb.index))
 	mfd, err := os.OpenFile(mb.mfn, os.O_CREATE|os.O_RDWR, defaultFilePerms)
 	if err != nil {
 		mb.dirtyCloseWithRemove(true)
@@ -1423,7 +1524,7 @@ func (fs *fileStore) newMsgBlockForWrite() (*msgBlock, error) {
 	}
 	mb.mfd = mfd
 
-	mb.ifn = path.Join(mdir, fmt.Sprintf(indexScan, mb.index))
+	mb.ifn = filepath.Join(mdir, fmt.Sprintf(indexScan, mb.index))
 	ifd, err := os.OpenFile(mb.ifn, os.O_CREATE|os.O_RDWR, defaultFilePerms)
 	if err != nil {
 		mb.dirtyCloseWithRemove(true)
@@ -1432,7 +1533,7 @@ func (fs *fileStore) newMsgBlockForWrite() (*msgBlock, error) {
 	mb.ifd = ifd
 
 	// For subject based info.
-	mb.sfn = path.Join(mdir, fmt.Sprintf(fssScan, mb.index))
+	mb.sfn = filepath.Join(mdir, fmt.Sprintf(fssScan, mb.index))
 
 	// Check if encryption is enabled.
 	if fs.prf != nil {
@@ -1474,14 +1575,15 @@ func (fs *fileStore) genEncryptionKeysForBlock(mb *msgBlock) error {
 		return err
 	}
 	mb.aek, mb.bek, mb.seed, mb.nonce = key, bek, seed, encrypted[:key.NonceSize()]
-	mdir := path.Join(fs.fcfg.StoreDir, msgDir)
-	keyFile := path.Join(mdir, fmt.Sprintf(keyScan, mb.index))
+	mdir := filepath.Join(fs.fcfg.StoreDir, msgDir)
+	keyFile := filepath.Join(mdir, fmt.Sprintf(keyScan, mb.index))
 	if _, err := os.Stat(keyFile); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	if err := ioutil.WriteFile(keyFile, encrypted, defaultFilePerms); err != nil {
 		return err
 	}
+	mb.kfn = keyFile
 	return nil
 }
 
@@ -1494,15 +1596,22 @@ func (fs *fileStore) storeRawMsg(subj string, hdr, msg []byte, seq uint64, ts in
 
 	// Check if we are discarding new messages when we reach the limit.
 	if fs.cfg.Discard == DiscardNew {
+		var asl bool
+		var fseq uint64
+		if fs.cfg.MaxMsgsPer > 0 && len(subj) > 0 {
+			var msgs uint64
+			if msgs, fseq, _ = fs.perSubjectState(subj); msgs >= uint64(fs.cfg.MaxMsgsPer) {
+				asl = true
+			}
+		}
 		if fs.cfg.MaxMsgs > 0 && fs.state.Msgs >= uint64(fs.cfg.MaxMsgs) {
-			return ErrMaxMsgs
+			if !asl {
+				return ErrMaxMsgs
+			}
 		}
 		if fs.cfg.MaxBytes > 0 && fs.state.Bytes+uint64(len(msg)+len(hdr)) >= uint64(fs.cfg.MaxBytes) {
-			return ErrMaxBytes
-		}
-		if fs.cfg.MaxMsgsPer > 0 && len(subj) > 0 {
-			if msgs, _, _ := fs.perSubjectState(subj); msgs >= uint64(fs.cfg.MaxMsgsPer) {
-				return ErrMaxMsgsPerSubject
+			if !asl || fs.sizeForSeq(fseq) <= len(msg)+len(hdr) {
+				return ErrMaxBytes
 			}
 		}
 	}
@@ -1519,6 +1628,11 @@ func (fs *fileStore) storeRawMsg(subj string, hdr, msg []byte, seq uint64, ts in
 	n, err := fs.writeMsgRecord(seq, ts, subj, hdr, msg)
 	if err != nil {
 		return err
+	}
+
+	// Adjust top level tracking of per subject msg counts.
+	if len(subj) > 0 {
+		fs.psmc[subj]++
 	}
 
 	// Adjust first if needed.
@@ -1658,7 +1772,7 @@ func (fs *fileStore) rebuildFirst() {
 // Will check the msg limit for this tracked subject.
 // Lock should be held.
 func (fs *fileStore) enforcePerSubjectLimit(subj string) {
-	if fs.closed || fs.sips > 0 || fs.cfg.MaxMsgsPer < 0 || !fs.tms {
+	if fs.closed || fs.sips > 0 || fs.cfg.MaxMsgsPer <= 0 || !fs.tms {
 		return
 	}
 	for {
@@ -1700,11 +1814,9 @@ func (fs *fileStore) enforceBytesLimit() {
 	}
 }
 
-// Lock should be held on entry but will be released during actual remove.
+// Lock should be held.
 func (fs *fileStore) deleteFirstMsg() (bool, error) {
-	fs.mu.Unlock()
-	defer fs.mu.Lock()
-	return fs.removeMsg(fs.state.FirstSeq, false, true)
+	return fs.removeMsg(fs.state.FirstSeq, false, false)
 }
 
 // RemoveMsg will remove the message from this store.
@@ -1715,6 +1827,19 @@ func (fs *fileStore) RemoveMsg(seq uint64) (bool, error) {
 
 func (fs *fileStore) EraseMsg(seq uint64) (bool, error) {
 	return fs.removeMsg(seq, true, true)
+}
+
+// Convenience function to remove per subject tracking at the filestore level.
+// Lock should be held.
+func (fs *fileStore) removePerSubject(subj string) {
+	if len(subj) == 0 {
+		return
+	}
+	if n, ok := fs.psmc[subj]; ok && n == 1 {
+		delete(fs.psmc, subj)
+	} else if ok {
+		fs.psmc[subj]--
+	}
 }
 
 // Remove a message, optionally rewriting the mb file.
@@ -1804,6 +1929,7 @@ func (fs *fileStore) removeMsg(seq uint64, secure, needFSLock bool) (bool, error
 	mb.bytes -= msz
 
 	// If we are tracking multiple subjects here make sure we update that accounting.
+	fs.removePerSubject(sm.subj)
 	mb.removeSeqPerSubject(sm.subj, seq)
 
 	var shouldWriteIndex, firstSeqNeedsUpdate bool
@@ -1815,7 +1941,8 @@ func (fs *fileStore) removeMsg(seq uint64, secure, needFSLock bool) (bool, error
 	}
 
 	// Optimize for FIFO case.
-	if seq == mb.first.seq {
+	fifo := seq == mb.first.seq
+	if fifo {
 		mb.selectNextFirst()
 		if mb.isEmpty() {
 			fs.removeMsgBlock(mb)
@@ -1857,6 +1984,13 @@ func (fs *fileStore) removeMsg(seq uint64, secure, needFSLock bool) (bool, error
 			fs.rebuildStateLocked(ld)
 		}
 	}
+	// Check if we need to write the index file and we are flush in place (fip).
+	if shouldWriteIndex && fs.fip {
+		// Check if this is the first message, common during expirations etc.
+		if !fifo || time.Now().UnixNano()-mb.lwits > int64(2*time.Second) {
+			mb.writeIndexInfoLocked()
+		}
+	}
 	mb.mu.Unlock()
 
 	// Kick outside of lock.
@@ -1869,8 +2003,6 @@ func (fs *fileStore) removeMsg(seq uint64, secure, needFSLock bool) (bool, error
 			case fch <- struct{}{}:
 			default:
 			}
-		} else {
-			mb.writeIndexInfo()
 		}
 	}
 
@@ -1986,7 +2118,7 @@ func (mb *msgBlock) compact() {
 	mb.closeFDsLocked()
 
 	// We will write to a new file and mv/rename it in case of failure.
-	mfn := path.Join(path.Join(mb.fs.fcfg.StoreDir, msgDir), fmt.Sprintf(newScan, mb.index))
+	mfn := filepath.Join(filepath.Join(mb.fs.fcfg.StoreDir, msgDir), fmt.Sprintf(newScan, mb.index))
 	defer os.Remove(mfn)
 	if err := ioutil.WriteFile(mfn, nbuf, defaultFilePerms); err != nil {
 		return
@@ -3267,18 +3399,17 @@ func (mb *msgBlock) cacheLookup(seq uint64) (*fileStoredMsg, error) {
 		mb.llseq = seq
 	}
 
-	// We use the high bit to denote we have already checked the checksum.
-	var hh hash.Hash64
-	if !hashChecked {
-		hh = mb.hh // This will force the hash check in msgFromBuf.
-		mb.cache.idx[seq-mb.cache.fseq] = (bi | hbit)
-	}
-
 	li := int(bi) - mb.cache.off
 	if li >= len(mb.cache.buf) {
 		return nil, errPartialCache
 	}
 	buf := mb.cache.buf[li:]
+
+	// We use the high bit to denote we have already checked the checksum.
+	var hh hash.Hash64
+	if !hashChecked {
+		hh = mb.hh // This will force the hash check in msgFromBuf.
+	}
 
 	// Parse from the raw buffer.
 	subj, hdr, msg, mseq, ts, err := msgFromBuf(buf, hh)
@@ -3290,7 +3421,24 @@ func (mb *msgBlock) cacheLookup(seq uint64) (*fileStoredMsg, error) {
 		return nil, fmt.Errorf("sequence numbers for cache load did not match, %d vs %d", seq, mseq)
 	}
 
+	// Clear the check bit here after we know all is good.
+	if !hashChecked {
+		mb.cache.idx[seq-mb.cache.fseq] = (bi | hbit)
+	}
+
 	return &fileStoredMsg{subj, hdr, msg, seq, ts, mb, int64(bi)}, nil
+}
+
+// Used when we are checking if discarding a message due to max msgs per subject will give us
+// enough room for a max bytes condition.
+// Lock should be already held.
+func (fs *fileStore) sizeForSeq(seq uint64) int {
+	if mb := fs.selectMsgBlock(seq); mb != nil {
+		if sm, _, _ := mb.fetchMsg(seq); sm != nil {
+			return int(fileStoreMsgSize(sm.subj, sm.hdr, sm.msg))
+		}
+	}
+	return 0
 }
 
 // Will return message for the given sequence number.
@@ -3410,6 +3558,37 @@ func (fs *fileStore) LoadLastMsg(subject string) (subj string, seq uint64, hdr, 
 	return sm.subj, sm.seq, sm.hdr, sm.msg, sm.ts, nil
 }
 
+// LoadNextMsg will find the next message matching the filter subject starting at the start sequence.
+// The filter subject can be a wildcard.
+func (fs *fileStore) LoadNextMsg(filter string, wc bool, start uint64) (subj string, seq uint64, hdr, msg []byte, ts int64, err error) {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+
+	if fs.closed {
+		return _EMPTY_, 0, nil, nil, 0, ErrStoreClosed
+	}
+	if start < fs.state.FirstSeq {
+		start = fs.state.FirstSeq
+	}
+
+	for _, mb := range fs.blks {
+		// Skip blocks that are less than our starting sequence.
+		if start > atomic.LoadUint64(&mb.last.seq) {
+			continue
+		}
+		if sm, expireOk, err := mb.firstMatching(filter, wc, start); err == nil {
+			if expireOk && mb != fs.lmb {
+				mb.tryForceExpireCache()
+			}
+			return sm.subj, sm.seq, sm.hdr, sm.msg, sm.ts, nil
+		} else if err != ErrStoreMsgNotFound {
+			return _EMPTY_, 0, nil, nil, 0, err
+		}
+	}
+
+	return _EMPTY_, fs.state.LastSeq, nil, nil, 0, ErrStoreEOF
+}
+
 // Type returns the type of the underlying store.
 func (fs *fileStore) Type() StorageType {
 	return FileStorage
@@ -3427,8 +3606,12 @@ func (fs *fileStore) FastState(state *StreamState) {
 	state.LastTime = fs.state.LastTime
 	if state.LastSeq > state.FirstSeq {
 		state.NumDeleted = int((state.LastSeq - state.FirstSeq + 1) - state.Msgs)
+		if state.NumDeleted < 0 {
+			state.NumDeleted = 0
+		}
 	}
 	state.Consumers = len(fs.cfs)
+	state.NumSubjects = len(fs.psmc)
 	fs.mu.RUnlock()
 }
 
@@ -3437,7 +3620,9 @@ func (fs *fileStore) State() StreamState {
 	fs.mu.RLock()
 	state := fs.state
 	state.Consumers = len(fs.cfs)
+	state.NumSubjects = len(fs.psmc)
 	state.Deleted = nil // make sure.
+
 	for _, mb := range fs.blks {
 		mb.mu.Lock()
 		fseq := mb.first.seq
@@ -3797,6 +3982,7 @@ func (fs *fileStore) PurgeEx(subject string, sequence, keep uint64) (purged uint
 				mb.msgs--
 				mb.bytes -= rl
 				// FSS updates.
+				fs.removePerSubject(sm.subj)
 				mb.removeSeqPerSubject(sm.subj, seq)
 				// Check for first message.
 				if seq == mb.first.seq {
@@ -3874,8 +4060,8 @@ func (fs *fileStore) purge(fseq uint64) (uint64, error) {
 
 	// Move the msgs directory out of the way, will delete out of band.
 	// FIXME(dlc) - These can error and we need to change api above to propagate?
-	mdir := path.Join(fs.fcfg.StoreDir, msgDir)
-	pdir := path.Join(fs.fcfg.StoreDir, purgeDir)
+	mdir := filepath.Join(fs.fcfg.StoreDir, msgDir)
+	pdir := filepath.Join(fs.fcfg.StoreDir, purgeDir)
 	// If purge directory still exists then we need to wait
 	// in place and remove since rename would fail.
 	if _, err := os.Stat(pdir); err == nil {
@@ -3901,6 +4087,9 @@ func (fs *fileStore) purge(fseq uint64) (uint64, error) {
 	fs.lmb.last.seq = fs.state.LastSeq
 
 	fs.lmb.writeIndexInfo()
+
+	// Clear any per subject tracking.
+	fs.psmc = make(map[string]uint64)
 
 	cb := fs.scb
 	fs.mu.Unlock()
@@ -3966,6 +4155,7 @@ func (fs *fileStore) Compact(seq uint64) (uint64, error) {
 			smb.msgs--
 			purged++
 			// Update fss
+			fs.removePerSubject(sm.subj)
 			smb.removeSeqPerSubject(sm.subj, mseq)
 		}
 	}
@@ -4170,6 +4360,13 @@ func (mb *msgBlock) dirtyCloseWithRemove(remove bool) {
 			os.Remove(mb.mfn)
 			mb.mfn = _EMPTY_
 		}
+		if mb.sfn != _EMPTY_ {
+			os.Remove(mb.sfn)
+			mb.sfn = _EMPTY_
+		}
+		if mb.kfn != _EMPTY_ {
+			os.Remove(mb.kfn)
+		}
 	}
 }
 
@@ -4215,15 +4412,29 @@ func (mb *msgBlock) generatePerSubjectInfo() error {
 
 	var shouldExpire bool
 	if mb.cacheNotLoaded() {
-		mb.loadMsgsWithLock()
+		if err := mb.loadMsgsWithLock(); err != nil {
+			return err
+		}
 		shouldExpire = true
 	}
 	if mb.fss == nil {
 		mb.fss = make(map[string]*SimpleState)
 	}
+
 	fseq, lseq := mb.first.seq, mb.last.seq
 	for seq := fseq; seq <= lseq; seq++ {
-		if sm, _ := mb.cacheLookup(seq); sm != nil && len(sm.subj) > 0 {
+		sm, err := mb.cacheLookup(seq)
+		if err != nil {
+			// Since we are walking by sequence we can ignore some errors that are benign to rebuilding our state.
+			if err == ErrStoreMsgNotFound || err == errDeletedMsg {
+				continue
+			}
+			if err == errNoCache {
+				return nil
+			}
+			return err
+		}
+		if sm != nil && len(sm.subj) > 0 {
 			if ss := mb.fss[sm.subj]; ss != nil {
 				ss.Msgs++
 				ss.Last = seq
@@ -4381,7 +4592,7 @@ func (fs *fileStore) Delete() error {
 	}
 	fs.Purge()
 
-	pdir := path.Join(fs.fcfg.StoreDir, purgeDir)
+	pdir := filepath.Join(fs.fcfg.StoreDir, purgeDir)
 	// If purge directory still exists then we need to wait
 	// in place and remove since rename would fail.
 	if _, err := os.Stat(pdir); err == nil {
@@ -4608,13 +4819,13 @@ func (fs *fileStore) streamSnapshot(w io.WriteCloser, state *StreamState, includ
 		o.mu.Unlock()
 
 		// Write all the consumer files.
-		if writeFile(path.Join(odirPre, JetStreamMetaFile), meta) != nil {
+		if writeFile(filepath.Join(odirPre, JetStreamMetaFile), meta) != nil {
 			return
 		}
-		if writeFile(path.Join(odirPre, JetStreamMetaFileSum), sum) != nil {
+		if writeFile(filepath.Join(odirPre, JetStreamMetaFileSum), sum) != nil {
 			return
 		}
-		writeFile(path.Join(odirPre, consumerState), state)
+		writeFile(filepath.Join(odirPre, consumerState), state)
 	}
 }
 
@@ -4697,7 +4908,7 @@ func (fs *fileStore) ConsumerStore(name string, cfg *ConsumerConfig) (ConsumerSt
 	if cfg == nil || name == _EMPTY_ {
 		return nil, fmt.Errorf("bad consumer config")
 	}
-	odir := path.Join(fs.fcfg.StoreDir, consumerDir, name)
+	odir := filepath.Join(fs.fcfg.StoreDir, consumerDir, name)
 	if err := os.MkdirAll(odir, defaultDirPerms); err != nil {
 		return nil, fmt.Errorf("could not create consumer directory - %v", err)
 	}
@@ -4708,7 +4919,7 @@ func (fs *fileStore) ConsumerStore(name string, cfg *ConsumerConfig) (ConsumerSt
 		prf:  fs.prf,
 		name: name,
 		odir: odir,
-		ifn:  path.Join(odir, consumerState),
+		ifn:  filepath.Join(odir, consumerState),
 	}
 	key := sha256.Sum256([]byte(fs.cfg.Name + "/" + name))
 	hh, err := highwayhash.New64(key[:])
@@ -4719,7 +4930,7 @@ func (fs *fileStore) ConsumerStore(name string, cfg *ConsumerConfig) (ConsumerSt
 
 	// Check for encryption.
 	if o.prf != nil {
-		if ekey, err := ioutil.ReadFile(path.Join(odir, JetStreamMetaFileKey)); err == nil {
+		if ekey, err := ioutil.ReadFile(filepath.Join(odir, JetStreamMetaFileKey)); err == nil {
 			// Recover key encryption key.
 			rb, err := fs.prf([]byte(fs.cfg.Name + tsep + o.name))
 			if err != nil {
@@ -4741,7 +4952,7 @@ func (fs *fileStore) ConsumerStore(name string, cfg *ConsumerConfig) (ConsumerSt
 	}
 
 	// Write our meta data iff does not exist.
-	meta := path.Join(odir, JetStreamMetaFile)
+	meta := filepath.Join(odir, JetStreamMetaFile)
 	if _, err := os.Stat(meta); err != nil && os.IsNotExist(err) {
 		csi.Created = time.Now().UTC()
 		if err := o.writeConsumerMeta(); err != nil {
@@ -4752,7 +4963,7 @@ func (fs *fileStore) ConsumerStore(name string, cfg *ConsumerConfig) (ConsumerSt
 	// If we expect to be encrypted check that what we are restoring is not plaintext.
 	// This can happen on snapshot restores or conversions.
 	if o.prf != nil {
-		keyFile := path.Join(odir, JetStreamMetaFileKey)
+		keyFile := filepath.Join(odir, JetStreamMetaFileKey)
 		if _, err := os.Stat(keyFile); err != nil && os.IsNotExist(err) {
 			if err := o.writeConsumerMeta(); err != nil {
 				return nil, err
@@ -4881,7 +5092,7 @@ func (o *consumerFileStore) UpdateDelivered(dseq, sseq, dc uint64, ts int64) err
 	}
 
 	// On restarts the old leader may get a replay from the raft logs that are old.
-	if dseq <= o.state.Delivered.Consumer {
+	if dseq <= o.state.AckFloor.Consumer {
 		return nil
 	}
 
@@ -4897,9 +5108,8 @@ func (o *consumerFileStore) UpdateDelivered(dseq, sseq, dc uint64, ts int64) err
 			if p = o.state.Pending[sseq]; p != nil {
 				p.Sequence, p.Timestamp = dseq, ts
 			}
-		}
-		// Add to pending if needed.
-		if p == nil {
+		} else {
+			// Add to pending.
 			o.state.Pending[sseq] = &Pending{dseq, ts}
 		}
 		// Update delivered as needed.
@@ -5071,6 +5281,17 @@ func encodeConsumerState(state *ConsumerState) []byte {
 	return buf[:n]
 }
 
+func (o *consumerFileStore) UpdateConfig(cfg *ConsumerConfig) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// This is mostly unchecked here. We are assuming the upper layers have done sanity checking.
+	csi := o.cfg
+	csi.ConsumerConfig = *cfg
+
+	return o.writeConsumerMeta()
+}
+
 func (o *consumerFileStore) Update(state *ConsumerState) error {
 	// Sanity checks.
 	if state.AckFloor.Consumer > state.Delivered.Consumer {
@@ -5196,7 +5417,7 @@ func (o *consumerFileStore) updateConfig(cfg ConsumerConfig) error {
 // Write out the consumer meta data, i.e. state.
 // Lock should be held.
 func (cfs *consumerFileStore) writeConsumerMeta() error {
-	meta := path.Join(cfs.odir, JetStreamMetaFile)
+	meta := filepath.Join(cfs.odir, JetStreamMetaFile)
 	if _, err := os.Stat(meta); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -5208,7 +5429,7 @@ func (cfs *consumerFileStore) writeConsumerMeta() error {
 			return err
 		}
 		cfs.aek = key
-		keyFile := path.Join(cfs.odir, JetStreamMetaFileKey)
+		keyFile := filepath.Join(cfs.odir, JetStreamMetaFileKey)
 		if _, err := os.Stat(keyFile); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -5234,7 +5455,7 @@ func (cfs *consumerFileStore) writeConsumerMeta() error {
 	cfs.hh.Reset()
 	cfs.hh.Write(b)
 	checksum := hex.EncodeToString(cfs.hh.Sum(nil))
-	sum := path.Join(cfs.odir, JetStreamMetaFileSum)
+	sum := filepath.Join(cfs.odir, JetStreamMetaFileSum)
 	if err := ioutil.WriteFile(sum, []byte(checksum), defaultFilePerms); err != nil {
 		return err
 	}
@@ -5287,11 +5508,10 @@ func (o *consumerFileStore) State() (*ConsumerState, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	var state *ConsumerState
+	state := &ConsumerState{}
 
 	// See if we have a running state or if we need to read in from disk.
 	if o.state.Delivered.Consumer != 0 {
-		state = &ConsumerState{}
 		state.Delivered = o.state.Delivered
 		state.AckFloor = o.state.AckFloor
 		if len(o.state.Pending) > 0 {
@@ -5566,7 +5786,7 @@ type templateFileStore struct {
 }
 
 func newTemplateFileStore(storeDir string) *templateFileStore {
-	tdir := path.Join(storeDir, tmplsDir)
+	tdir := filepath.Join(storeDir, tmplsDir)
 	key := sha256.Sum256([]byte("templates"))
 	hh, err := highwayhash.New64(key[:])
 	if err != nil {
@@ -5576,11 +5796,11 @@ func newTemplateFileStore(storeDir string) *templateFileStore {
 }
 
 func (ts *templateFileStore) Store(t *streamTemplate) error {
-	dir := path.Join(ts.dir, t.Name)
+	dir := filepath.Join(ts.dir, t.Name)
 	if err := os.MkdirAll(dir, defaultDirPerms); err != nil {
 		return fmt.Errorf("could not create templates storage directory for %q- %v", t.Name, err)
 	}
-	meta := path.Join(dir, JetStreamMetaFile)
+	meta := filepath.Join(dir, JetStreamMetaFile)
 	if _, err := os.Stat(meta); (err != nil && !os.IsNotExist(err)) || err == nil {
 		return err
 	}
@@ -5597,7 +5817,7 @@ func (ts *templateFileStore) Store(t *streamTemplate) error {
 	ts.hh.Reset()
 	ts.hh.Write(b)
 	checksum := hex.EncodeToString(ts.hh.Sum(nil))
-	sum := path.Join(dir, JetStreamMetaFileSum)
+	sum := filepath.Join(dir, JetStreamMetaFileSum)
 	if err := ioutil.WriteFile(sum, []byte(checksum), defaultFilePerms); err != nil {
 		return err
 	}
@@ -5605,5 +5825,5 @@ func (ts *templateFileStore) Store(t *streamTemplate) error {
 }
 
 func (ts *templateFileStore) Delete(t *streamTemplate) error {
-	return os.RemoveAll(path.Join(ts.dir, t.Name))
+	return os.RemoveAll(filepath.Join(ts.dir, t.Name))
 }
