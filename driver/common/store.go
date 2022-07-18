@@ -280,10 +280,6 @@ func (sm *StoreManager) PutConfig(subject string, config *MySQLDriverConfig) err
 	}
 	return sm.consulStore.Put(url, bs, nil)
 }
-func (sm *StoreManager) PutKey(subject string, key string, value []byte) error {
-	url := fmt.Sprintf("dtle/%v/%v", subject, key)
-	return sm.consulStore.Put(url, value, nil)
-}
 
 func (sm *StoreManager) WaitKv(subject string, key string, stopCh chan struct{}) ([]byte, error) {
 	url := fmt.Sprintf("dtle/%v/%v", subject, key)
@@ -429,7 +425,8 @@ func (sm *StoreManager) WaitOnJob(currentJob string, waitJob string, stopCh chan
 }
 
 func (sm *StoreManager) PutTargetGtid(subject string, value string) error {
-	return sm.PutKey(subject, "targetGtid", []byte(value))
+	url := fmt.Sprintf("dtle/%v/%v", subject, "targetGtid")
+	return sm.consulStore.Put(url, []byte(value), nil)
 }
 
 func (sm *StoreManager) WatchTargetGtid(subject string, stopCh chan struct{}) (string, error) {

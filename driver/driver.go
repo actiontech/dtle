@@ -580,13 +580,10 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 		return fmt.Errorf("expect 0 < BulkInsert1 < BulkInsert2. %v %v", config.BulkInsert1, config.BulkInsert2)
 	}
 
-	connectConfigNum := 0
-	for _, notNil := range []bool{config.DestConnectionConfig != nil, config.KafkaConfig != nil, config.OracleConfig != nil} {
-		if notNil {
-			connectConfigNum += 1
-		}
+	if config.ConnectionConfig != nil && config.OracleConfig != nil {
+		addErrMsgs("only one src connection config should be set")
 	}
-	if connectConfigNum > 1 {
+	if config.DestConnectionConfig != nil && config.KafkaConfig != nil {
 		addErrMsgs("only one dest connection config should be set")
 	}
 

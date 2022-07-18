@@ -67,6 +67,7 @@ type DtleTaskConfig struct {
 	SkipCreateDbTable    bool                          `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck   bool                          `codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy  bool                          `codec:"SkipIncrementalCopy"`
+	// For src side MySQL after #592.
 	ConnectionConfig     *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
 	DestConnectionConfig *mysqlconfig.ConnectionConfig `codec:"DestConnectionConfig"`
 	KafkaConfig          *KafkaConfig                  `codec:"KafkaConfig"`
