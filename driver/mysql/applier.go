@@ -278,21 +278,6 @@ func (a *Applier) Run() {
 		return
 	}
 
-	switch a.mysqlContext.GetConfigFrom {
-	case "":
-		a.mysqlContext.DestConnectionConfig = a.mysqlContext.ConnectionConfig
-		a.logger.Info("get job config from nomad config")
-	case "consul":
-		a.logger.Info("get job config from consul")
-		a.mysqlContext, err = a.storeManager.GetConfig(a.subject)
-		if err != nil {
-			a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
-			return
-		}
-	default:
-		a.onError(common.TaskStateDead, fmt.Errorf("unrecognized GetConfigFrom %v", a.mysqlContext.GetConfigFrom))
-	}
-
 	sourceType, err := a.storeManager.GetSourceType(a.subject)
 	if err != nil {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "watchSourceType"))
@@ -670,6 +655,21 @@ func (a *Applier) publishProgress() {
 }
 
 func (a *Applier) InitDB() (err error) {
+	switch a.mysqlContext.GetConfigFrom {
+	case "":
+		a.mysqlContext.DestConnectionConfig = a.mysqlContext.ConnectionConfig
+		a.logger.Info("get job config from nomad config")
+	case "consul":
+		a.logger.Info("get job config from consul")
+		a.mysqlContext, err = a.storeManager.GetConfig(a.subject)
+		if err != nil {
+			a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
+			return
+		}
+	default:
+		a.onError(common.TaskStateDead, fmt.Errorf("unrecognized GetConfigFrom %v", a.mysqlContext.GetConfigFrom))
+	}
+
 	applierUri := a.mysqlContext.DestConnectionConfig.GetDBUri()
 	if a.db, err = sql.CreateDB(applierUri); err != nil {
 		return err

@@ -1011,10 +1011,10 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 
 func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail) {
 	mysqlConnectionConfig := &models.DatabaseConnectionConfig{
-		Host:         internalTaskConfig.DestConnectionConfig.Host,
-		Port:         internalTaskConfig.DestConnectionConfig.Port,
-		User:         internalTaskConfig.DestConnectionConfig.User,
-		Password:     internalTaskConfig.DestConnectionConfig.Password,
+		Host:         internalTaskConfig.ConnectionConfig.Host,
+		Port:         internalTaskConfig.ConnectionConfig.Port,
+		User:         internalTaskConfig.ConnectionConfig.User,
+		Password:     internalTaskConfig.ConnectionConfig.Password,
 		DatabaseType: "MySQL",
 	}
 	mysqlDestTaskConfig := &models.MysqlDestTaskConfig{
