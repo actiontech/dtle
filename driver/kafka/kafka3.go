@@ -940,7 +940,7 @@ func (kr *KafkaRunner) kafkaTransformDMLEventQueries(dmlEntries []*common.DataEn
 					}
 
 					var keyPayload *Row
-					var valuePayload *ValuePayload
+					valuePayload := NewValuePayload()
 					{
 						row0 := dataEvent.Rows[iRow]
 
