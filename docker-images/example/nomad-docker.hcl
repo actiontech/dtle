@@ -22,9 +22,9 @@ addresses {
   #serf = "127.0.0.1"
 }
 advertise {
-  http = "127.0.0.1:4646"
-  rpc  = "127.0.0.1:4647"
-  serf = "127.0.0.1:4648"
+  http = "dtle:4646"
+  rpc  = "dtle:4647"
+  serf = "dtle:4648"
 }
 
 server {
@@ -41,6 +41,7 @@ client {
 
 consul {
   address = "dtle-consul:8500"
+  checks_use_advertise = true
 }
 
 plugin "dtle" {
