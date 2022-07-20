@@ -82,15 +82,6 @@ var (
 		"big_tx_max_jobs": hclspec.NewAttr("big_tx_max_jobs", "number", false),
 	})
 
-	connectionConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
-		"Host":     hclspec.NewAttr("Host", "string", true),
-		"Port":     hclspec.NewAttr("Port", "number", true),
-		"User":     hclspec.NewAttr("User", "string", true),
-		"Password": hclspec.NewAttr("Password", "string", true),
-		"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
-			hclspec.NewLiteral(`"utf8mb4"`)),
-	})
-
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a taskConfig within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
@@ -140,8 +131,14 @@ var (
 		"SkipIncrementalCopy":  hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"SlaveNetWriteTimeout": hclspec.NewDefault(hclspec.NewAttr("SlaveNetWriteTimeout", "number", false),
 			hclspec.NewLiteral(`28800`)), // 8 hours
-		"ConnectionConfig":  hclspec.NewBlock("ConnectionConfig", false, connectionConfigSpec),
-		"DestConnectionConfig": hclspec.NewBlock("DestConnectionConfig", false, connectionConfigSpec),
+		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
+			"Host":     hclspec.NewAttr("Host", "string", true),
+			"Port":     hclspec.NewAttr("Port", "number", true),
+			"User":     hclspec.NewAttr("User", "string", true),
+			"Password": hclspec.NewAttr("Password", "string", true),
+			"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
+				hclspec.NewLiteral(`"utf8mb4"`)),
+		})),
 		"WaitOnJob": hclspec.NewAttr("WaitOnJob", "string", false),
 		"BulkInsert1": hclspec.NewDefault(hclspec.NewAttr("BulkInsert1", "number", false),
 			hclspec.NewLiteral(`4`)),
@@ -175,7 +172,6 @@ var (
 			"Password":    hclspec.NewAttr("Password", "string", true),
 			"Scn":         hclspec.NewAttr("Scn", "number", true),
 		})),
-		"GetConfigFrom":   hclspec.NewAttr("GetConfigFrom", "string", false),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what
@@ -583,7 +579,7 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 	if config.ConnectionConfig != nil && config.OracleConfig != nil {
 		addErrMsgs("only one src connection config should be set")
 	}
-	if config.DestConnectionConfig != nil && config.KafkaConfig != nil {
+	if config.ConnectionConfig != nil && config.KafkaConfig != nil {
 		addErrMsgs("only one dest connection config should be set")
 	}
 

@@ -36,7 +36,6 @@ func TaskTypeFromString(s string) string {
 }
 
 type DtleTaskConfig struct {
-	GetConfigFrom string `codec:"GetConfigFrom"`
 	//Ref:http://dev.mysql.com/doc/refman/5.7/en/replication-options-slave.html#option_mysqld_replicate-do-table
 	ReplicateDoDb        []*DataSource `codec:"ReplicateDoDb"`
 	ReplicateIgnoreDb    []*DataSource `codec:"ReplicateIgnoreDb"`
@@ -67,9 +66,7 @@ type DtleTaskConfig struct {
 	SkipCreateDbTable    bool                          `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck   bool                          `codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy  bool                          `codec:"SkipIncrementalCopy"`
-	// For src side MySQL after #592.
 	ConnectionConfig     *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
-	DestConnectionConfig *mysqlconfig.ConnectionConfig `codec:"DestConnectionConfig"`
 	KafkaConfig          *KafkaConfig                  `codec:"KafkaConfig"`
 	// support oracle extractor/applier
 	OracleConfig *config.OracleConfig `codec:"OracleConfig"`
