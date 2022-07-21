@@ -22,9 +22,9 @@ addresses {
   #serf = "127.0.0.1"
 }
 advertise {
-  http = "dtle:4646"
-  rpc  = "dtle:4647"
-  serf = "dtle:4648"
+  http = "__HOSTNAME:4646"
+  rpc  = "__HOSTNAME:4647"
+  serf = "__HOSTNAME:4648"
 }
 
 server {
