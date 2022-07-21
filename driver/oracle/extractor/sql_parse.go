@@ -469,6 +469,10 @@ func dumpValueConverter(rowValues []*[]byte, columnTypes []*sql.ColumnType) bool
 		if rowValues[i] == nil {
 			continue
 		}
+		if len(*rowValues[i]) == 0 {
+			rowValues[i] = nil
+			continue
+		}
 		switch columnType.DatabaseTypeName() {
 		// BINARY_DOUBLE
 		case "DOUBLE":
