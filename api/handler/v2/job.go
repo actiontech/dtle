@@ -269,7 +269,7 @@ func CreateOrUpdateMigrationJobV2(c echo.Context, create bool) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	resp, err := createOrUpdateMysqlToMysqlJob(logger, reqParam, user)
+	resp, err := createOrUpdateJob(logger, reqParam, user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -300,7 +300,7 @@ func UpdateMigrationJobV2(c echo.Context) error {
 	return CreateOrUpdateMigrationJobV2(c, false)
 }
 
-func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
+func createOrUpdateJob(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
 	user *common.User) (*models.CreateOrUpdateMysqlToMysqlJobRespV2, error) {
 
 	failover := g.PtrToBool(jobParam.Failover, true)
@@ -341,7 +341,7 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 		}
 	}
 
-	nomadJob, err := convertMysqlToMysqlJobToNomadJob(failover, jobParam)
+	nomadJob, err := convertJobToNomadJob(failover, jobParam)
 	if nil != err {
 		return nil, fmt.Errorf("convert job param to nomad job request failed, error: %v", err)
 	}
@@ -368,7 +368,7 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 	if "" != nomadResp.Warnings {
 		respErr = errors.New(nomadResp.Warnings)
 	} else {
-		err = buildMySQLJobListItem(logger, jobParam, user)
+		err = buildJobListItem(logger, jobParam, user)
 		if err != nil {
 			return nil, err
 		}
@@ -381,7 +381,7 @@ func createOrUpdateMysqlToMysqlJob(logger g.LoggerType, jobParam *models.CreateO
 	}, nil
 }
 
-func convertMysqlToMysqlJobToNomadJob(failover bool, jobParams *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
+func convertJobToNomadJob(failover bool, jobParams *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
 	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
@@ -432,7 +432,7 @@ func removeDuplicateElement(datas []string) []string {
 	return result
 }
 
-func buildMySQLJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
+func buildJobListItem(logger g.LoggerType, jobParam *models.CreateOrUpdateMysqlToMysqlJobParamV2,
 	user *common.User) error {
 	// add data to consul
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -676,10 +676,10 @@ func addNotRequiredParamToMap(target map[string]interface{}, value interface{}, 
 // @Router /v2/job/migration/detail [get]
 func GetMigrationJobDetailV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetMigrationJobDetailV2")
-	return GetMysqlToMysqlJobDetail(c, logger, DtleJobTypeMigration)
+	return GetJobDetail(c, logger, DtleJobTypeMigration)
 }
 
-func GetMysqlToMysqlJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJobType) error {
+func GetJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJobType) error {
 
 	reqParam := new(models.MysqlToMysqlJobDetailReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
@@ -689,7 +689,7 @@ func GetMysqlToMysqlJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJ
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	resp, err := getMysqlToMysqlJobDetail(logger, reqParam.JobId, jobType)
+	resp, err := getJobDetail(logger, reqParam.JobId, jobType)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -701,12 +701,12 @@ func GetMysqlToMysqlJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJ
 	return c.JSON(http.StatusOK, resp)
 }
 
-func getMysqlToMysqlJobDetail(logger g.LoggerType, jobId string, jobType DtleJobType) (*models.MysqlToMysqlJobDetailRespV2, error) {
+func getJobDetail(logger g.LoggerType, jobId string, jobType DtleJobType) (*models.MysqlToMysqlJobDetailRespV2, error) {
 	failover, nomadJob, allocations, err := getJobDetailFromNomad(logger, jobId, jobType)
 	if nil != err {
 		return nil, err
 	}
-	destTaskDetail, srcTaskDetail, err := buildMysqlToMysqlJobDetailResp(nomadJob, allocations)
+	destTaskDetail, srcTaskDetail, err := buildJobDetailResp(nomadJob, allocations)
 	if nil != err {
 		return nil, fmt.Errorf("build job detail response failed: %v", err)
 	}
@@ -1076,7 +1076,7 @@ func convertTaskConfigMapToInternalTaskConfig(m map[string]interface{}) (interna
 	return internalConfig, nil
 }
 
-func buildMysqlToMysqlJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail, srcTaskDetail models.SrcTaskDetail, err error) {
+func buildJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail, srcTaskDetail models.SrcTaskDetail, err error) {
 	taskGroupToNomadAlloc := make(map[string][]nomadApi.Allocation)
 	for _, a := range nomadAllocations {
 		taskGroupToNomadAlloc[a.TaskGroup] = append(taskGroupToNomadAlloc[a.TaskGroup], a)
@@ -1123,7 +1123,7 @@ func CreateOrUpdateSyncJobV2(c echo.Context, create bool) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	resp, err := createOrUpdateMysqlToMysqlJob(logger, jobParam, user)
+	resp, err := createOrUpdateJob(logger, jobParam, user)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -1163,7 +1163,7 @@ func UpdateSyncJobV2(c echo.Context) error {
 // @Router /v2/job/sync/detail [get]
 func GetSyncJobDetailV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetSyncJobDetailV2")
-	return GetMysqlToMysqlJobDetail(c, logger, DtleJobTypeSync)
+	return GetJobDetail(c, logger, DtleJobTypeSync)
 }
 
 // @Id CreateSubscriptionJobV2
@@ -1176,7 +1176,7 @@ func GetSyncJobDetailV2(c echo.Context) error {
 // @Router /v2/job/subscription/create [post]
 func CreateSubscriptionJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("CreateSubscriptionJobV2")
-	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription, true)
+	return createOrUpdateDBToKafkaJob(c, logger, DtleJobTypeSubscription, true)
 }
 
 // @Id CreateOrUpdateSubscriptionJobV2
@@ -1189,10 +1189,10 @@ func CreateSubscriptionJobV2(c echo.Context) error {
 // @Router /v2/job/subscription/update [post]
 func UpdateSubscriptionJobV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("UpdateSubscriptionJobV2")
-	return createOrUpdateMysqlToKafkaJob(c, logger, DtleJobTypeSubscription, false)
+	return createOrUpdateDBToKafkaJob(c, logger, DtleJobTypeSubscription, false)
 }
 
-func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType DtleJobType, create bool) error {
+func createOrUpdateDBToKafkaJob(c echo.Context, logger g.LoggerType, jobType DtleJobType, create bool) error {
 
 	jobParam := new(models.CreateOrUpdateMysqlToKafkaJobParamV2)
 	if err := handler.BindAndValidate(logger, c, jobParam); err != nil {
@@ -1237,7 +1237,7 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType 
 		jobParam.DestTask.MessageGroupTimeout = common.DefaultKafkaMessageGroupTimeout
 	}
 
-	nomadJob, err := convertMysqlToKafkaJobToNomadJob(failover, jobParam)
+	nomadJob, err := convertDBToKafkaJobToNomadJob(failover, jobParam)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("convert job param to nomad job request failed, error: %v", err)))
 	}
@@ -1280,7 +1280,7 @@ func createOrUpdateMysqlToKafkaJob(c echo.Context, logger g.LoggerType, jobType 
 	})
 }
 
-func convertMysqlToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrUpdateMysqlToKafkaJobParamV2) (*nomadApi.Job, error) {
+func convertDBToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrUpdateMysqlToKafkaJobParamV2) (*nomadApi.Job, error) {
 	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
@@ -1801,7 +1801,7 @@ func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
-	_, srcTaskDetail, err := buildMysqlToMysqlJobDetailResp(nomadJob, allocations)
+	_, srcTaskDetail, err := buildJobDetailResp(nomadJob, allocations)
 	if nil != err {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("build job detail response failed: %v", err)))
 	}
@@ -1905,7 +1905,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 	jobType := GetJobTypeFromJobId(consulJobItem.JobId)
 	switch jobType {
 	case DtleJobTypeMigration, DtleJobTypeSync:
-		originalJob, err := getMysqlToMysqlJobDetail(logger, consulJobItem.JobId, jobType)
+		originalJob, err := getJobDetail(logger, consulJobItem.JobId, jobType)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
@@ -1987,7 +1987,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
-		_, err = createOrUpdateMysqlToMysqlJob(logger, reverseJobParam, user)
+		_, err = createOrUpdateJob(logger, reverseJobParam, user)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
