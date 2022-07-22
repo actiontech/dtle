@@ -572,6 +572,10 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 		errMsgs = append(errMsgs, fmt.Sprintf("	* %v", msg))
 	}
 
+	if !(1 <= config.BulkInsert1 && config.BulkInsert1 <= config.BulkInsert2) {
+		return fmt.Errorf("expect 1 <= BulkInsert1 <= BulkInsert2. %v %v", config.BulkInsert1, config.BulkInsert2)
+	}
+
 	if config.ConnectionConfig != nil && config.OracleConfig != nil {
 		addErrMsgs("only one src connection config should be set")
 	}
