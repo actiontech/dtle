@@ -170,6 +170,8 @@ type MysqlDestTaskConfig struct {
 	ParallelWorkers       int  `json:"parallel_workers"`
 	UseMySQLDependency    bool `json:"use_my_sql_dependency"`
 	DependencyHistorySize int  `json:"dependency_history_size"`
+	BulkInsert1           int  `json:"bulk_insert1"`
+	BulkInsert2           int  `json:"bulk_insert2"`
 }
 
 type DataSourceConfig struct {

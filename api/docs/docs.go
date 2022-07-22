@@ -2991,6 +2991,12 @@ var doc = `{
         "models.MysqlDestTaskConfig": {
             "type": "object",
             "properties": {
+                "bulk_insert1": {
+                    "type": "integer"
+                },
+                "bulk_insert2": {
+                    "type": "integer"
+                },
                 "dependency_history_size": {
                     "type": "integer"
                 },

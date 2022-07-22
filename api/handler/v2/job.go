@@ -567,6 +567,8 @@ func buildDatabaseDestTaskConfigMap(config *models.DestTaskConfig) map[string]in
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.UseMySQLDependency, "UseMySQLDependency")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.BulkInsert1, "BulkInsert1")
+	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.BulkInsert2, "BulkInsert2")
 	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 
 	return taskConfigInNomadFormat
@@ -850,6 +852,8 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				ParallelWorkers:       destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.ParallelWorkers,
 				UseMySQLDependency:    destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.UseMySQLDependency,
 				DependencyHistorySize: destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.DependencyHistorySize,
+				BulkInsert1:           destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.BulkInsert1,
+				BulkInsert2:           destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.BulkInsert2,
 			}
 			basicTaskProfile.Configuration.DstConfig = models.DstConfig{MysqlDestTaskConfig: mysqlDstConfig}
 			basicTaskProfile.ConnectionInfo.DstDataBase = *destMySqlTaskDetail.TaskConfig.ConnectionConfig
@@ -1021,6 +1025,8 @@ func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTas
 		ParallelWorkers:       internalTaskConfig.ParallelWorkers,
 		UseMySQLDependency:    internalTaskConfig.UseMySQLDependency,
 		DependencyHistorySize: internalTaskConfig.DependencyHistorySize,
+		BulkInsert1:           internalTaskConfig.BulkInsert1,
+		BulkInsert2:           internalTaskConfig.BulkInsert2,
 	}
 	destTaskDetail.TaskConfig = models.DestTaskConfig{
 		TaskName:            taskName,
