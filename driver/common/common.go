@@ -66,6 +66,7 @@ type GencodeType interface {
 func init() {
 	// "Only types that will be transferred as implementations of interface values need to be registered."
 	gob.Register(types.BinaryLiteral{})
+	gob.Register(types.MyDecimal{})
 	if g.EnvIsTrue(g.ENV_BIG_MSG_100K) {
 		g.NatsMaxMsg = 100 * 1024 // TODO this does not works
 	}
