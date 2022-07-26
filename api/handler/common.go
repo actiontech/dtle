@@ -9,12 +9,13 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/labstack/echo/v4"
 )
@@ -177,6 +178,10 @@ func IsEmpty(value interface{}) bool {
 		}
 	case int64:
 		if value.(int64) == 0 {
+			return true
+		}
+	case int:
+		if value.(int) == 0 {
 			return true
 		}
 	}
