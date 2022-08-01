@@ -7,7 +7,7 @@ DOCKER_IMAGE  := reg.actiontech.com/actiontech/universe-compiler-udup:v6
 
 
 PROJECT_NAME  ?= dtle
-VERSION       = 4.22.06.3
+VERSION       = 4.22.06.4
 
 ifdef GOBIN
 PATH := $(GOBIN):$(PATH)
