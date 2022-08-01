@@ -8,6 +8,7 @@ package mysqlconfig
 
 import (
 	"fmt"
+	"github.com/actiontech/dtle/g"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -25,13 +26,17 @@ var charsetEncodingMap = map[string]encoding.Encoding{
 	"utf16": unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM),
 	"utf16le": unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM),
 	"utf32": utf32.UTF32(utf32.BigEndian, utf32.IgnoreBOM),
+	//"binary": encoding.Nop, // will cause extra conversion
 }
 
 // return original string and error if charset is not recognized
 func ConvertToUTF8(s string, charset string) (string, error) {
 	enc, ok := charsetEncodingMap[charset]
 	if !ok {
-		return s, fmt.Errorf("unknown character set %v", charset)
+		if charset != "binary" {
+			g.Logger.Warn("ConvertToUTF8: unknown character set %v, treating as binary", charset)
+		}
+		enc = encoding.Nop
 	}
 	r, _, err := transform.String(enc.NewDecoder(), s)
 	if err != nil {
