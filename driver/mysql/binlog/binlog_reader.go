@@ -927,25 +927,33 @@ func (b *BinlogReader) loadMapping(sql, currentSchema string, schemasRenameMap m
 }
 
 func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryContext) error {
+	bigTxThrottlingCount := 0
 	for {
-
-		// Check for shutdown
 		if b.shutdown {
 			break
 		}
 
 		b.logger.Trace("b.HasBigTx.Wait. before")
-		// Wait if this job has un-acked big tx or
+		// Throttle if this job has un-acked big tx, or
 		// there are too much global jobs with big tx.
-		for i := 0; atomic.LoadInt32(&b.BigTxCount) > 0 || g.BigTxReachMax(); i++ {
-			if b.shutdown {
+		for !b.shutdown {
+			localLimit, globalLimit := atomic.LoadInt32(&b.BigTxCount) > 0, g.BigTxReachMax()
+			if !localLimit && !globalLimit {
+				bigTxThrottlingCount = 0
 				break
 			}
-			maxWaitMs := 1000
-			if i >= maxWaitMs/10 {
+
+			bigTxThrottlingCount += 1
+			sleepMs := 10
+			if bigTxThrottlingCount%(1000/sleepMs) == 0 {
+				// Force to read an event every 1000ms.
 				break
 			}
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(time.Duration(sleepMs) * time.Millisecond)
+			if bigTxThrottlingCount * sleepMs >= 15 * 1000 {
+				b.logger.Warn("reader big tx throttling for 15s", "local", localLimit, "global", globalLimit)
+				bigTxThrottlingCount = 0
+			}
 		}
 		b.logger.Trace("b.HasBigTx.Wait. after")
 
