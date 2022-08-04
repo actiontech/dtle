@@ -597,7 +597,11 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 				for i := 0; i < nRows; {
 					var pstmt **gosql.Stmt
 					var rows [][]interface{}
-					if nRows-i >= a.mysqlContext.BulkInsert2 {
+					if nRows-i >= a.mysqlContext.BulkInsert3 {
+						pstmt = &tableItem.PsInsert3[workerIdx]
+						rows = event.Rows[i : i+a.mysqlContext.BulkInsert3]
+						i += a.mysqlContext.BulkInsert3
+					} else if nRows-i >= a.mysqlContext.BulkInsert2 {
 						pstmt = &tableItem.PsInsert2[workerIdx]
 						rows = event.Rows[i : i+a.mysqlContext.BulkInsert2]
 						i += a.mysqlContext.BulkInsert2

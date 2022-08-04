@@ -56,6 +56,7 @@ type DtleTaskConfig struct {
 	WaitOnJob            string        `codec:"WaitOnJob"`
 	BulkInsert1          int           `codec:"BulkInsert1"`
 	BulkInsert2          int           `codec:"BulkInsert2"`
+	BulkInsert3          int           `codec:"BulkInsert3"`
 	SlaveNetWriteTimeout int           `codec:"SlaveNetWriteTimeout"`
 	BigTxSrcQueue        int32         `codec:"BigTxSrcQueue"`
 
