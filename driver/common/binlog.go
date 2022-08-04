@@ -162,6 +162,7 @@ type ApplierTableItem struct {
 	PsInsert0 []*sql.Stmt
 	PsInsert1 []*sql.Stmt
 	PsInsert2 []*sql.Stmt
+	PsInsert3 []*sql.Stmt
 	PsDelete  []*sql.Stmt
 	PsUpdate    []*sql.Stmt
 	ColumnMapTo []string
@@ -173,6 +174,7 @@ func NewApplierTableItem(parallelWorkers int) *ApplierTableItem {
 		PsInsert0: make([]*sql.Stmt, parallelWorkers),
 		PsInsert1: make([]*sql.Stmt, parallelWorkers),
 		PsInsert2: make([]*sql.Stmt, parallelWorkers),
+		PsInsert3: make([]*sql.Stmt, parallelWorkers),
 		PsDelete:  make([]*sql.Stmt, parallelWorkers),
 		PsUpdate:  make([]*sql.Stmt, parallelWorkers),
 	}
@@ -190,6 +192,7 @@ func (ait *ApplierTableItem) Reset() {
 	closeStmts(ait.PsInsert0)
 	closeStmts(ait.PsInsert1)
 	closeStmts(ait.PsInsert2)
+	closeStmts(ait.PsInsert3)
 	closeStmts(ait.PsDelete)
 	closeStmts(ait.PsUpdate)
 
