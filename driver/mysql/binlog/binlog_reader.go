@@ -937,7 +937,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryConte
 		// Throttle if this job has un-acked big tx, or
 		// there are too much global jobs with big tx.
 		for !b.shutdown {
-			localLimit, globalLimit := atomic.LoadInt32(&b.BigTxCount) > 0, g.BigTxReachMax()
+			localLimit, globalLimit := atomic.LoadInt32(&b.BigTxCount) > b.mysqlContext.BigTxSrcQueue, g.BigTxReachMax()
 			if !localLimit && !globalLimit {
 				bigTxThrottlingCount = 0
 				break
