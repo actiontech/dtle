@@ -144,6 +144,8 @@ var (
 			hclspec.NewLiteral(`4`)),
 		"BulkInsert2": hclspec.NewDefault(hclspec.NewAttr("BulkInsert2", "number", false),
 			hclspec.NewLiteral(`8`)),
+		"BigTxSrcQueue": hclspec.NewDefault(hclspec.NewAttr("BigTxSrcQueue", "number", false),
+			hclspec.NewLiteral(`3`)),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"Topic":   hclspec.NewAttr("Topic", "string", true),
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
