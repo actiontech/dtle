@@ -432,6 +432,15 @@ func (a *ApplierIncr) heterogeneousReplay() {
 	}
 }
 
+func (a *ApplierIncr) HasShutdown() bool {
+	select {
+	case <-a.shutdownCh:
+		return true
+	default:
+		return false
+	}
+}
+
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.EntryContext) error {
 	logger := a.logger.Named("ApplyBinlogEvent")
@@ -454,7 +463,84 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		dbApplier.DbMutex.Unlock()
 		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
+
+	type execItem struct {
+		hasUK bool
+		pstmt **gosql.Stmt
+		query string
+		args []interface{}
+	}
+	prepareIfNilAndExecute := func(hasUK bool, pstmt **gosql.Stmt, query string, args []interface{}) (err error) {
+		var r gosql.Result
+
+		if hasUK {
+			if *pstmt == nil {
+				a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
+				*pstmt, err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
+				if err != nil {
+					a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
+					return err
+				}
+			}
+
+			r, err = (*pstmt).ExecContext(a.ctx, args...)
+		} else {
+			r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, query, args...)
+		}
+
+		if err != nil {
+			logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GetGNO()),
+				"err", err)
+			return err
+		}
+
+		nr, err := r.RowsAffected()
+		if err != nil {
+			logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GetGNO(), "event", 0, "err", err)
+		} else {
+			logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GetGNO(), "event", 0, "nr", nr)
+		}
+		return nil
+	}
+
+	somequeue := make(chan *execItem, 16)
+	queueOrExec := func(item *execItem) error {
+		if a.inBigTx {
+			somequeue <- item
+			return nil
+		} else {
+			return prepareIfNilAndExecute(item.hasUK, item.pstmt, item.query, item.args)
+		}
+	}
+
+	executionLoopExitedCh := make(chan struct{})
+	if a.inBigTx {
+		go func() {
+			defer close(executionLoopExitedCh)
+			for {
+				select {
+				case item := <-somequeue:
+					if item == nil {
+						return
+					}
+
+					err := prepareIfNilAndExecute(item.hasUK, item.pstmt, item.query, item.args)
+					if err != nil {
+						a.OnError(common.TaskStateDead, err)
+					}
+				case <-a.shutdownCh:
+					return
+				}
+			}
+		}()
+	} else {
+		close(executionLoopExitedCh)
+	}
+
 	for i, event := range binlogEntry.Events {
+		if a.HasShutdown() {
+			break
+		}
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GetGNO(), "event", i)
 
 		if event.DML == common.NotDML {
@@ -558,39 +644,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 			tableItem := binlogEntryCtx.TableItems[i]
 
-			prepareIfNilAndExecute := func(hasUK bool, pstmt **gosql.Stmt, query string, args []interface{}) (err error) {
-				var r gosql.Result
-
-				if hasUK {
-					if *pstmt == nil {
-						a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
-						*pstmt, err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
-						if err != nil {
-							a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
-							return err
-						}
-					}
-
-					r, err = (*pstmt).ExecContext(a.ctx, args...)
-				} else {
-					r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, query, args...)
-				}
-
-				if err != nil {
-					logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GetGNO()),
-						"err", err)
-					return err
-				}
-
-				nr, err := r.RowsAffected()
-				if err != nil {
-					logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "err", err)
-				} else {
-					logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "nr", nr)
-				}
-				return nil
-			}
-
 			switch event.DML {
 			case common.InsertDML:
 				nRows := len(event.Rows)
@@ -622,7 +675,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					}
 					a.logger.Debug("BuildDMLInsertQuery", "query", query)
 
-					err = prepareIfNilAndExecute(true, pstmt, query, sharedArgs)
+					err = queueOrExec(&execItem{true, pstmt, query, sharedArgs})
 					if err != nil {
 						return err
 					}
@@ -637,7 +690,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					}
 					a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 
-					err = prepareIfNilAndExecute(hasUK, pstmt, query, uniqueKeyArgs)
+					err = queueOrExec(&execItem{hasUK, pstmt, query, uniqueKeyArgs})
 					if err != nil {
 						return err
 					}
@@ -664,7 +717,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 							return err
 						}
 
-						err = prepareIfNilAndExecute(true, pstmt, query, sharedArgs)
+						err = queueOrExec(&execItem{true, pstmt, query, sharedArgs})
 						if err != nil {
 							return err
 						}
@@ -677,7 +730,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 						}
 						a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 
-						err = prepareIfNilAndExecute(hasUK, pstmt, query, uniqueKeyArgs)
+						err = queueOrExec(&execItem{hasUK, pstmt, query, uniqueKeyArgs})
 						if err != nil {
 							return err
 						}
@@ -692,7 +745,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 						args = append(args, sharedArgs...)
 						args = append(args, uniqueKeyArgs...)
 
-						err = prepareIfNilAndExecute(hasUK, pstmt, query, args)
+						err = queueOrExec(&execItem{hasUK, pstmt, query, args})
 						if err != nil {
 							return err
 						}
@@ -711,6 +764,8 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		timestamp = event.Timestamp
 		atomic.AddUint64(&a.appliedQueryCount, uint64(1))
 	}
+	close(somequeue)
+	<-executionLoopExitedCh
 
 	if binlogEntry.Final {
 		if !a.SkipGtidExecutedTable && a.sourceType == "mysql" {
