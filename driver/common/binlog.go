@@ -118,8 +118,8 @@ type SchemaTable struct {
 	Table  string
 }
 
-func NewDataEvent(databaseName, tableName string, dml int8, columnCount uint64, timestamp uint32) DataEvent {
-	event := DataEvent{
+func NewDataEvent(databaseName, tableName string, dml int8, columnCount uint64, timestamp uint32) *DataEvent {
+	event := &DataEvent{
 		DatabaseName: databaseName,
 		TableName:    tableName,
 		DML:          dml,

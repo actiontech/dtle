@@ -937,8 +937,9 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryConte
 		// Throttle if this job has un-acked big tx, or
 		// there are too much global jobs with big tx.
 		for !b.shutdown {
-			localLimit, globalLimit := atomic.LoadInt32(&b.BigTxCount) > b.mysqlContext.BigTxSrcQueue, g.BigTxReachMax()
-			if !localLimit && !globalLimit {
+			localCount := atomic.LoadInt32(&b.BigTxCount)
+			globalLimit := g.BigTxReachMax()
+			if localCount <= b.mysqlContext.BigTxSrcQueue && !globalLimit {
 				bigTxThrottlingCount = 0
 				break
 			}
@@ -951,7 +952,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryConte
 			}
 			time.Sleep(time.Duration(sleepMs) * time.Millisecond)
 			if bigTxThrottlingCount * sleepMs >= 15 * 1000 {
-				b.logger.Warn("reader big tx throttling for 15s", "local", localLimit, "global", globalLimit)
+				b.logger.Warn("reader big tx throttling for 15s", "local", localCount, "global", globalLimit)
 				bigTxThrottlingCount = 0
 			}
 		}
@@ -1798,9 +1799,9 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 	schemaName := string(rowsEvent.Table.Schema)
 	tableName := string(rowsEvent.Table.Table)
 	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
-	b.logger.Debug("got rowsEvent", "schema", schemaName, "table", tableName,
-		"gno", coordinate.GNO,
-		"flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags)
+	b.logger.Trace("got rowsEvent", "schema", schemaName, "table", tableName,
+		"gno", coordinate.GNO, "flags", rowsEvent.Flags, "tableFlags", rowsEvent.Table.Flags,
+		"nRows", len(rowsEvent.Rows))
 
 	dml := common.ToEventDML(ev.Header.EventType)
 	skip, table := b.skipRowEvent(rowsEvent, dml)
@@ -1943,7 +1944,34 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 	}
 
 	if len(dmlEvent.Rows) > 0 {
-		b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, dmlEvent)
+		// return 0 if the last event could be reused.
+		reuseLast := func() int {
+			if len(b.entryContext.Entry.Events) == 0 {
+				return 1
+			}
+			lastEvent := &b.entryContext.Entry.Events[len(b.entryContext.Entry.Events)-1]
+			if dml != common.InsertDML || lastEvent.DML != common.InsertDML {
+				return 2
+			}
+			if lastEvent.DatabaseName != dmlEvent.DatabaseName || lastEvent.TableName != dmlEvent.TableName {
+				return 3
+			}
+			if bytes.Compare(lastEvent.Flags, dmlEvent.Flags) != 0 {
+				return 4
+			}
+			if dmlEvent.FKParent != lastEvent.FKParent {
+				return 5
+			}
+
+			lastEvent.Rows = append(lastEvent.Rows, dmlEvent.Rows...)
+			b.logger.Debug("reuseLast. reusing", "nRows", len(lastEvent.Rows))
+			return 0
+		}()
+
+		if reuseLast != 0 {
+			b.logger.Debug("reuseLast. not reusing", "step", reuseLast)
+			b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, *dmlEvent)
+		}
 
 		if b.entryContext.OriginalSize >= bigTxSplittingSize {
 			b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
