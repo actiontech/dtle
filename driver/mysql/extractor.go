@@ -1104,7 +1104,8 @@ func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error)
 		e.logger.Debug("publish", "subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
 		_, err := e.natsConn.Request(subject, part, 24*time.Hour)
 		if err != nil {
-			e.logger.Error("unexpected error on publish", "err", err)
+			e.logger.Error("unexpected error on publish", "err", err,
+				"subject", subject, "gno", gno, "partLen", len(part), "iSeg", iSeg)
 			return err
 		}
 	}

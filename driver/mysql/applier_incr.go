@@ -71,7 +71,8 @@ type ApplierIncr struct {
 	sourceType  string
 	tableSpecs  []*common.TableSpec
 
-	inBigTx bool
+	inBigTx     bool
+	logTxCommit bool
 }
 
 func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
@@ -97,6 +98,10 @@ func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
 
 	if g.EnvIsTrue(g.ENV_SKIP_GTID_EXECUTED_TABLE) {
 		a.SkipGtidExecutedTable = true
+	}
+
+	if g.EnvIsTrue(g.ENV_DTLE_LOG_TX_COMMIT) {
+		a.logTxCommit = true
 	}
 
 	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
@@ -732,7 +737,11 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
 		}
-		logger.Debug("applier tx committed", "gno", binlogEntry.Coordinates.GetGNO())
+		if a.logTxCommit {
+			logger.Info("applier tx committed", "gno", binlogEntry.Coordinates.GetGNO())
+		} else {
+			logger.Debug("applier tx committed", "gno", binlogEntry.Coordinates.GetGNO())
+		}
 		atomic.AddUint32(&a.appliedTxCount, 1)
 	}
 	a.EntryExecutedHook(binlogEntry)
