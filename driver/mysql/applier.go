@@ -1075,9 +1075,8 @@ func (a *Applier) Shutdown() error {
 	close(a.shutdownCh)
 
 	if a.ai != nil {
-		a.ai.wg.Wait()
+		a.ai.Shutdown()
 	}
-	a.logger.Debug("Shutdown. a.ai.wg.Wait. after")
 	a.wg.Wait()
 	a.logger.Debug("Shutdown. a.wg.Wait. after")
 
