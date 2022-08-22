@@ -1019,7 +1019,7 @@ func (a *Applier) Stats() (*common.TaskStatistics, error) {
 }
 
 func (a *Applier) onError(state int, err error) {
-	a.logger.Error("onError", "err", err)
+	a.logger.Error("onError", "err", err, "hasShutdown", a.shutdown)
 	if a.shutdown {
 		return
 	}

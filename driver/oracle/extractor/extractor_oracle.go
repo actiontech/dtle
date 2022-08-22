@@ -817,7 +817,7 @@ func (e *ExtractorOracle) publish(subject string, txMsg []byte, gno int64) (err 
 }
 
 func (e *ExtractorOracle) onError(state int, err error) {
-	e.logger.Error("onError", "err", err)
+	e.logger.Error("onError", "err", err, "hasShutdown", e.shutdown)
 	if e.shutdown {
 		return
 	}

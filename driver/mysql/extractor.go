@@ -1560,7 +1560,7 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 }
 
 func (e *Extractor) onError(state int, err error) {
-	e.logger.Error("onError", "err", err)
+	e.logger.Error("onError", "err", err, "hasShutdown", e.shutdown)
 	if e.shutdown {
 		return
 	}

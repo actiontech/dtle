@@ -634,6 +634,8 @@ func (kr *KafkaRunner) initiateStreaming() error {
 }
 
 func (kr *KafkaRunner) onError(state int, err error) {
+	kr.logger.Info("onError", "err", err, "hasShutdown", kr.shutdown)
+
 	if kr.shutdown {
 		return
 	}
@@ -666,7 +668,7 @@ func (kr *KafkaRunner) onError(state int, err error) {
 		OOMKilled: false,
 		Err:       err,
 	}
-	kr.Shutdown()
+	_ = kr.Shutdown()
 }
 
 func (kr *KafkaRunner) kafkaTransformSnapshotData(
