@@ -533,7 +533,11 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		// TODO check if shutdown?
 		if !a.noBigTxDMLPipe && a.inBigTx {
 			a.bigTxEventWg.Add(1)
-			a.bigTxEventQueue <- item
+			select {
+			case <-a.shutdownCh:
+				return fmt.Errorf("queueOrExec: ApplierIncr shutdown")
+			case a.bigTxEventQueue <- item:
+			}
 			return nil
 		} else {
 			return a.prepareIfNilAndExecute(item, workerIdx)

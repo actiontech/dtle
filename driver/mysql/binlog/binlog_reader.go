@@ -330,6 +330,7 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates
 		}
 
 		go func() {
+			b.logger.Info("starting BinlogRelay", "gtidSet", coordinates.GtidSet)
 			pr := b.relay.Process(ctx)
 			b.logger.Warn("relay.Process stopped", "isCancelled", pr.IsCanceled, "deail", string(pr.Detail))
 			for _, prErr := range pr.Errors {
