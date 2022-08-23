@@ -641,9 +641,7 @@ func (kr *KafkaRunner) onError(state int, err error) {
 	}
 
 	switch state {
-	case common.TaskStateComplete:
-		kr.logger.Info("Done migrating")
-	case common.TaskStateRestart, common.TaskStateDead:
+	case common.TaskStateDead:
 		msg := &common.ControlMsg{
 			Msg:  err.Error(),
 			Type: common.ControlMsgError,

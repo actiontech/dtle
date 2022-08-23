@@ -909,7 +909,7 @@ func (e *ExtractorOracle) oracleDump() error {
 				DbSQL: dbSQL,
 			}
 			if err := e.encodeAndSendDumpEntry(entry); err != nil {
-				e.onError(common.TaskStateRestart, err)
+				e.onError(common.TaskStateDead, err)
 			}
 
 			for _, tb := range db.Tables {
@@ -938,7 +938,7 @@ func (e *ExtractorOracle) oracleDump() error {
 					// TotalCount: tb.Counter,
 				}
 				if err := e.encodeAndSendDumpEntry(entry); err != nil {
-					e.onError(common.TaskStateRestart, err)
+					e.onError(common.TaskStateDead, err)
 				}
 			}
 		}
@@ -966,7 +966,7 @@ func (e *ExtractorOracle) oracleDump() error {
 					e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
 				} else {
 					if err := e.encodeAndSendDumpEntry(entry); err != nil {
-						e.onError(common.TaskStateRestart, err)
+						e.onError(common.TaskStateDead, err)
 					}
 				}
 			}

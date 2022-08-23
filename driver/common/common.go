@@ -28,9 +28,7 @@ const (
 )
 
 const (
-	TaskStateComplete int = iota
-	TaskStateRestart
-	TaskStateDead
+	TaskStateDead = 2
 )
 
 const (

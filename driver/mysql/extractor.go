@@ -1140,7 +1140,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 		SqlMode:         setSqlMode,
 	}
 	if err := e.encodeAndSendDumpEntry(entry); err != nil {
-		e.onError(common.TaskStateRestart, err)
+		e.onError(common.TaskStateDead, err)
 	}
 
 	return nil
@@ -1318,7 +1318,7 @@ func (e *Extractor) mysqlDump() error {
 				if db.TableSchemaRename != "" {
 					dbSQL, err = base.RenameCreateSchemaAddINE(db.CreateSchemaString, db.TableSchemaRename)
 					if err != nil {
-						e.onError(common.TaskStateRestart, err)
+						e.onError(common.TaskStateDead, err)
 					}
 				} else {
 					dbSQL = db.CreateSchemaString
@@ -1331,7 +1331,7 @@ func (e *Extractor) mysqlDump() error {
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.TotalRowsCopied, 1)
 			if err := e.encodeAndSendDumpEntry(entry); err != nil {
-				e.onError(common.TaskStateRestart, err)
+				e.onError(common.TaskStateDead, err)
 			}
 
 			for _, tbCtx := range db.TableMap {
@@ -1377,7 +1377,7 @@ func (e *Extractor) mysqlDump() error {
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.TotalRowsCopied, 1)
 				if err := e.encodeAndSendDumpEntry(entry); err != nil {
-					e.onError(common.TaskStateRestart, err)
+					e.onError(common.TaskStateDead, err)
 				}
 			}
 			e.tableCount += len(db.TableMap)
@@ -1427,7 +1427,7 @@ func (e *Extractor) mysqlDump() error {
 						}
 					}
 					if err = e.encodeAndSendDumpEntry(entry); err != nil {
-						e.onError(common.TaskStateRestart, err)
+						e.onError(common.TaskStateDead, err)
 					}
 					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
 					atomic.AddInt64(d.Memory, -memSize)
