@@ -69,7 +69,7 @@ ORDER BY
     first_change#
 `, scn, scn)
 
-	rows, err := l.oracleDB.LogMinerConn.QueryContext(context.TODO(), query)
+	rows, err := l.oracleDB.LogMinerConn.QueryContext(l.ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ END;`, f.Name)
 DBMS_LOGMNR.add_logfile ( '%s' );
 END;`, f.Name)
 		}
-		_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
+		_, err := l.oracleDB.LogMinerConn.ExecContext(l.ctx, query)
 		if err != nil {
 			return err
 		}
@@ -112,7 +112,7 @@ func (l *LogMinerStream) BuildLogMiner() error {
 	query := `BEGIN 
 DBMS_LOGMNR_D.build (options => DBMS_LOGMNR_D.STORE_IN_REDO_LOGS);
 END;`
-	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(l.ctx, query)
 	return err
 }
 
@@ -130,7 +130,7 @@ SYS.DBMS_LOGMNR.DDL_DICT_TRACKING
 );
 END;`, startScn, endScn)
 	l.logger.Debug("startLogMiner2", "query", query)
-	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(l.ctx, query)
 	return err
 }
 
@@ -146,7 +146,7 @@ SYS.DBMS_LOGMNR.dict_from_online_catalog +
 SYS.DBMS_LOGMNR.string_literals_in_stmt 
 );
 END;`, scn)
-	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(l.ctx, query)
 	return err
 }
 
@@ -155,7 +155,7 @@ func (l *LogMinerStream) EndLogMiner() error {
 BEGIN
 DBMS_LOGMNR.end_logmnr ();
 END;`
-	_, err := l.oracleDB.LogMinerConn.ExecContext(context.TODO(), query)
+	_, err := l.oracleDB.LogMinerConn.ExecContext(l.ctx, query)
 	return err
 }
 
@@ -266,7 +266,7 @@ WHERE
 `, startScn, endScn, l.buildFilterSchemaTable())
 
 	//l.logger.Debug("Get logMiner record", "QuerySql", query)
-	rows, err := l.oracleDB.LogMinerConn.QueryContext(context.TODO(), query)
+	rows, err := l.oracleDB.LogMinerConn.QueryContext(l.ctx, query)
 	if err != nil {
 		return err
 	}
@@ -603,6 +603,7 @@ func (e *ExtractorOracle) handleSQLs(tx *LogMinerTx) *common.DataEntry {
 }
 
 type LogMinerStream struct {
+	ctx                      context.Context
 	oracleDB                 *config.OracleDB
 	startScn                 int64
 	committedScn             int64
@@ -616,9 +617,9 @@ type LogMinerStream struct {
 	OracleTxNum              uint32
 }
 
-func NewLogMinerStream(db *config.OracleDB, logger g.LoggerType, replicateDB, ignoreReplicateDB []*common.DataSource,
-	startScn, committedScn, interval int64) *LogMinerStream {
+func NewLogMinerStream(ctx context.Context, db *config.OracleDB, logger g.LoggerType, replicateDB, ignoreReplicateDB []*common.DataSource, startScn, committedScn, interval int64) *LogMinerStream {
 	return &LogMinerStream{
+		ctx:               ctx,
 		oracleDB:          db,
 		logger:            logger,
 		replicateDB:       replicateDB,

@@ -106,7 +106,6 @@ func NewApplier(
 	logger.Info("NewApplier", "job", execCtx.Subject)
 
 	a = &Applier{
-		ctx:             ctx,
 		logger:          logger.Named("applier").With("job", execCtx.Subject),
 		subject:         execCtx.Subject,
 		mysqlContext:    cfg,
@@ -125,7 +124,7 @@ func NewApplier(
 		taskConfig:      taskConfig,
 	}
 
-	a.ctx, a.cancelFunc = context.WithCancel(context.TODO())
+	a.ctx, a.cancelFunc = context.WithCancel(ctx)
 
 	stubFullApplyDelayStr := os.Getenv(g.ENV_FULL_APPLY_DELAY)
 	if stubFullApplyDelayStr == "" {
@@ -668,7 +667,7 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.db.SetMaxOpenConns(10 + a.mysqlContext.ParallelWorkers)
 	a.logger.Debug("CreateConns", "ParallelWorkers", a.mysqlContext.ParallelWorkers)
-	if a.dbs, err = sql.CreateConns(a.db, a.mysqlContext.ParallelWorkers); err != nil {
+	if a.dbs, err = sql.CreateConns(a.ctx, a.db, a.mysqlContext.ParallelWorkers); err != nil {
 		a.logger.Debug("beging connetion mysql 2 create conns err")
 		return err
 	}

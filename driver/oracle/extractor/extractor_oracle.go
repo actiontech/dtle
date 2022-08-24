@@ -42,6 +42,7 @@ import (
 
 // ExtractorOracle is the main schema extract flow manager.
 type ExtractorOracle struct {
+	ctx          context.Context
 	execCtx      *common.ExecContext
 	logger       g.LoggerType
 	subject      string
@@ -120,10 +121,11 @@ type OracleSchemaInfo struct {
 	Tables map[string]*ast.CreateTableStmt
 }
 
-func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult) (*ExtractorOracle, error) {
+func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*ExtractorOracle, error) {
 	logger.Info("NewExtractorOracle", "job", execCtx.Subject)
 
 	e := &ExtractorOracle{
+		ctx:          ctx,
 		logger:       logger.Named("ExtractorOracle").With("job", execCtx.Subject),
 		execCtx:      execCtx,
 		subject:      execCtx.Subject,
@@ -240,7 +242,7 @@ func (e *ExtractorOracle) Run() {
 		if startSCN == 0 && committedSCN == 0 {
 			startSCN, committedSCN = e.oracleDB.SCN, e.oracleDB.SCN
 		}
-		e.LogMinerStream = NewLogMinerStream(e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
+		e.LogMinerStream = NewLogMinerStream(e.ctx, e.oracleDB, e.logger, e.mysqlContext.ReplicateDoDb, e.mysqlContext.ReplicateIgnoreDb,
 			startSCN, committedSCN, 100000)
 		e.logger.Debug("start .initiateStreaming before")
 		if err := e.initiateStreaming(); err != nil {
@@ -644,7 +646,7 @@ func (e *ExtractorOracle) initiateStreaming() error {
 }
 
 func (e *ExtractorOracle) initDBConnections() {
-	oracleDB, err := config.NewDB(e.mysqlContext.OracleConfig)
+	oracleDB, err := config.NewDB(e.ctx, e.mysqlContext.OracleConfig)
 	if err != nil {
 		e.onError(common.TaskStateDead, err)
 	}
@@ -869,13 +871,13 @@ func (e *ExtractorOracle) oracleDump() error {
 	}
 
 	// step 1 :  lock table schema.table in row share mode;
-	tx, err := e.oracleDB.NewTx(context.TODO())
+	tx, err := e.oracleDB.NewTx(e.ctx)
 	if err != nil {
 		e.onError(common.TaskStateDead, err)
 		return err
 	}
 
-	err = e.LockTablesForSchema(tx, context.TODO())
+	err = e.LockTablesForSchema(tx, e.ctx)
 	if err != nil {
 		e.onError(common.TaskStateDead, err)
 		return err
@@ -953,7 +955,7 @@ func (e *ExtractorOracle) oracleDump() error {
 	// todo need merged dumper with mysql dumper
 	for _, db := range e.replicateDoDb {
 		for _, t := range db.Tables {
-			d := NewDumper(e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1, e.oracleDB.SCN)
+			d := NewDumper(e.ctx, e.oracleDB, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1, e.oracleDB.SCN)
 			if err := d.Dump(); err != nil {
 				e.onError(common.TaskStateDead, err)
 			}

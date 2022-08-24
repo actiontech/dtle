@@ -41,7 +41,7 @@ type taskHandle struct {
 	driverConfig *common.MySQLDriverConfig
 }
 
-func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
+func newDtleTaskHandle(ctx context.Context, logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
 	h := &taskHandle{
 		logger:      logger,
 		stateLock:   sync.RWMutex{},
@@ -52,7 +52,7 @@ func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drive
 		exitResult:  nil,
 		waitCh:      make(chan *drivers.ExitResult, 1),
 	}
-	h.ctx, h.cancelFunc = context.WithCancel(context.TODO())
+	h.ctx, h.cancelFunc = context.WithCancel(ctx)
 	return h
 }
 
@@ -168,7 +168,7 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 	case common.TaskTypeSrc:
 		if h.driverConfig.OracleConfig != nil {
 			h.logger.Debug("found oracle src", "OracleConfig", h.driverConfig.OracleConfig)
-			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
+			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewExtractor")
 			}

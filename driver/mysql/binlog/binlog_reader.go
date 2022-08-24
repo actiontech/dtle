@@ -959,7 +959,7 @@ func (b *BinlogReader) DataStreamEvents(entriesChannel chan<- *common.EntryConte
 		}
 		b.logger.Trace("b.HasBigTx.Wait. after")
 
-		ev, err := b.binlogStreamer.GetEvent(context.Background())
+		ev, err := b.binlogStreamer.GetEvent(b.ctx)
 		if err != nil {
 			b.logger.Error("error GetEvent.", "err", err)
 			return err

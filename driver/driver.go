@@ -560,7 +560,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "SetDriverState")
 	}
 
-	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
+	h := newDtleTaskHandle(d.ctx, d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
 	h.driverConfig = &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
 	d.tasks.Set(cfg.ID, h)
 	AllocIdTaskNameToTaskHandler.Set(cfg.AllocID, cfg.Name, cfg.ID, h)

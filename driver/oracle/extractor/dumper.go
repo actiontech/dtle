@@ -18,10 +18,10 @@ type dumper struct {
 	snapshotSCN int64
 }
 
-func NewDumper(db *config.OracleDB, table *common.Table, chunkSize int64,
+func NewDumper(ctx context.Context, db *config.OracleDB, table *common.Table, chunkSize int64,
 	logger g.LoggerType, memory *int64, scn int64) *dumper {
 	d := &dumper{
-		common.NewDumper(table, chunkSize, logger, memory),
+		common.NewDumper(ctx, table, chunkSize, logger, memory),
 		db,
 		scn,
 	}
@@ -74,7 +74,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 				keepGoing = false
 			case <-timer.C:
 				d.Logger.Debug("resultsChannel full. waiting and ping conn")
-				errPing := d.db.MetaDataConn.PingContext(context.TODO())
+				errPing := d.db.MetaDataConn.PingContext(d.Ctx)
 				if errPing != nil {
 					d.Logger.Debug("ping query row got error.", "err", errPing)
 				}
@@ -101,7 +101,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 
 	// this must be increased after building query
 	d.Iteration += 1
-	rows, err := d.db.MetaDataConn.QueryContext(context.TODO(), query)
+	rows, err := d.db.MetaDataConn.QueryContext(d.Ctx, query)
 	if err != nil {
 		newErr := fmt.Errorf("error at select chunk. err: %v", err)
 		d.Logger.Error(newErr.Error())
