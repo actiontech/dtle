@@ -560,7 +560,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "SetDriverState")
 	}
 
-	h := newDtleTaskHandle(d.ctx, d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
+	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
 	h.driverConfig = &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
 	d.tasks.Set(cfg.ID, h)
 	AllocIdTaskNameToTaskHandler.Set(cfg.AllocID, cfg.Name, cfg.ID, h)
@@ -655,14 +655,6 @@ func (d *Driver) handleWait(ctx context.Context, handle *taskHandle, ch chan *dr
 		return
 	case <-d.ctx.Done():
 		return
-	case <-handle.ctx.Done():
-		result := &drivers.ExitResult{
-			ExitCode:  0,
-			Signal:    0,
-			OOMKilled: false,
-			Err:       nil,
-		}
-		ch <- result
 	case result := <-handle.waitCh: // Do not refer to handle.runner.waitCh. It might be nil.
 		handle.stateLock.Lock()
 		handle.procState = drivers.TaskStateExited
