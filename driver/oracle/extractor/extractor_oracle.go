@@ -197,7 +197,7 @@ func (e *ExtractorOracle) Run() {
 
 		switch ctrlMsg.Type {
 		case common.ControlMsgError:
-			e.onError(common.TaskStateDead, fmt.Errorf("applier error/restart: %v", ctrlMsg.Msg))
+			e.onError(common.TaskStateDead, fmt.Errorf("applier error: %v", ctrlMsg.Msg))
 			return
 		}
 	})
@@ -823,12 +823,12 @@ func (e *ExtractorOracle) onError(state int, err error) {
 	if e.shutdown {
 		return
 	}
-	e.waitCh <- &drivers.ExitResult{
+	common.WriteWaitCh(e.waitCh, &drivers.ExitResult{
 		ExitCode:  state,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
-	}
+	})
 	_ = e.Shutdown()
 }
 

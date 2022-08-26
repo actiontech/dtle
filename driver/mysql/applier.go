@@ -1044,22 +1044,20 @@ func (a *Applier) onError(state int, err error) {
 	}
 
 	a.logger.Debug("onError. nats published")
-	// Do not send ExitResult in Shutdown().
-	// pause API will call Shutdown and the task should not exit.
-	a.waitCh <- &drivers.ExitResult{
+	common.WriteWaitCh(a.waitCh, &drivers.ExitResult{
 		ExitCode:  state,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
-	}
+	})
 	_ = a.Shutdown()
 }
 
 func (a *Applier) Shutdown() error {
-	a.logger.Info("Shutting down")
-
+	a.logger.Debug("Shutting down")
 	a.shutdownLock.Lock()
 	defer a.shutdownLock.Unlock()
+
 	if a.shutdown {
 		return nil
 	}
@@ -1083,7 +1081,7 @@ func (a *Applier) Shutdown() error {
 	_ = sql.CloseConns(a.dbs...)
 	a.logger.Debug("Shutdown. CloseConns. after")
 
-	a.logger.Info("Shutdown")
+	a.logger.Info("Shutting down")
 	return nil
 }
 

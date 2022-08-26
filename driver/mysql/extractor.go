@@ -641,7 +641,7 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 
 		switch ctrlMsg.Type {
 		case common.ControlMsgError:
-			e.onError(common.TaskStateDead, fmt.Errorf("applier error/restart: %v", ctrlMsg.Msg))
+			e.onError(common.TaskStateDead, fmt.Errorf("applier error: %v", ctrlMsg.Msg))
 			return
 		}
 	})
@@ -1564,12 +1564,12 @@ func (e *Extractor) onError(state int, err error) {
 	if e.shutdown {
 		return
 	}
-	e.waitCh <- &drivers.ExitResult{
+	common.WriteWaitCh(e.waitCh, &drivers.ExitResult{
 		ExitCode:  state,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
-	}
+	})
 	_ = e.Shutdown()
 }
 // Shutdown is used to tear down the extractor
@@ -1618,7 +1618,6 @@ func (e *Extractor) Shutdown() error {
 		e.logger.Error("Shutdown error close e.db.", "err", err)
 	}
 
-	//close(e.binlogChannel)
 	e.logger.Info("Shutting down")
 	return nil
 }

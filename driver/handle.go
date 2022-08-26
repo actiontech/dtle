@@ -37,6 +37,7 @@ type taskHandle struct {
 	stats  *common.TaskStatistics
 
 	driverConfig *common.MySQLDriverConfig
+	shutdown     bool
 }
 
 func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
@@ -51,7 +52,19 @@ func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drive
 		waitCh:      make(chan *drivers.ExitResult),
 		doneCh:      make(chan struct{}),
 	}
+	go h.watchWaitCh()
 	return h
+}
+
+func (h *taskHandle) watchWaitCh() {
+	select {
+	case r := <-h.waitCh:
+		h.stateLock.Lock()
+		h.exitResult = r
+		h.stateLock.Unlock()
+		close(h.doneCh)
+	case <-h.doneCh:
+	}
 }
 
 func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
@@ -81,13 +94,14 @@ func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
 	}, nil
 }
 
+// used when h.runner has not been setup
 func (h *taskHandle) onError(err error) {
-	h.waitCh <- &drivers.ExitResult{
+	common.WriteWaitCh(h.waitCh, &drivers.ExitResult{
 		ExitCode:  common.TaskStateDead,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
-	}
+	})
 }
 
 func (h *taskHandle) IsRunning() bool {
@@ -136,7 +150,7 @@ func (h *taskHandle) run(d *Driver) {
 		for {
 			select {
 			case <-h.doneCh:
-				t.Stop()
+				if !t.Stop() { <-t.C }
 				return
 			case <-t.C:
 				if h.runner != nil {
@@ -264,11 +278,20 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	}
 }
 
-func (h *taskHandle) Destroy() bool {
-	h.stateLock.RLock()
-	defer h.stateLock.RUnlock()
+func (h *taskHandle) Destroy() {
+	if h.shutdown {
+		return
+	}
+	h.stateLock.Lock()
+	h.shutdown = true
+	h.stateLock.Unlock()
 
-	close(h.doneCh)
+	common.WriteWaitCh(h.waitCh, &drivers.ExitResult{
+		ExitCode:  0,
+		Signal:    0,
+		OOMKilled: false,
+		Err:       nil,
+	})
 
 	if h.runner != nil {
 		err := h.runner.Shutdown()
@@ -276,14 +299,14 @@ func (h *taskHandle) Destroy() bool {
 			h.logger.Error("error in h.runner.Shutdown", "err", err)
 		}
 	}
-
-	return h.procState == drivers.TaskStateExited
 }
 
 type DriverHandle interface {
 	Run()
 
-	// Shutdown is used to stop the task
+	// Shutdown is used to stop the task.
+	// Do not send ExitResult in Shutdown().
+	// pause API will call Shutdown and the task should not exit.
 	Shutdown() error
 
 	// Stats returns aggregated stats of the driver
