@@ -46,9 +46,10 @@ type KafkaRunner struct {
 	natsConn    *gonats.Conn
 	waitCh      chan *drivers.ExitResult
 
-	ctx        context.Context
-	shutdown   bool
-	shutdownCh chan struct{}
+	ctx          context.Context
+	shutdown     bool
+	shutdownCh   chan struct{}
+	shutdownLock sync.Mutex
 
 	kafkaConfig *common.KafkaConfig
 	kafkaMgr    *KafkaManager
@@ -157,9 +158,14 @@ func (kr *KafkaRunner) updateGtidLoop() {
 }
 
 func (kr *KafkaRunner) Shutdown() error {
+	kr.logger.Debug("Shutting down")
+	kr.shutdownLock.Lock()
+	defer kr.shutdownLock.Unlock()
+
 	if kr.shutdown {
 		return nil
 	}
+
 	if kr.natsConn != nil {
 		kr.natsConn.Close()
 	}
@@ -634,14 +640,14 @@ func (kr *KafkaRunner) initiateStreaming() error {
 }
 
 func (kr *KafkaRunner) onError(state int, err error) {
+	kr.logger.Info("onError", "err", err, "hasShutdown", kr.shutdown)
+
 	if kr.shutdown {
 		return
 	}
 
 	switch state {
-	case common.TaskStateComplete:
-		kr.logger.Info("Done migrating")
-	case common.TaskStateRestart, common.TaskStateDead:
+	case common.TaskStateDead:
 		msg := &common.ControlMsg{
 			Msg:  err.Error(),
 			Type: common.ControlMsgError,
@@ -660,13 +666,13 @@ func (kr *KafkaRunner) onError(state int, err error) {
 		}
 	}
 
-	kr.waitCh <- &drivers.ExitResult{
+	common.WriteWaitCh(kr.waitCh, &drivers.ExitResult{
 		ExitCode:  state,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
-	}
-	kr.Shutdown()
+	})
+	_ = kr.Shutdown()
 }
 
 func (kr *KafkaRunner) kafkaTransformSnapshotData(

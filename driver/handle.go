@@ -1,7 +1,6 @@
 package mysql
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -33,12 +32,12 @@ type taskHandle struct {
 
 	runner DriverHandle
 
-	ctx        context.Context
-	cancelFunc context.CancelFunc
-	waitCh     chan *drivers.ExitResult
-	stats      *common.TaskStatistics
+	waitCh chan *drivers.ExitResult
+	doneCh chan struct{}
+	stats  *common.TaskStatistics
 
 	driverConfig *common.MySQLDriverConfig
+	shutdown     bool
 }
 
 func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
@@ -50,10 +49,22 @@ func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drive
 		startedAt:   started,
 		completedAt: time.Time{},
 		exitResult:  nil,
-		waitCh:      make(chan *drivers.ExitResult, 1),
+		waitCh:      make(chan *drivers.ExitResult),
+		doneCh:      make(chan struct{}),
 	}
-	h.ctx, h.cancelFunc = context.WithCancel(context.TODO())
+	go h.watchWaitCh()
 	return h
+}
+
+func (h *taskHandle) watchWaitCh() {
+	select {
+	case r := <-h.waitCh:
+		h.stateLock.Lock()
+		h.exitResult = r
+		h.stateLock.Unlock()
+		close(h.doneCh)
+	case <-h.doneCh:
+	}
 }
 
 func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
@@ -83,13 +94,14 @@ func (h *taskHandle) TaskStatus() (*drivers.TaskStatus, error) {
 	}, nil
 }
 
+// used when h.runner has not been setup
 func (h *taskHandle) onError(err error) {
-	h.waitCh <- &drivers.ExitResult{
+	common.WriteWaitCh(h.waitCh, &drivers.ExitResult{
 		ExitCode:  common.TaskStateDead,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
-	}
+	})
 }
 
 func (h *taskHandle) IsRunning() bool {
@@ -137,7 +149,8 @@ func (h *taskHandle) run(d *Driver) {
 		t := time.NewTimer(0)
 		for {
 			select {
-			case <-h.ctx.Done():
+			case <-h.doneCh:
+				if !t.Stop() { <-t.C }
 				return
 			case <-t.C:
 				if h.runner != nil {
@@ -168,12 +181,12 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 	case common.TaskTypeSrc:
 		if h.driverConfig.OracleConfig != nil {
 			h.logger.Debug("found oracle src", "OracleConfig", h.driverConfig.OracleConfig)
-			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh)
+			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, d.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewExtractor")
 			}
 		} else {
-			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
+			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, d.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewOracleExtractor")
 			}
@@ -183,13 +196,13 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 		if h.driverConfig.KafkaConfig != nil {
 			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
 			runner, err = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
-				d.storeManager, d.config.NatsAdvertise, h.waitCh, h.ctx)
+				d.storeManager, d.config.NatsAdvertise, h.waitCh, d.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
 			}
 		} else {
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
-				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig, h.ctx)
+				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig, d.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewApplier")
 			}
@@ -265,23 +278,35 @@ func (h *taskHandle) emitStats(ru *common.TaskStatistics) {
 	}
 }
 
-func (h *taskHandle) Destroy() bool {
-	h.stateLock.RLock()
-	//driver.des
-	h.cancelFunc()
+func (h *taskHandle) Destroy() {
+	if h.shutdown {
+		return
+	}
+	h.stateLock.Lock()
+	h.shutdown = true
+	h.stateLock.Unlock()
+
+	common.WriteWaitCh(h.waitCh, &drivers.ExitResult{
+		ExitCode:  0,
+		Signal:    0,
+		OOMKilled: false,
+		Err:       nil,
+	})
+
 	if h.runner != nil {
 		err := h.runner.Shutdown()
 		if err != nil {
 			h.logger.Error("error in h.runner.Shutdown", "err", err)
 		}
 	}
-	return h.procState == drivers.TaskStateExited
 }
 
 type DriverHandle interface {
 	Run()
 
-	// Shutdown is used to stop the task
+	// Shutdown is used to stop the task.
+	// Do not send ExitResult in Shutdown().
+	// pause API will call Shutdown and the task should not exit.
 	Shutdown() error
 
 	// Stats returns aggregated stats of the driver

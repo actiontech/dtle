@@ -148,15 +148,15 @@ func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	return db, nil
 }
 
-func CreateConns(db *gosql.DB, count int) ([]*Conn, error) {
+func CreateConns(ctx context.Context, db *gosql.DB, count int) ([]*Conn, error) {
 	conns := make([]*Conn, count)
 	for i := 0; i < count; i++ {
-		conn, err := db.Conn(context.Background())
+		conn, err := db.Conn(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = conn.ExecContext(context.Background(), "SET @@session.foreign_key_checks = 0")
+		_, err = conn.ExecContext(ctx, "SET @@session.foreign_key_checks = 0")
 		if err != nil {
 			return nil, err
 		}

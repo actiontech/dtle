@@ -641,7 +641,7 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 
 		switch ctrlMsg.Type {
 		case common.ControlMsgError:
-			e.onError(common.TaskStateDead, fmt.Errorf("applier error/restart: %v", ctrlMsg.Msg))
+			e.onError(common.TaskStateDead, fmt.Errorf("applier error: %v", ctrlMsg.Msg))
 			return
 		}
 	})
@@ -1140,7 +1140,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 		SqlMode:         setSqlMode,
 	}
 	if err := e.encodeAndSendDumpEntry(entry); err != nil {
-		e.onError(common.TaskStateRestart, err)
+		e.onError(common.TaskStateDead, err)
 	}
 
 	return nil
@@ -1318,7 +1318,7 @@ func (e *Extractor) mysqlDump() error {
 				if db.TableSchemaRename != "" {
 					dbSQL, err = base.RenameCreateSchemaAddINE(db.CreateSchemaString, db.TableSchemaRename)
 					if err != nil {
-						e.onError(common.TaskStateRestart, err)
+						e.onError(common.TaskStateDead, err)
 					}
 				} else {
 					dbSQL = db.CreateSchemaString
@@ -1331,7 +1331,7 @@ func (e *Extractor) mysqlDump() error {
 			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 			atomic.AddInt64(&e.TotalRowsCopied, 1)
 			if err := e.encodeAndSendDumpEntry(entry); err != nil {
-				e.onError(common.TaskStateRestart, err)
+				e.onError(common.TaskStateDead, err)
 			}
 
 			for _, tbCtx := range db.TableMap {
@@ -1377,7 +1377,7 @@ func (e *Extractor) mysqlDump() error {
 				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
 				atomic.AddInt64(&e.TotalRowsCopied, 1)
 				if err := e.encodeAndSendDumpEntry(entry); err != nil {
-					e.onError(common.TaskStateRestart, err)
+					e.onError(common.TaskStateDead, err)
 				}
 			}
 			e.tableCount += len(db.TableMap)
@@ -1404,7 +1404,7 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Info("Step n: - scanning table (i of N tables)",
 				"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 
-			d := NewDumper(tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
+			d := NewDumper(e.ctx, tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
 			if err := d.Dump(); err != nil {
 				e.onError(common.TaskStateDead, err)
 			}
@@ -1427,7 +1427,7 @@ func (e *Extractor) mysqlDump() error {
 						}
 					}
 					if err = e.encodeAndSendDumpEntry(entry); err != nil {
-						e.onError(common.TaskStateRestart, err)
+						e.onError(common.TaskStateDead, err)
 					}
 					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
 					atomic.AddInt64(d.Memory, -memSize)
@@ -1560,16 +1560,16 @@ func (e *Extractor) Stats() (*common.TaskStatistics, error) {
 }
 
 func (e *Extractor) onError(state int, err error) {
-	e.logger.Error("onError", "err", err)
+	e.logger.Error("onError", "err", err, "hasShutdown", e.shutdown)
 	if e.shutdown {
 		return
 	}
-	e.waitCh <- &drivers.ExitResult{
+	common.WriteWaitCh(e.waitCh, &drivers.ExitResult{
 		ExitCode:  state,
 		Signal:    0,
 		OOMKilled: false,
 		Err:       err,
-	}
+	})
 	_ = e.Shutdown()
 }
 // Shutdown is used to tear down the extractor
@@ -1618,7 +1618,6 @@ func (e *Extractor) Shutdown() error {
 		e.logger.Error("Shutdown error close e.db.", "err", err)
 	}
 
-	//close(e.binlogChannel)
 	e.logger.Info("Shutting down")
 	return nil
 }

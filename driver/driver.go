@@ -655,22 +655,12 @@ func (d *Driver) handleWait(ctx context.Context, handle *taskHandle, ch chan *dr
 		return
 	case <-d.ctx.Done():
 		return
-	case <-handle.ctx.Done():
-		result := &drivers.ExitResult{
-			ExitCode:  0,
-			Signal:    0,
-			OOMKilled: false,
-			Err:       nil,
-		}
-		ch <- result
-	case result := <-handle.waitCh: // Do not refer to handle.runner.waitCh. It might be nil.
-		handle.stateLock.Lock()
-		handle.procState = drivers.TaskStateExited
-		handle.stateLock.Unlock()
-		ch <- result
+	case <-handle.doneCh:
+		ch <- handle.exitResult.Copy()
 	}
 }
 
+// StopTask will not be called if the task has already exited (e.g. onError).
 func (d *Driver) StopTask(taskID string, timeout time.Duration, signal string) error {
 	d.logger.Info("StopTask", "id", taskID, "signal", signal)
 	handle, ok := d.tasks.Get(taskID)
@@ -793,10 +783,15 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 			return errors.New(string(bs))
 		}
 	case "finish":
+		if h.runner == nil {
+			return fmt.Errorf("h.runner is nil")
+		}
 		return h.runner.Finish1()
 	case "pause":
 		d.logger.Info("pause a task", "taskID", taskID)
-		h := d.tasks.store[taskID]
+		if h.runner == nil {
+			return fmt.Errorf("h.runner is nil")
+		}
 		err := h.runner.Shutdown()
 		if err != nil {
 			d.logger.Error("error when pausing a task", "taskID", taskID, "err", err)
@@ -806,7 +801,6 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 		return nil
 	case "resume":
 		d.logger.Info("resume a task", "taskID", taskID)
-		h := d.tasks.store[taskID]
 		err := h.resumeTask(d)
 		if err != nil {
 			d.logger.Error("error when resuming a task", "taskID", taskID, "err", err)
@@ -817,7 +811,7 @@ func (d *Driver) SignalTask(taskID string, signal string) error {
 		return nil
 	}
 
-	return nil
+	return fmt.Errorf("DTLE_BUG SignalTask. should not reach here")
 }
 
 func (d *Driver) ExecTask(taskID string, cmd []string, timeout time.Duration) (*drivers.ExecTaskResult, error) {

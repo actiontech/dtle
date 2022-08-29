@@ -16,7 +16,6 @@ import (
 	sql "github.com/actiontech/dtle/driver/mysql/sql"
 	"github.com/actiontech/dtle/g"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
-	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
 )
@@ -62,6 +61,8 @@ type ApplierIncr struct {
 
 	wg                    sync.WaitGroup
 	SkipGtidExecutedTable bool
+	logTxCommit           bool
+	noBigTxDMLPipe        bool
 
 	mtsManager  *MtsManager
 	wsManager   *WritesetManager
@@ -71,8 +72,9 @@ type ApplierIncr struct {
 	sourceType  string
 	tableSpecs  []*common.TableSpec
 
-	inBigTx     bool
-	logTxCommit bool
+	inBigTx         bool
+	bigTxEventQueue chan *dmlExecItem
+	bigTxEventWg    sync.WaitGroup
 }
 
 func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
@@ -94,6 +96,7 @@ func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
 		gtidSetLock:           applier.gtidSetLock,
 		tableItems:            make(mapSchemaTableItems),
 		sourceType:            sourcetype,
+		bigTxEventQueue:       make(chan *dmlExecItem, 16),
 	}
 
 	if g.EnvIsTrue(g.ENV_SKIP_GTID_EXECUTED_TABLE) {
@@ -102,6 +105,10 @@ func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
 
 	if g.EnvIsTrue(g.ENV_DTLE_LOG_TX_COMMIT) {
 		a.logTxCommit = true
+	}
+	if g.EnvIsTrue(g.ENV_DTLE_NO_BIG_TX_DML_PIPE) {
+		a.logger.Info("found DTLE_NO_BIG_TX_DML_PIPE")
+		a.noBigTxDMLPipe = true
 	}
 
 	a.timestampCtx = NewTimestampContext(a.shutdownCh, a.logger, func() bool {
@@ -186,10 +193,31 @@ func (a *ApplierIncr) Run() (err error) {
 	return nil
 }
 
+func (a *ApplierIncr) bigTxQueueExecutor() {
+	for {
+		item := <-a.bigTxEventQueue
+		if item == nil {
+			break
+		}
+
+		if !a.HasShutdown() {
+			err := a.prepareIfNilAndExecute(item, 0)
+			if err != nil {
+				a.OnError(common.TaskStateDead, err)
+			}
+		}
+		a.bigTxEventWg.Done()
+	}
+}
+
 func (a *ApplierIncr) MtsWorker(workerIndex int) {
 	keepLoop := true
 
 	logger := a.logger.With("worker", workerIndex)
+
+	if workerIndex == 0 {
+		go a.bigTxQueueExecutor()
+	}
 
 	t := time.NewTicker(pingInterval)
 	defer t.Stop()
@@ -437,6 +465,47 @@ func (a *ApplierIncr) heterogeneousReplay() {
 	}
 }
 
+func (a *ApplierIncr) HasShutdown() bool {
+	select {
+	case <-a.shutdownCh:
+		return true
+	default:
+		return false
+	}
+}
+func (a *ApplierIncr) prepareIfNilAndExecute(item *dmlExecItem, workerIdx int) (err error) {
+	// hasUK bool, pstmt **gosql.Stmt, query string, args []interface{}
+	var r gosql.Result
+
+	if item.hasUK {
+		if *item.pstmt == nil {
+			a.logger.Debug("buildDMLEventQuery prepare query", "query", item.query)
+			*item.pstmt, err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, item.query)
+			if err != nil {
+				a.logger.Error("buildDMLEventQuery prepare query", "query", item.query, "err", err)
+				return err
+			}
+		}
+
+		r, err = (*item.pstmt).ExecContext(a.ctx, item.args...)
+	} else {
+		r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, item.query, item.args...)
+	}
+
+	if err != nil {
+		a.logger.Error("error at exec", "gno", item.gno, "err", err)
+		return err
+	}
+
+	nr, err := r.RowsAffected()
+	if err != nil {
+		a.logger.Error("RowsAffected error", "gno", item.gno, "event", 0, "err", err)
+	} else {
+		a.logger.Debug("RowsAffected.after", "gno", item.gno, "event", 0, "nr", nr)
+	}
+	return nil
+}
+
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.EntryContext) error {
 	logger := a.logger.Named("ApplyBinlogEvent")
@@ -446,7 +515,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 	var err error
 	var timestamp uint32
-	txSid := binlogEntry.Coordinates.GetSid()
+	gno := binlogEntry.Coordinates.GetGNO()
 
 	dbApplier.DbMutex.Lock()
 	if dbApplier.Tx == nil {
@@ -459,7 +528,26 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		dbApplier.DbMutex.Unlock()
 		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 	}()
+
+	queueOrExec := func(item *dmlExecItem) error {
+		// TODO check if shutdown?
+		if !a.noBigTxDMLPipe && a.inBigTx {
+			a.bigTxEventWg.Add(1)
+			select {
+			case <-a.shutdownCh:
+				return fmt.Errorf("queueOrExec: ApplierIncr shutdown")
+			case a.bigTxEventQueue <- item:
+			}
+			return nil
+		} else {
+			return a.prepareIfNilAndExecute(item, workerIdx)
+		}
+	}
+
 	for i, event := range binlogEntry.Events {
+		if a.HasShutdown() {
+			break
+		}
 		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GetGNO(), "event", i)
 
 		if event.DML == common.NotDML {
@@ -563,39 +651,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 			tableItem := binlogEntryCtx.TableItems[i]
 
-			prepareIfNilAndExecute := func(hasUK bool, pstmt **gosql.Stmt, query string, args []interface{}) (err error) {
-				var r gosql.Result
-
-				if hasUK {
-					if *pstmt == nil {
-						a.logger.Debug("buildDMLEventQuery prepare query", "query", query)
-						*pstmt, err = a.dbs[workerIdx].Db.PrepareContext(a.ctx, query)
-						if err != nil {
-							a.logger.Error("buildDMLEventQuery prepare query", "query", query, "err", err)
-							return err
-						}
-					}
-
-					r, err = (*pstmt).ExecContext(a.ctx, args...)
-				} else {
-					r, err = a.dbs[workerIdx].Db.ExecContext(a.ctx, query, args...)
-				}
-
-				if err != nil {
-					logger.Error("error at exec", "gtid", hclog.Fmt("%s:%d", txSid, binlogEntry.Coordinates.GetGNO()),
-						"err", err)
-					return err
-				}
-
-				nr, err := r.RowsAffected()
-				if err != nil {
-					logger.Error("RowsAffected error", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "err", err)
-				} else {
-					logger.Debug("RowsAffected.after", "gno", binlogEntry.Coordinates.GetGNO(), "event", i, "nr", nr)
-				}
-				return nil
-			}
-
 			switch event.DML {
 			case common.InsertDML:
 				nRows := len(event.Rows)
@@ -627,7 +682,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					}
 					a.logger.Debug("BuildDMLInsertQuery", "query", query)
 
-					err = prepareIfNilAndExecute(true, pstmt, query, sharedArgs)
+					err = queueOrExec(&dmlExecItem{true, pstmt, query, sharedArgs, gno})
 					if err != nil {
 						return err
 					}
@@ -642,7 +697,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					}
 					a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 
-					err = prepareIfNilAndExecute(hasUK, pstmt, query, uniqueKeyArgs)
+					err = queueOrExec(&dmlExecItem{hasUK, pstmt, query, uniqueKeyArgs, gno})
 					if err != nil {
 						return err
 					}
@@ -669,7 +724,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 							return err
 						}
 
-						err = prepareIfNilAndExecute(true, pstmt, query, sharedArgs)
+						err = queueOrExec(&dmlExecItem{true, pstmt, query, sharedArgs, gno})
 						if err != nil {
 							return err
 						}
@@ -682,7 +737,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 						}
 						a.logger.Debug("BuildDMLDeleteQuery", "query", query)
 
-						err = prepareIfNilAndExecute(hasUK, pstmt, query, uniqueKeyArgs)
+						err = queueOrExec(&dmlExecItem{hasUK, pstmt, query, uniqueKeyArgs, gno})
 						if err != nil {
 							return err
 						}
@@ -697,7 +752,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 						args = append(args, sharedArgs...)
 						args = append(args, uniqueKeyArgs...)
 
-						err = prepareIfNilAndExecute(hasUK, pstmt, query, args)
+						err = queueOrExec(&dmlExecItem{hasUK, pstmt, query, args, gno})
 						if err != nil {
 							return err
 						}
@@ -715,6 +770,10 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 		timestamp = event.Timestamp
 		atomic.AddUint64(&a.appliedQueryCount, uint64(1))
+	}
+	a.bigTxEventWg.Wait()
+	if a.HasShutdown() {
+		return fmt.Errorf("ApplyBinlogEvent: applier has been shutdown. gno %v", gno)
 	}
 
 	if binlogEntry.Final {
@@ -831,4 +890,18 @@ func (a *ApplierIncr) handleEntryOracle(entryCtx *common.EntryContext) (err erro
 		return err
 	}
 	return nil
+}
+
+func (a *ApplierIncr) Shutdown() {
+	close(a.bigTxEventQueue)
+	a.wg.Wait()
+	a.logger.Debug("Shutdown. ApplierIncr.wg.Wait. after")
+}
+
+type dmlExecItem struct {
+	hasUK bool
+	pstmt **gosql.Stmt
+	query string
+	args []interface{}
+	gno  int64 // for log only
 }

@@ -7,6 +7,7 @@
 package common
 
 import (
+	"context"
 	"sync"
 
 	"github.com/actiontech/dtle/g"
@@ -16,6 +17,7 @@ type GetChunkDataFn func() (nRows int64, err error)
 type PrepareFn func() (err error)
 
 type Dumper struct {
+	Ctx                context.Context
 	Logger             g.LoggerType
 	ChunkSize          int64
 	TableSchema        string
@@ -36,9 +38,10 @@ type Dumper struct {
 	PrepareForDumping PrepareFn
 }
 
-func NewDumper(table *Table, chunkSize int64, logger g.LoggerType, memory *int64) *Dumper {
+func NewDumper(ctx context.Context, table *Table, chunkSize int64, logger g.LoggerType, memory *int64) *Dumper {
 
 	dumper := &Dumper{
+		Ctx:            ctx,
 		Logger:         logger,
 		TableSchema:    table.TableSchema,
 		TableName:      table.TableName,

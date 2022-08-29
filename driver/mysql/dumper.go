@@ -7,6 +7,7 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -36,10 +37,10 @@ type dumper struct {
 	sentTableDef bool
 }
 
-func NewDumper(db usql.QueryAble, table *common.Table, chunkSize int64,
+func NewDumper(ctx context.Context, db usql.QueryAble, table *common.Table, chunkSize int64,
 	logger g.LoggerType, memory *int64) *dumper {
 	dumper := &dumper{
-		common.NewDumper(table, chunkSize, logger, memory),
+		common.NewDumper(ctx, table, chunkSize, logger, memory),
 		umconf.EscapeName(table.TableSchema),
 		umconf.EscapeName(table.TableName),
 		db,

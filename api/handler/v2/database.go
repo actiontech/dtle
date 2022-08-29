@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -123,7 +124,7 @@ func listOracleSchema(logger hclog.Logger, reqParam *models.ListDatabaseSchemasR
 		}
 		reqParam.Password = realPwd
 	}
-	oracleDb, err := config.NewDB(&config.OracleConfig{
+	oracleDb, err := config.NewDB(context.TODO(), &config.OracleConfig{
 		User:        reqParam.User,
 		Password:    reqParam.Password,
 		Host:        reqParam.Host,
@@ -206,7 +207,7 @@ func ListDatabaseColumnsV2(c echo.Context) error {
 			}
 			reqParam.Password = realPwd
 		}
-		oracleDb, err := config.NewDB(&config.OracleConfig{
+		oracleDb, err := config.NewDB(context.TODO(), &config.OracleConfig{
 			User:        reqParam.User,
 			Password:    reqParam.Password,
 			Host:        reqParam.Host,

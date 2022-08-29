@@ -8,6 +8,7 @@ package common
 
 import (
 	"fmt"
+	"github.com/hashicorp/nomad/plugins/drivers"
 	"github.com/pingcap/tidb/parser/format"
 	"regexp"
 	"strconv"
@@ -36,4 +37,11 @@ func MysqlVersionInDigit(v string) (int, error) {
 	}
 
 	return m0*10000 + m1*100 + m2, nil
+}
+
+func WriteWaitCh(ch chan<- *drivers.ExitResult, r *drivers.ExitResult) {
+	select {
+	case ch<-r:
+	default:
+	}
 }

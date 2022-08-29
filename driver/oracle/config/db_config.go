@@ -20,6 +20,7 @@ type OracleConfig struct {
 }
 
 type OracleDB struct {
+	ctx          context.Context
 	_db          *sql.DB
 	LogMinerConn *sql.Conn
 	MetaDataConn *sql.Conn
@@ -42,7 +43,7 @@ func OpenDb(meta *OracleConfig) (*sql.DB, error) {
 	return sqlDb, nil
 }
 
-func NewDB(meta *OracleConfig) (*OracleDB, error) {
+func NewDB(ctx context.Context, meta *OracleConfig) (*OracleDB, error) {
 	sqlDB, err := OpenDb(meta)
 	if err != nil {
 		return nil, err
@@ -51,13 +52,16 @@ func NewDB(meta *OracleConfig) (*OracleDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	oracleDB := &OracleDB{_db: sqlDB}
+	oracleDB := &OracleDB{
+		ctx: ctx,
+		_db: sqlDB,
+	}
 
-	oracleDB.LogMinerConn, err = sqlDB.Conn(context.TODO())
+	oracleDB.LogMinerConn, err = sqlDB.Conn(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error on get connection:%v", err)
 	}
-	oracleDB.MetaDataConn, err = sqlDB.Conn(context.TODO())
+	oracleDB.MetaDataConn, err = sqlDB.Conn(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error on get connection:%v", err)
 	}
@@ -76,7 +80,7 @@ func (o *OracleDB) Close() error {
 
 func (o *OracleDB) CurrentRedoLogSequenceFp() (string, error) {
 	query := `SELECT GROUP#, THREAD#, SEQUENCE# FROM V$LOG WHERE STATUS = 'CURRENT'`
-	rows, err := o.LogMinerConn.QueryContext(context.TODO(), query)
+	rows, err := o.LogMinerConn.QueryContext(o.ctx, query)
 	if err != nil {
 		return "", err
 	}
@@ -101,12 +105,12 @@ func (o *OracleDB) CurrentRedoLogSequenceFp() (string, error) {
 // reset date/timestamp format
 func (o *OracleDB) NLS_DATE_FORMAT() error {
 	SQL_ALTER_DATE_FORMAT := `ALTER SESSION SET NLS_DATE_FORMAT = 'SYYYY-MM-DD HH24:MI:SS'`
-	_, err := o.LogMinerConn.ExecContext(context.TODO(), SQL_ALTER_DATE_FORMAT)
+	_, err := o.LogMinerConn.ExecContext(o.ctx, SQL_ALTER_DATE_FORMAT)
 	if err != nil {
 		return err
 	}
 	NLS_TIMESTAMP_FORMAT := "ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'SYYYY-MM-DD HH24:MI:SS.FF6'"
-	_, err = o.LogMinerConn.ExecContext(context.TODO(), NLS_TIMESTAMP_FORMAT)
+	_, err = o.LogMinerConn.ExecContext(o.ctx, NLS_TIMESTAMP_FORMAT)
 	if err != nil {
 		return err
 	}
@@ -126,7 +130,7 @@ FROM
 WHERE 
 	owner = '%s'`, asOfSCN, schema)
 
-	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
+	rows, err := o.MetaDataConn.QueryContext(o.ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +161,7 @@ func (o *OracleDB) GetSchemas() ([]string, error) {
 	WHERE
 	USERNAME NOT IN ( 'SYS', 'SYSTEM', 'ANONYMOUS', 'APEX_PUBLIC_USER', 'APEX_040000', 'OUTLN', 'XS$NULL', 'FLOWS_FILES', 'MDSYS', 'CTXSYS', 'XDB', 'HR' )`, asOfSCN)
 
-	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
+	rows, err := o.MetaDataConn.QueryContext(o.ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +191,7 @@ func (o *OracleDB) GetColumns(schema, table string) ([]string, error) {
 	AND owner = '%s'
 	ORDER BY COLUMN_ID`, asOfSCN, table, schema)
 
-	rows, err := o.MetaDataConn.QueryContext(context.TODO(), query)
+	rows, err := o.MetaDataConn.QueryContext(o.ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -206,11 +210,10 @@ func (o *OracleDB) GetColumns(schema, table string) ([]string, error) {
 }
 
 func (o *OracleDB) GetTableDDL(schema, table string) (string, error) {
-	ctx := context.TODO()
-	o.MetaDataConn.ExecContext(ctx, `begin dbms_metadata.set_transform_param(DBMS_METADATA.SESSION_TRANSFORM, 'STORAGE', false); end;`)
-	o.MetaDataConn.ExecContext(ctx, `begin dbms_metadata.set_transform_param(DBMS_METADATA.SESSION_TRANSFORM, 'SEGMENT_ATTRIBUTES', false); end;`)
-	o.MetaDataConn.ExecContext(ctx, `begin dbms_metadata.set_transform_param(DBMS_METADATA.SESSION_TRANSFORM, 'SQLTERMINATOR', true); end;`)
-	row := o.MetaDataConn.QueryRowContext(ctx, fmt.Sprintf(`
+	o.MetaDataConn.ExecContext(o.ctx, `begin dbms_metadata.set_transform_param(DBMS_METADATA.SESSION_TRANSFORM, 'STORAGE', false); end;`)
+	o.MetaDataConn.ExecContext(o.ctx, `begin dbms_metadata.set_transform_param(DBMS_METADATA.SESSION_TRANSFORM, 'SEGMENT_ATTRIBUTES', false); end;`)
+	o.MetaDataConn.ExecContext(o.ctx, `begin dbms_metadata.set_transform_param(DBMS_METADATA.SESSION_TRANSFORM, 'SQLTERMINATOR', true); end;`)
+	row := o.MetaDataConn.QueryRowContext(o.ctx, fmt.Sprintf(`
 SELECT dbms_metadata.get_ddl('TABLE','%s','%s') FROM dual`, table, schema))
 	var query string
 	err := row.Scan(&query)
@@ -231,7 +234,7 @@ func (o *OracleDB) NewTx(ctx context.Context) (*sql.Tx, error) {
 func (o *OracleDB) GetCurrentSnapshotSCN() (int64, error) {
 	var globalSCN int64
 	// 获取当前 SCN 号
-	err := o.MetaDataConn.QueryRowContext(context.TODO(), "SELECT CURRENT_SCN FROM V$DATABASE").Scan(&globalSCN)
+	err := o.MetaDataConn.QueryRowContext(o.ctx, "SELECT CURRENT_SCN FROM V$DATABASE").Scan(&globalSCN)
 	if err != nil {
 		return 0, err
 	}

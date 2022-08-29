@@ -1,7 +1,6 @@
 package mysql
 
 import (
-	"context"
 	gosql "database/sql"
 	"fmt"
 	"strconv"
@@ -263,7 +262,7 @@ func (a *ApplierIncr) cleanGtidExecuted(sid uuid.UUID, txSid string) error {
 	// However, consider `binlog_group_commit_sync_delay > 0`,
 	// `begin; delete; insert; commit;` (1 TX) is faster than `insert; delete;` (2 TX)
 	dbApplier := a.dbs[0]
-	tx, err := dbApplier.Db.BeginTx(context.Background(), &gosql.TxOptions{})
+	tx, err := dbApplier.Db.BeginTx(a.ctx, &gosql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -282,7 +281,7 @@ func (a *ApplierIncr) cleanGtidExecuted(sid uuid.UUID, txSid string) error {
 	}
 
 	a.logger.Debug("compactation gtid. new interval", "intervalStr", intervalStr)
-	_, err = dbApplier.Db.ExecContext(context.TODO(),
+	_, err = dbApplier.Db.ExecContext(a.ctx,
 		fmt.Sprintf("insert into %v.%v values (?,?,0,?)", g.DtleSchemaName, g.GtidExecutedTableV4),
 		a.subject, sid.Bytes(), intervalStr)
 	if err != nil {
