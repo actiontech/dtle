@@ -397,6 +397,7 @@ func (d *Driver) loopCleanRelayDir() {
 		files, err := ioutil.ReadDir(path.Join(d.config.DataDir, "binlog"))
 		if err != nil {
 			d.logger.Info("read dir failed", "dataDir", d.config.DataDir, "err", err)
+			time.Sleep(time.Second * 10)
 			return
 		}
 
