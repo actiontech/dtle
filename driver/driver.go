@@ -390,30 +390,16 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 }
 
 func (d *Driver) loopCleanRelayDir() {
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-
 	cleanDataDir := func() {
 		files, err := ioutil.ReadDir(path.Join(d.config.DataDir, "binlog"))
 		if err != nil {
-			d.logger.Info("read dir failed", "dataDir", d.config.DataDir, "err", err)
-			return
-		}
-
-		jobs, err := d.storeManager.FindJobList()
-		if err != nil {
-			d.logger.Error("list jobs failed", "err", err)
+			d.logger.Error("read dir failed", "dataDir", d.config.DataDir, "err", err)
 			return
 		}
 
 		for _, file := range files {
-			existUnuseDir := true
-			for i := range jobs {
-				if jobs[i].JobId == file.Name() {
-					existUnuseDir = false
-				}
-			}
-			if !existUnuseDir {
+			_, exist, err := d.storeManager.GetNatsIfExist(file.Name())
+			if exist || err != nil {
 				continue
 			}
 			if err := os.RemoveAll(path.Join(d.config.DataDir, "binlog", file.Name())); err != nil {
@@ -422,21 +408,13 @@ func (d *Driver) loopCleanRelayDir() {
 		}
 	}
 
-	jobKeysCh, err := d.storeManager.WatchTree("/dtleJobList/", stopCh)
-	if err != nil {
-		d.logger.Error("watch job tree error", "err", err)
-	}
 	cleanDuration := 12 * time.Hour
 	cleanDelay := time.NewTimer(cleanDuration)
 	defer cleanDelay.Stop()
 	for {
-		select {
-		case <-jobKeysCh:
-			cleanDataDir()
-		case <-cleanDelay.C:
-			cleanDataDir()
-		}
 		cleanDelay.Reset(cleanDuration)
+		<-cleanDelay.C
+		cleanDataDir()
 	}
 }
 
