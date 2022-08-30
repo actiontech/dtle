@@ -284,15 +284,6 @@ func (e *Extractor) Run() {
 		}
 	} else {
 		fullCopy = false
-		if e.mysqlContext.BinlogRelay {
-			if e.mysqlContext.BinlogFile == "" {
-				err := fmt.Errorf("the a job is incr-only (with GTID) and has BinlogRelay enabled," +
-					" but BinlogFile,Pos is not provided")
-				e.logger.Error("job config error")
-				e.onError(common.TaskStateDead, err)
-				return
-			}
-		}
 	}
 
 	if err := e.sendSysVarAndSqlMode(); err != nil {
