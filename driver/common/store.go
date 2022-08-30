@@ -142,6 +142,17 @@ func (sm *StoreManager) PutSourceType(jobName, sourceType string) error {
 	return nil
 }
 
+func (sm *StoreManager) GetNatsIfExist(jobName string) (string, bool, error) {
+	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
+	kv, err := sm.consulStore.Get(natsKey)
+	if err == store.ErrKeyNotFound {
+		return "", false, nil
+	} else if err != nil {
+		return "", false, err
+	}
+	return string(kv.Value), true, nil
+}
+
 func (sm *StoreManager) DstPutNats(jobName string, natsAddr string, stopCh chan struct{}, onWatchError func(error)) error {
 	sm.logger.Debug("DstPutNats")
 
