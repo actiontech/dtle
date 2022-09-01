@@ -9,6 +9,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -182,10 +183,8 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	d.Iteration += 1
 	rows, err := d.db.Query(query)
 	if err != nil {
-		d.Logger.Debug("error at select chunk. query: ", query)
-		newErr := fmt.Errorf("error at select chunk. err: %v", err)
-		d.Logger.Error(newErr.Error())
-		return 0, err
+		d.Logger.Error("error at select chunk", "query", query)
+		return 0, errors.Wrap(err, "select chunk")
 	}
 
 	columns, err := rows.Columns()
@@ -264,9 +263,9 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	entrySize := 0
 	var valuesX [][]*[]byte
 	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
+	splitPoints := []int{0}
 	hasRow := rows.Next()
 	for hasRow {
-		nRows += 1
 		rowValuesRaw := make([]*[]byte, len(columns))
 		for i := range rowValuesRaw {
 			scanArgs[i] = &rowValuesRaw[i]
@@ -283,14 +282,20 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		entrySize += getRowSize(rowValuesRaw)
 
 		if !hasRow || entrySize >= d.dumpEntryLimit {
-			d.Logger.Debug("reach DUMP_ENTRY_LIMIT.", "size", entrySize, "n_row", len(valuesX))
-
-			err = handleEntry(valuesX, !hasRow)
-			if err != nil {
-				return 0, err
-			}
+			d.Logger.Debug("reach dumpEntryLimit.", "size", entrySize, "point", len(valuesX))
+			splitPoints = append(splitPoints, len(valuesX))
 			entrySize = 0
-			valuesX = nil
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return 0, err
+	}
+	nRows = int64(len(valuesX))
+
+	for i := 1; i < len(splitPoints); i++ {
+		err = handleEntry(valuesX[splitPoints[i-1]:splitPoints[i]], i == len(splitPoints)-1)
+		if err != nil {
+			return 0, err
 		}
 	}
 

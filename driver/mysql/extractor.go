@@ -1060,17 +1060,14 @@ func (e *Extractor) StreamEvents() error {
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
 // gno: only for logging
-func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error) {
-	msgLen := len(txMsg)
-
-	data := txMsg
+func (e *Extractor) publish(subject string, data []byte, gno int64) (err error) {
 	lenData := len(data)
 
 	// lenData < NatsMaxMsg: 1 msg
 	// lenData = k * NatsMaxMsg + b, where k >= 1 && b >= 0: (k+1) msg
 	// b could be 0. we send a zero-len msg as a sign of termination.
 	nSeg := lenData/g.NatsMaxMsg + 1
-	e.logger.Debug("publish. msg", "subject", subject, "gno", gno, "nSeg", nSeg, "spanLen", lenData, "msgLen", msgLen)
+	e.logger.Debug("publish. msg", "subject", subject, "gno", gno, "nSeg", nSeg, "spanLen", lenData)
 	bak := make([]byte, 4)
 	if nSeg > 1 {
 		// ensure there are 4 bytes to save iSeg
@@ -1439,10 +1436,12 @@ func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
 	if err != nil {
 		return err
 	}
+	e.logger.Debug("encodeAndSendDumpEntry. after Marshal", "size", len(bs))
 	txMsg, err := common.Compress(bs)
 	if err != nil {
 		return errors.Wrap(err, "common.Compress")
 	}
+	e.logger.Debug("encodeAndSendDumpEntry. after Compress", "size", len(txMsg))
 	if err := e.publish(fmt.Sprintf("%s_full", e.subject), txMsg, 0); err != nil {
 		return err
 	}
