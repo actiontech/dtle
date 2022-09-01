@@ -964,13 +964,12 @@ func (e *ExtractorOracle) oracleDump() error {
 
 			// Scan the rows in the table ...
 			for entry := range d.ResultsChannel {
-				if entry.Err != "" {
-					e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
-				} else {
-					if err := e.encodeAndSendDumpEntry(entry); err != nil {
-						e.onError(common.TaskStateDead, err)
-					}
+				if err := e.encodeAndSendDumpEntry(entry); err != nil {
+					e.onError(common.TaskStateDead, err)
 				}
+			}
+			if d.Err != nil {
+				e.onError(common.TaskStateDead, d.Err)
 			}
 		}
 	}

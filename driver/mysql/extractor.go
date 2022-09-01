@@ -1383,12 +1383,9 @@ func (e *Extractor) mysqlDump() error {
 	e.logger.Info("Step: scanning contents of x tables", "n", step, "x", e.tableCount)
 	startScan := g.CurrentTimeMillis()
 	counter := 0
-	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
 		for _, tbCtx := range db.TableMap {
 			t := tbCtx.Table
-			//pool.Add(1)
-			//go func(t *config.Table) {
 			counter++
 			// Obtain a record maker for this table, which knows about the schema ...
 			// Choose how we create statements based on the # of rows ...
@@ -1402,34 +1399,29 @@ func (e *Extractor) mysqlDump() error {
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for entry := range d.ResultsChannel {
-				if entry.Err != "" {
-					e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
-				} else {
-					memSize := int64(entry.Size())
-					if !d.sentTableDef {
-						tableBs, err := common.EncodeTable(d.Table)
-						if err != nil {
-							err = errors.Wrap(err, "full copy: EncodeTable")
-							e.onError(common.TaskStateDead, err)
-							return err
-						} else {
-							entry.Table = tableBs
-							d.sentTableDef = true
-						}
-					}
-					if err = e.encodeAndSendDumpEntry(entry); err != nil {
+				memSize := int64(entry.Size())
+				if !d.sentTableDef {
+					tableBs, err := common.EncodeTable(d.Table)
+					if err != nil {
+						err = errors.Wrap(err, "full copy: EncodeTable")
 						e.onError(common.TaskStateDead, err)
+						return err
+					} else {
+						entry.Table = tableBs
+						d.sentTableDef = true
 					}
-					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
-					atomic.AddInt64(d.Memory, -memSize)
 				}
+				if err = e.encodeAndSendDumpEntry(entry); err != nil {
+					e.onError(common.TaskStateDead, err)
+				}
+				atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
+				atomic.AddInt64(d.Memory, -memSize)
 			}
-
-			//pool.Done()
-			//}(tb)
+			if d.Err != nil {
+				e.onError(common.TaskStateDead, d.Err)
+			}
 		}
 	}
-	//pool.Wait()
 	step++
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.

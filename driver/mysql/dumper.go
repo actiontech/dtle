@@ -161,7 +161,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	}
 	defer func() {
 		if err != nil {
-			entry.Err = err.Error()
+			return
 		}
 		if err == nil && len(entry.ValuesX) == 0 {
 			return

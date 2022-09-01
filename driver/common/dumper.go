@@ -27,7 +27,10 @@ type Dumper struct {
 	Table              *Table
 	Iteration          int64
 	Columns            string
+	// ResultsChannel should be closed after writing all entries.
 	ResultsChannel     chan *DumpEntry
+	// Set Err (if there is) before closing ResultsChannel.
+	Err                error
 	shutdown           bool
 	ShutdownCh         chan struct{}
 	shutdownLock       sync.Mutex
@@ -71,6 +74,7 @@ func (d *Dumper) Dump() error {
 
 			nRows, err := d.GetChunkData()
 			if err != nil {
+				d.Err = err
 				d.Logger.Error("error at dump", "err", err)
 				break
 			}
