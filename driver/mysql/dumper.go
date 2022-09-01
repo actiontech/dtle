@@ -34,11 +34,12 @@ type dumper struct {
 	doChecksum int
 	oldWayDump bool
 
-	sentTableDef bool
+	sentTableDef   bool
+	dumpEntryLimit int
 }
 
 func NewDumper(ctx context.Context, db usql.QueryAble, table *common.Table, chunkSize int64,
-	logger g.LoggerType, memory *int64) *dumper {
+	logger g.LoggerType, memory *int64, dumpEntryLimit int) *dumper {
 	dumper := &dumper{
 		common.NewDumper(ctx, table, chunkSize, logger, memory),
 		umconf.EscapeName(table.TableSchema),
@@ -47,6 +48,7 @@ func NewDumper(ctx context.Context, db usql.QueryAble, table *common.Table, chun
 		0,
 		false,
 		false,
+		dumpEntryLimit,
 	}
 	dumper.PrepareForDumping = dumper.prepareForDumping
 	dumper.GetChunkData = dumper.getChunkData
@@ -154,42 +156,6 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 
 // dumps a specific chunk, reading chunk info from the channel
 func (d *dumper) getChunkData() (nRows int64, err error) {
-	entry := &common.DumpEntry{
-		TableSchema: d.TableSchema,
-		TableName:   d.TableName,
-		ColumnMapTo: d.Table.ColumnMapTo,
-	}
-	defer func() {
-		if err != nil {
-			return
-		}
-		if err == nil && len(entry.ValuesX) == 0 {
-			return
-		}
-
-		keepGoing := true
-		timer := time.NewTicker(pingInterval)
-		defer timer.Stop()
-		for keepGoing {
-			select {
-			case <-d.ShutdownCh:
-				keepGoing = false
-			case d.ResultsChannel <- entry:
-				atomic.AddInt64(d.Memory, int64(entry.Size()))
-				//d.logger.Debug("*** memory", "memory", atomic.LoadInt64(d.memory))
-				keepGoing = false
-			case <-timer.C:
-				d.Logger.Debug("resultsChannel full. waiting and ping conn")
-				var dummy int
-				errPing := d.db.QueryRow("select 1").Scan(&dummy)
-				if errPing != nil {
-					d.Logger.Debug("ping query row got error.", "err", errPing)
-				}
-			}
-		}
-		d.Logger.Debug("resultsChannel", "n", len(d.ResultsChannel))
-	}()
-
 	query := ""
 	if d.oldWayDump || d.Table.UseUniqueKey == nil {
 		query = d.buildQueryOldWay()
@@ -227,9 +193,80 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 		return 0, err
 	}
 
-	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
+	handleEntry := func(valuesX [][]*[]byte, last bool) error {
+		if len(valuesX) == 0 {
+			return nil
+		}
 
-	for rows.Next() {
+		entry := &common.DumpEntry{
+			TableSchema: g.StringElse(d.Table.TableSchemaRename, d.TableSchema),
+			TableName:   g.StringElse(d.Table.TableRename, d.TableName),
+			ColumnMapTo: d.Table.ColumnMapTo,
+			ValuesX:     valuesX,
+		}
+
+		if last {
+			var lastVals []string
+			for _, col := range entry.ValuesX[len(entry.ValuesX)-1] {
+				lastVals = append(lastVals, usql.EscapeColRawToString(col))
+			}
+
+			if d.Table.UseUniqueKey != nil {
+				// lastVals must not be nil if len(data) > 0
+				for i, col := range d.Table.UseUniqueKey.Columns.Columns {
+					// TODO save the idx
+					idx := d.Table.OriginalTableColumns.Ordinals[col.RawName]
+					if idx > len(lastVals) {
+						return fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
+					} else {
+						d.Table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
+					}
+				}
+				d.Logger.Debug("GetLastMaxVal", "val", d.Table.UseUniqueKey.LastMaxVals)
+			}
+		}
+		if len(d.Table.ColumnMap) > 0 {
+			for i, oldRow := range entry.ValuesX {
+				row := make([]*[]byte, len(d.Table.ColumnMap))
+				for i := range d.Table.ColumnMap {
+					fromIdx := d.Table.ColumnMap[i]
+					row[i] = oldRow[fromIdx]
+				}
+				entry.ValuesX[i] = row
+			}
+		}
+
+		keepGoing := true
+		timer := time.NewTicker(pingInterval)
+		defer timer.Stop()
+		for keepGoing {
+			select {
+			case <-d.ShutdownCh:
+				keepGoing = false
+			case d.ResultsChannel <- entry:
+				atomic.AddInt64(d.Memory, int64(entry.Size()))
+				//d.logger.Debug("*** memory", "memory", atomic.LoadInt64(d.memory))
+				keepGoing = false
+			case <-timer.C:
+				d.Logger.Debug("resultsChannel full. waiting and ping conn")
+				var dummy int
+				errPing := d.db.QueryRow("select 1").Scan(&dummy)
+				if errPing != nil {
+					d.Logger.Debug("ping query row got error.", "err", errPing)
+				}
+			}
+		}
+		d.Logger.Debug("resultsChannel", "n", len(d.ResultsChannel))
+
+		return nil
+	}
+
+	entrySize := 0
+	var valuesX [][]*[]byte
+	scanArgs := make([]interface{}, len(columns)) // tmp use, for casting `values` to `[]interface{}`
+	hasRow := rows.Next()
+	for hasRow {
+		nRows += 1
 		rowValuesRaw := make([]*[]byte, len(columns))
 		for i := range rowValuesRaw {
 			scanArgs[i] = &rowValuesRaw[i]
@@ -240,53 +277,35 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			return 0, err
 		}
 
-		entry.ValuesX = append(entry.ValuesX, rowValuesRaw)
+		hasRow = rows.Next()
+
+		valuesX = append(valuesX, rowValuesRaw)
+		entrySize += getRowSize(rowValuesRaw)
+
+		if !hasRow || entrySize >= d.dumpEntryLimit {
+			d.Logger.Debug("reach DUMP_ENTRY_LIMIT.", "size", entrySize, "n_row", len(valuesX))
+
+			err = handleEntry(valuesX, !hasRow)
+			if err != nil {
+				return 0, err
+			}
+			entrySize = 0
+			valuesX = nil
+		}
 	}
 
-	nRows = int64(len(entry.ValuesX))
 	d.Logger.Debug("getChunkData.", "n_row", nRows)
 
-	if nRows > 0 {
-		var lastVals []string
-
-		for _, col := range entry.ValuesX[len(entry.ValuesX)-1] {
-			lastVals = append(lastVals, usql.EscapeColRawToString(col))
-		}
-
-		if d.Table.UseUniqueKey != nil {
-			// lastVals must not be nil if len(data) > 0
-			for i, col := range d.Table.UseUniqueKey.Columns.Columns {
-				// TODO save the idx
-				idx := d.Table.OriginalTableColumns.Ordinals[col.RawName]
-				if idx > len(lastVals) {
-					return nRows, fmt.Errorf("getChunkData. GetLastMaxVal: column index %v > n_column %v", idx, len(lastVals))
-				} else {
-					d.Table.UseUniqueKey.LastMaxVals[i] = lastVals[idx]
-				}
-			}
-			d.Logger.Debug("GetLastMaxVal", "val", d.Table.UseUniqueKey.LastMaxVals)
-		}
-	}
-	if d.Table.TableRename != "" {
-		entry.TableName = d.Table.TableRename
-	}
-	if d.Table.TableSchemaRename != "" {
-		entry.TableSchema = d.Table.TableSchemaRename
-	}
-	if len(d.Table.ColumnMap) > 0 {
-		for i, oldRow := range entry.ValuesX {
-			row := make([]*[]byte, len(d.Table.ColumnMap))
-			for i := range d.Table.ColumnMap {
-				fromIdx := d.Table.ColumnMap[i]
-				row[i] = oldRow[fromIdx]
-			}
-			entry.ValuesX[i] = row
-		}
-	}
-	// ValuesX[i]: n-th row
-	// ValuesX[i][j]: j-th col of n-th row
-	// Values[i]: i-th chunk of rows
-	// Values[i][j]: j-th row (in paren-wrapped string)
-
 	return nRows, nil
+}
+
+func getRowSize(row []*[]byte) (size int) {
+	for i := range row {
+		if row[i] == nil {
+			size += 0
+		} else {
+			size += len(*row[i])
+		}
+	}
+	return size
 }

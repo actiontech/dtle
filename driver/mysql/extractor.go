@@ -1392,7 +1392,8 @@ func (e *Extractor) mysqlDump() error {
 			e.logger.Info("Step n: - scanning table (i of N tables)",
 				"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 
-			d := NewDumper(e.ctx, tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
+			d := NewDumper(e.ctx, tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1,
+				e.mysqlContext.DumpEntryLimit)
 			if err := d.Dump(); err != nil {
 				e.onError(common.TaskStateDead, err)
 			}
