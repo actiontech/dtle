@@ -169,7 +169,7 @@ var (
 		"ForeignKeyChecks": hclspec.NewDefault(hclspec.NewAttr("ForeignKeyChecks", "bool", false),
 			hclspec.NewLiteral(`true`)),
 		"DumpEntryLimit": hclspec.NewDefault(hclspec.NewAttr("DumpEntryLimit", "number", false),
-			hclspec.NewLiteral(`134217728`)),
+			hclspec.NewLiteral(`67108864`)),
 		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
 			"Host":        hclspec.NewAttr("Host", "string", true),

@@ -152,6 +152,7 @@ type MysqlSrcTaskConfig struct {
 	BinlogRelay         bool   `json:"binlog_relay"`
 	WaitOnJob           string `json:"wait_on_job"`
 	AutoGtid            bool   `json:"auto_gtid"`
+	DumpEntryLimit      int    `json:"dump_entry_limit"`
 }
 
 type OracleSrcTaskConfig struct {
