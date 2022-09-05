@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -32,15 +33,16 @@ type taskHandle struct {
 
 	runner DriverHandle
 
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 	waitCh chan *drivers.ExitResult
-	doneCh chan struct{}
 	stats  *common.TaskStatistics
 
 	driverConfig *common.MySQLDriverConfig
 	shutdown     bool
 }
 
-func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
+func newDtleTaskHandle(ctx context.Context, logger g.LoggerType, cfg *drivers.TaskConfig, state drivers.TaskState, started time.Time) *taskHandle {
 	h := &taskHandle{
 		logger:      logger,
 		stateLock:   sync.RWMutex{},
@@ -50,8 +52,8 @@ func newDtleTaskHandle(logger g.LoggerType, cfg *drivers.TaskConfig, state drive
 		completedAt: time.Time{},
 		exitResult:  nil,
 		waitCh:      make(chan *drivers.ExitResult),
-		doneCh:      make(chan struct{}),
 	}
+	h.ctx, h.cancelFunc = context.WithCancel(ctx)
 	go h.watchWaitCh()
 	return h
 }
@@ -61,9 +63,9 @@ func (h *taskHandle) watchWaitCh() {
 	case r := <-h.waitCh:
 		h.stateLock.Lock()
 		h.exitResult = r
+		h.cancelFunc()
 		h.stateLock.Unlock()
-		close(h.doneCh)
-	case <-h.doneCh:
+	case <-h.ctx.Done():
 	}
 }
 
@@ -149,7 +151,7 @@ func (h *taskHandle) run(d *Driver) {
 		t := time.NewTimer(0)
 		for {
 			select {
-			case <-h.doneCh:
+			case <-h.ctx.Done():
 				if !t.Stop() { <-t.C }
 				return
 			case <-t.C:
@@ -181,12 +183,12 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 	case common.TaskTypeSrc:
 		if h.driverConfig.OracleConfig != nil {
 			h.logger.Debug("found oracle src", "OracleConfig", h.driverConfig.OracleConfig)
-			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, d.ctx)
+			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewExtractor")
 			}
 		} else {
-			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, d.ctx)
+			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewOracleExtractor")
 			}
@@ -196,13 +198,13 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 		if h.driverConfig.KafkaConfig != nil {
 			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
 			runner, err = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
-				d.storeManager, d.config.NatsAdvertise, h.waitCh, d.ctx)
+				d.storeManager, d.config.NatsAdvertise, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
 			}
 		} else {
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
-				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig, d.ctx)
+				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewApplier")
 			}
@@ -298,6 +300,21 @@ func (h *taskHandle) Destroy() {
 		if err != nil {
 			h.logger.Error("error in h.runner.Shutdown", "err", err)
 		}
+	}
+}
+
+func (h *taskHandle) GetExitResult() *drivers.ExitResult {
+	h.stateLock.Lock()
+	defer h.stateLock.Unlock()
+	if h.exitResult == nil {
+		return &drivers.ExitResult{
+			ExitCode:  0,
+			Signal:    0,
+			OOMKilled: false,
+			Err:       nil,
+		}
+	} else {
+		return h.exitResult.Copy()
 	}
 }
 
