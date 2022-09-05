@@ -3017,6 +3017,9 @@ var doc = `{
                 "binlog_relay": {
                     "type": "boolean"
                 },
+                "dump_entry_limit": {
+                    "type": "integer"
+                },
                 "expand_syntax_support": {
                     "type": "boolean"
                 },
