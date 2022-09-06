@@ -743,8 +743,6 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 const (
 	dtleQueryPrefix = "/*dtle_gtid1 "
 	dtleQuerySuffix = " dtle_gtid*/"
-
-	bigTxSplittingSize = 64 * 1024 * 1024
 )
 
 func (b *BinlogReader) checkDtleQueryOSID(query string) error {
@@ -1974,7 +1972,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 			b.entryContext.Entry.Events = append(b.entryContext.Entry.Events, *dmlEvent)
 		}
 
-		if b.entryContext.OriginalSize >= bigTxSplittingSize {
+		if b.entryContext.OriginalSize >= b.mysqlContext.DumpEntryLimit {
 			b.logger.Debug("splitting big tx", "index", b.entryContext.Entry.Index)
 			b.entryContext.Entry.Final = false
 			b.sendEntry(entriesChannel)
