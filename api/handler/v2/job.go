@@ -592,6 +592,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]inte
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.BinlogRelay, "BinlogRelay")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.Gtid, "Gtid")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.ExpandSyntaxSupport, "ExpandSyntaxSupport")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.DumpEntryLimit, "DumpEntryLimit")
 		taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 	}
 	// for Oracle
@@ -634,8 +635,8 @@ func buildMysqlTableConfigMap(configs []*models.TableConfig) []map[string]interf
 		configMap := make(map[string]interface{})
 		if len(c.ColumnMapFrom) != 0 {
 			configMap["ColumnMapFrom"] = c.ColumnMapFrom
-			if len(c.ColumnMapTO) != 0 {
-				configMap["ColumnMapTo"] = c.ColumnMapTO
+			if len(c.ColumnMapTo) != 0 {
+				configMap["ColumnMapTo"] = c.ColumnMapTo
 			}
 		}
 		addNotRequiredParamToMap(configMap, c.TableName, "TableName")
@@ -799,6 +800,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				BinlogRelay:         srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.BinlogRelay,
 				WaitOnJob:           srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob,
 				AutoGtid:            srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.AutoGtid,
+				DumpEntryLimit:      srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.DumpEntryLimit,
 			}
 		} else if srcTaskDetail.TaskConfig.OracleSrcTaskConfig != nil {
 			srcConfig.OracleSrcTaskConfig = &models.OracleSrcTaskConfig{
@@ -951,7 +953,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 					TableRegex:    tb.TableRegex,
 					TableRename:   tb.TableRename,
 					ColumnMapFrom: tb.ColumnMapFrom,
-					ColumnMapTO:   tb.ColumnMapTo,
+					ColumnMapTo:   tb.ColumnMapTo,
 					Where:         tb.Where,
 				})
 			}
@@ -1000,6 +1002,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 			Gtid:                internalTaskConfig.Gtid,
 			BinlogRelay:         internalTaskConfig.BinlogRelay,
 			WaitOnJob:           internalTaskConfig.WaitOnJob,
+			DumpEntryLimit:      internalTaskConfig.DumpEntryLimit,
 		}
 	}
 	srcTaskDetail.TaskConfig.ConnectionConfig = connectionConfig
@@ -1932,6 +1935,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 				BinlogRelay:         originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.BinlogRelay,
 				WaitOnJob:           consulJobItem.JobId,
 				AutoGtid:            true,
+				DumpEntryLimit:      originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.DumpEntryLimit,
 			},
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{

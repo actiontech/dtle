@@ -143,17 +143,16 @@ func NewApplier(
 func (a *Applier) updateGtidLoop() {
 	a.wg.Add(1)
 	defer a.wg.Done()
-	updateGtidInterval := 15 * time.Second
-	t0 := time.NewTicker(2 * time.Second)
-	t := time.NewTicker(updateGtidInterval)
+	tUpdate := time.NewTicker(2 * time.Second)
+	tUpload := time.NewTicker(15 * time.Second)
 
 	var file string
 	var pos int64
 
-	updated := false
+	needUpdate := false
 	doUpdate := func() {
-		if updated { // catch by reference
-			updated = false
+		if needUpdate { // catch by reference
+			needUpdate = false
 			a.mysqlContext.Gtid = a.gtidSet.String()
 			if file != "" {
 				if a.mysqlContext.BinlogFile != file {
@@ -182,6 +181,13 @@ func (a *Applier) updateGtidLoop() {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "SaveBinlogFilePosForJob"))
 				return
 			}
+
+			if a.mysqlContext.Gtid != "" {
+				if a.stage != JobIncrCopy {
+					a.stage = JobIncrCopy
+					a.sendEvent(JobIncrCopy)
+				}
+			}
 		}
 	}
 
@@ -205,13 +211,13 @@ func (a *Applier) updateGtidLoop() {
 		select {
 		case <-a.shutdownCh:
 			return
-		case <-t.C: // this must be prior to gtidCh
+		case <-tUpload.C:
 			doUpdate()
 			doUpload()
-		case <-t0.C:
+		case <-tUpdate.C:
 			doUpdate()
 		case coord := <-a.gtidCh:
-			updated = true
+			needUpdate = true
 			needUpload = true
 			if coord == nil {
 				// coord == nil is a flag for update/upload gtid
@@ -566,10 +572,6 @@ func (a *Applier) subscribeNats() (err error) {
 		}
 
 		a.mysqlContext.Stage = common.StageSlaveWaitingForWorkersToProcessQueue
-		if a.stage != JobIncrCopy {
-			a.stage = JobIncrCopy
-			a.sendEvent(JobIncrCopy)
-		}
 		close(a.rowCopyComplete)
 
 		a.logger.Debug("ack _full_complete")
@@ -1086,7 +1088,6 @@ func (a *Applier) Shutdown() error {
 }
 
 func (a *Applier) watchTargetGtid() {
-
 	target, err := a.storeManager.WatchTargetGtid(a.subject, a.shutdownCh)
 	if err != nil {
 		a.onError(common.TaskStateDead, err)
@@ -1098,7 +1099,7 @@ func (a *Applier) watchTargetGtid() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "CommandTypeJobFinish. ParseMysqlGTIDSet"))
 	}
 	a.targetGtid = gs
-	a.gtidCh <- nil
+	a.gtidCh <- nil // trigger `testTargetGtid()` in `updateGtidLoop()`
 }
 
 func (a *Applier) checkJobFinish() {

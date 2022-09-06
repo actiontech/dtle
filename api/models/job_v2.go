@@ -152,6 +152,7 @@ type MysqlSrcTaskConfig struct {
 	BinlogRelay         bool   `json:"binlog_relay"`
 	WaitOnJob           string `json:"wait_on_job"`
 	AutoGtid            bool   `json:"auto_gtid"`
+	DumpEntryLimit      int    `json:"dump_entry_limit"`
 }
 
 type OracleSrcTaskConfig struct {
@@ -186,7 +187,7 @@ type TableConfig struct {
 	TableRegex    string   `json:"table_regex"`
 	TableRename   string   `json:"table_rename"`
 	ColumnMapFrom []string `json:"column_map_from"`
-	ColumnMapTO   []string `json:"column_map_to"`
+	ColumnMapTo   []string `json:"column_map_to"`
 	Where         string   `json:"where"`
 }
 type DatabaseConnectionConfig struct {

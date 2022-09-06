@@ -55,7 +55,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 	// SELECT * FROM %s.%s AS OF SCN %d where ROWNUM < %d
 	defer func() {
 		if err != nil {
-			entry.Err = err.Error()
+			return
 		}
 		if err == nil && len(entry.ValuesX) == 0 {
 			return

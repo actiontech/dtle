@@ -284,15 +284,6 @@ func (e *Extractor) Run() {
 		}
 	} else {
 		fullCopy = false
-		if e.mysqlContext.BinlogRelay {
-			if e.mysqlContext.BinlogFile == "" {
-				err := fmt.Errorf("the a job is incr-only (with GTID) and has BinlogRelay enabled," +
-					" but BinlogFile,Pos is not provided")
-				e.logger.Error("job config error")
-				e.onError(common.TaskStateDead, err)
-				return
-			}
-		}
 	}
 
 	if err := e.sendSysVarAndSqlMode(); err != nil {
@@ -1069,17 +1060,14 @@ func (e *Extractor) StreamEvents() error {
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
 // gno: only for logging
-func (e *Extractor) publish(subject string, txMsg []byte, gno int64) (err error) {
-	msgLen := len(txMsg)
-
-	data := txMsg
+func (e *Extractor) publish(subject string, data []byte, gno int64) (err error) {
 	lenData := len(data)
 
 	// lenData < NatsMaxMsg: 1 msg
 	// lenData = k * NatsMaxMsg + b, where k >= 1 && b >= 0: (k+1) msg
 	// b could be 0. we send a zero-len msg as a sign of termination.
 	nSeg := lenData/g.NatsMaxMsg + 1
-	e.logger.Debug("publish. msg", "subject", subject, "gno", gno, "nSeg", nSeg, "spanLen", lenData, "msgLen", msgLen)
+	e.logger.Debug("publish. msg", "subject", subject, "gno", gno, "nSeg", nSeg, "spanLen", lenData)
 	bak := make([]byte, 4)
 	if nSeg > 1 {
 		// ensure there are 4 bytes to save iSeg
@@ -1392,53 +1380,46 @@ func (e *Extractor) mysqlDump() error {
 	e.logger.Info("Step: scanning contents of x tables", "n", step, "x", e.tableCount)
 	startScan := g.CurrentTimeMillis()
 	counter := 0
-	//pool := models.NewPool(10)
 	for _, db := range e.replicateDoDb {
 		for _, tbCtx := range db.TableMap {
 			t := tbCtx.Table
-			//pool.Add(1)
-			//go func(t *config.Table) {
 			counter++
 			// Obtain a record maker for this table, which knows about the schema ...
 			// Choose how we create statements based on the # of rows ...
 			e.logger.Info("Step n: - scanning table (i of N tables)",
 				"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 
-			d := NewDumper(e.ctx, tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1)
+			d := NewDumper(e.ctx, tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1,
+				e.mysqlContext.DumpEntryLimit)
 			if err := d.Dump(); err != nil {
 				e.onError(common.TaskStateDead, err)
 			}
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
 			for entry := range d.ResultsChannel {
-				if entry.Err != "" {
-					e.onError(common.TaskStateDead, fmt.Errorf(entry.Err))
-				} else {
-					memSize := int64(entry.Size())
-					if !d.sentTableDef {
-						tableBs, err := common.EncodeTable(d.Table)
-						if err != nil {
-							err = errors.Wrap(err, "full copy: EncodeTable")
-							e.onError(common.TaskStateDead, err)
-							return err
-						} else {
-							entry.Table = tableBs
-							d.sentTableDef = true
-						}
-					}
-					if err = e.encodeAndSendDumpEntry(entry); err != nil {
+				memSize := int64(entry.Size())
+				if !d.sentTableDef {
+					tableBs, err := common.EncodeTable(d.Table)
+					if err != nil {
+						err = errors.Wrap(err, "full copy: EncodeTable")
 						e.onError(common.TaskStateDead, err)
+						return err
+					} else {
+						entry.Table = tableBs
+						d.sentTableDef = true
 					}
-					atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
-					atomic.AddInt64(d.Memory, -memSize)
 				}
+				if err = e.encodeAndSendDumpEntry(entry); err != nil {
+					e.onError(common.TaskStateDead, err)
+				}
+				atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
+				atomic.AddInt64(d.Memory, -memSize)
 			}
-
-			//pool.Done()
-			//}(tb)
+			if d.Err != nil {
+				e.onError(common.TaskStateDead, d.Err)
+			}
 		}
 	}
-	//pool.Wait()
 	step++
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
@@ -1455,10 +1436,12 @@ func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
 	if err != nil {
 		return err
 	}
+	e.logger.Debug("encodeAndSendDumpEntry. after Marshal", "size", len(bs))
 	txMsg, err := common.Compress(bs)
 	if err != nil {
 		return errors.Wrap(err, "common.Compress")
 	}
+	e.logger.Debug("encodeAndSendDumpEntry. after Compress", "size", len(txMsg))
 	if err := e.publish(fmt.Sprintf("%s_full", e.subject), txMsg, 0); err != nil {
 		return err
 	}

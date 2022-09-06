@@ -64,6 +64,7 @@ type DtleTaskConfig struct {
 	DependencyHistorySize int  `codec:"DependencyHistorySize"`
 	UseMySQLDependency    bool `codec:"UseMySQLDependency"`
 	ForeignKeyChecks      bool `codec:"ForeignKeyChecks"`
+	DumpEntryLimit        int  `codec:"DumpEntryLimit"`
 
 	SkipCreateDbTable    bool                          `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck   bool                          `codec:"SkipPrivilegeCheck"`

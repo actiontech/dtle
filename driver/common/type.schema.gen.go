@@ -21,7 +21,6 @@ type DumpEntry struct {
 	TbSQL           []string
 	ValuesX         [][]*[]byte
 	TotalCount      int64
-	Err             string
 	Table           []byte
 	ColumnMapTo     []string
 }
@@ -227,21 +226,6 @@ func (d *DumpEntry) Size() (s uint64) {
 
 		}
 
-	}
-	{
-		l := uint64(len(d.Err))
-
-		{
-
-			t := l
-			for t >= 0x80 {
-				t >>= 7
-				s++
-			}
-			s++
-
-		}
-		s += l
 	}
 	{
 		l := uint64(len(d.Table))
@@ -559,25 +543,6 @@ func (d *DumpEntry) Marshal(buf []byte) ([]byte, error) {
 
 		buf[i+7+0] = byte(d.TotalCount >> 56)
 
-	}
-	{
-		l := uint64(len(d.Err))
-
-		{
-
-			t := uint64(l)
-
-			for t >= 0x80 {
-				buf[i+8] = byte(t) | 0x80
-				t >>= 7
-				i++
-			}
-			buf[i+8] = byte(t)
-			i++
-
-		}
-		copy(buf[i+8:], d.Err)
-		i += l
 	}
 	{
 		l := uint64(len(d.Table))
@@ -920,26 +885,6 @@ func (d *DumpEntry) Unmarshal(buf []byte) (uint64, error) {
 
 		d.TotalCount = 0 | (int64(buf[i+0+0]) << 0) | (int64(buf[i+1+0]) << 8) | (int64(buf[i+2+0]) << 16) | (int64(buf[i+3+0]) << 24) | (int64(buf[i+4+0]) << 32) | (int64(buf[i+5+0]) << 40) | (int64(buf[i+6+0]) << 48) | (int64(buf[i+7+0]) << 56)
 
-	}
-	{
-		l := uint64(0)
-
-		{
-
-			bs := uint8(7)
-			t := uint64(buf[i+8] & 0x7F)
-			for buf[i+8]&0x80 == 0x80 {
-				i++
-				t |= uint64(buf[i+8]&0x7F) << bs
-				bs += 7
-			}
-			i++
-
-			l = t
-
-		}
-		d.Err = string(buf[i+8 : i+8+l])
-		i += l
 	}
 	{
 		l := uint64(0)

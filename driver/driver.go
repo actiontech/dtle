@@ -168,6 +168,8 @@ var (
 			hclspec.NewLiteral(`true`)),
 		"ForeignKeyChecks": hclspec.NewDefault(hclspec.NewAttr("ForeignKeyChecks", "bool", false),
 			hclspec.NewLiteral(`true`)),
+		"DumpEntryLimit": hclspec.NewDefault(hclspec.NewAttr("DumpEntryLimit", "number", false),
+			hclspec.NewLiteral(`67108864`)),
 		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
 			"Host":        hclspec.NewAttr("Host", "string", true),
@@ -390,30 +392,16 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 }
 
 func (d *Driver) loopCleanRelayDir() {
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-
 	cleanDataDir := func() {
 		files, err := ioutil.ReadDir(path.Join(d.config.DataDir, "binlog"))
 		if err != nil {
-			d.logger.Info("read dir failed", "dataDir", d.config.DataDir, "err", err)
-			return
-		}
-
-		jobs, err := d.storeManager.FindJobList()
-		if err != nil {
-			d.logger.Error("list jobs failed", "err", err)
+			d.logger.Error("read dir failed", "dataDir", d.config.DataDir, "err", err)
 			return
 		}
 
 		for _, file := range files {
-			existUnuseDir := true
-			for i := range jobs {
-				if jobs[i].JobId == file.Name() {
-					existUnuseDir = false
-				}
-			}
-			if !existUnuseDir {
+			_, exist, err := d.storeManager.GetNatsIfExist(file.Name())
+			if exist || err != nil {
 				continue
 			}
 			if err := os.RemoveAll(path.Join(d.config.DataDir, "binlog", file.Name())); err != nil {
@@ -422,21 +410,13 @@ func (d *Driver) loopCleanRelayDir() {
 		}
 	}
 
-	jobKeysCh, err := d.storeManager.WatchTree("/dtleJobList/", stopCh)
-	if err != nil {
-		d.logger.Error("watch job tree error", "err", err)
-	}
 	cleanDuration := 12 * time.Hour
 	cleanDelay := time.NewTimer(cleanDuration)
 	defer cleanDelay.Stop()
 	for {
-		select {
-		case <-jobKeysCh:
-			cleanDataDir()
-		case <-cleanDelay.C:
-			cleanDataDir()
-		}
 		cleanDelay.Reset(cleanDuration)
+		<-cleanDelay.C
+		cleanDataDir()
 	}
 }
 
@@ -560,7 +540,7 @@ func (d *Driver) StartTask(cfg *drivers.TaskConfig) (*drivers.TaskHandle, *drive
 		return nil, nil, errors.Wrap(err, "SetDriverState")
 	}
 
-	h := newDtleTaskHandle(d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
+	h := newDtleTaskHandle(d.ctx, d.logger, cfg, drivers.TaskStateRunning, time.Now().Round(time.Millisecond))
 	h.driverConfig = &common.MySQLDriverConfig{DtleTaskConfig: dtleTaskConfig}
 	d.tasks.Set(cfg.ID, h)
 	AllocIdTaskNameToTaskHandler.Set(cfg.AllocID, cfg.Name, cfg.ID, h)
@@ -655,8 +635,8 @@ func (d *Driver) handleWait(ctx context.Context, handle *taskHandle, ch chan *dr
 		return
 	case <-d.ctx.Done():
 		return
-	case <-handle.doneCh:
-		ch <- handle.exitResult.Copy()
+	case <-handle.ctx.Done():
+		ch <- handle.GetExitResult()
 	}
 }
 
