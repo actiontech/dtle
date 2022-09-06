@@ -9,26 +9,21 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/actiontech/dtle/g"
-
-	report "github.com/actiontech/golang-live-coverage-report/pkg"
-
-	mysql "github.com/actiontech/dtle/driver"
-
-	"github.com/actiontech/dtle/api/models"
-
-	middleware "github.com/labstack/echo/v4/middleware"
-
-	"github.com/actiontech/dtle/driver/common"
-
 	_ "github.com/actiontech/dtle/api/docs"
 	"github.com/actiontech/dtle/api/handler"
 	v1 "github.com/actiontech/dtle/api/handler/v1"
 	v2 "github.com/actiontech/dtle/api/handler/v2"
+	"github.com/actiontech/dtle/api/models"
+	dtle "github.com/actiontech/dtle/driver"
+	"github.com/actiontech/dtle/driver/common"
+	"github.com/actiontech/dtle/g"
+	report "github.com/actiontech/golang-live-coverage-report/pkg"
+
 	metrics "github.com/armon/go-metrics"
 	"github.com/armon/go-metrics/prometheus"
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/labstack/echo/v4"
+	middleware "github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
@@ -41,7 +36,7 @@ import (
 // @name Authorization
 // @BasePath /
 
-func SetupApiServer(logger g.LoggerType, driverConfig *mysql.DriverConfig) (err error) {
+func SetupApiServer(logger g.LoggerType, driverConfig *dtle.DriverConfig) (err error) {
 	logger.Debug("Begin Setup api server", "addr", driverConfig.ApiAddr)
 	e := echo.New()
 

@@ -13,7 +13,7 @@ import (
 	hclog "github.com/hashicorp/go-hclog"
 )
 
-func DumpLoop(logger hclog.Logger) {
+func DumpLoop() {
 	c := make(chan os.Signal, 10)
 	signal.Notify(c, syscall.SIGTTIN)
 
@@ -21,22 +21,22 @@ func DumpLoop(logger hclog.Logger) {
 		sig := <-c
 		switch sig {
 		case syscall.SIGTTIN:
-			go CreateDump(logger)
+			go CreateDump()
 		default:
 		}
 	}
 }
 
-func CreateDump(logger hclog.Logger) {
-	logger.Debug("begin to create dtle dump")
+func CreateDump() {
+	Logger.Debug("begin to create dtle dump")
 	dumpPath := fmt.Sprintf("%s_%s/", "/tmp/dtle_dump", time.Now().Format("2006_01_02_15_04_05"))
 
 	if err := os.Mkdir(dumpPath, 0755); nil != err {
-		logger.Error("create dump info failed", "dump path", dumpPath, "error", err)
+		Logger.Error("create dump info failed", "dump path", dumpPath, "error", err)
 		return
 	}
-	createDump(logger, dumpPath)
-	logger.Debug("create dtle dump finished")
+	createDump(Logger, dumpPath)
+	Logger.Debug("create dtle dump finished")
 }
 
 func createDump(logger hclog.Logger, path string) {

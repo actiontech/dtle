@@ -15,10 +15,13 @@ import (
 	"net/url"
 	"strings"
 
+	dtle "github.com/actiontech/dtle/driver"
 	"github.com/actiontech/dtle/g"
 
 	"github.com/labstack/echo/v4"
 )
+
+var DtleDriver *dtle.Driver
 
 var NomadHost, ApiAddr, ConsulAddr string
 

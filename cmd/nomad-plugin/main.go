@@ -11,6 +11,7 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 
 	"github.com/actiontech/dtle/api"
+	"github.com/actiontech/dtle/api/handler"
 
 	dtle "github.com/actiontech/dtle/driver"
 	"github.com/actiontech/dtle/g"
@@ -58,9 +59,11 @@ func main() {
 		logger.Info("dtle starting", "version", versionStr, "pid", pid)
 		logger.Info("env", "GODEBUG", os.Getenv("GODEBUG"), "GOMAXPROCS", runtime.GOMAXPROCS(0))
 		logger.Debug("plugins.Serve Factory called.")
-		go g.DumpLoop(logger)
+		go g.DumpLoop()
 
-		dtle.RegisterSetupApiServerFn(api.SetupApiServer)
-		return dtle.NewDriver(logger)
+		d := dtle.NewDriver(logger)
+		handler.DtleDriver = d // TODO avoid global var
+		d.SetSetupApiServerFn(api.SetupApiServer)
+		return d
 	})
 }
