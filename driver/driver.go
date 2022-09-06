@@ -5,17 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
+	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"net"
-	"net/http"
-
 	"github.com/actiontech/dtle/driver/common"
 	"github.com/actiontech/dtle/g"
-	"github.com/pkg/errors"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
@@ -26,6 +25,9 @@ import (
 	"github.com/julienschmidt/httprouter"
 	gnatsd "github.com/nats-io/nats-server/v2/server"
 	stand "github.com/nats-io/nats-streaming-server/server"
+	"github.com/pkg/errors"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
@@ -80,6 +82,8 @@ var (
 			hclspec.NewLiteral(`""`)),
 		"memory":          hclspec.NewAttr("memory", "string", false),
 		"big_tx_max_jobs": hclspec.NewAttr("big_tx_max_jobs", "number", false),
+		"log_file":        hclspec.NewDefault(hclspec.NewAttr("log_file", "string", false),
+			hclspec.NewLiteral(`"/var/log/dtle"`)),
 	})
 
 	// taskConfigSpec is the hcl specification for the driver config section of
@@ -227,13 +231,14 @@ type Driver struct {
 
 	stand     *stand.StanServer
 	apiServer *httprouter.Router
+	setupApiServerFn func(logger g.LoggerType, driverConfig *DriverConfig) error
 
 	config *DriverConfig
 
 	storeManager *common.StoreManager
 }
 
-func NewDriver(logger g.LoggerType) drivers.DriverPlugin {
+func NewDriver(logger g.LoggerType) *Driver {
 	logger = logger.Named(g.PluginName)
 	logger.Info("dtle NewDriver")
 
@@ -299,11 +304,55 @@ type DriverConfig struct {
 	StatsCollectionInterval int    `codec:"stats_collection_interval"`
 	PublishMetrics          bool   `codec:"publish_metrics"`
 	LogLevel                string `codec:"log_level"`
+	LogFile                 string `codec:"log_file"`
 	UiDir                   string `codec:"ui_dir"`
 	RsaPrivateKeyPath       string `codec:"rsa_private_key_path"`
 	CertFilePath            string `codec:"cert_file_path"`
 	KeyFilePath             string `codec:"key_file_path"`
 	Memory                  string `codec:"memory"`
+}
+
+func (d *Driver) setupLogger() (err error) {
+	err = d.SetLogLevel(d.config.LogLevel)
+	if err != nil {
+		return err
+	}
+
+	if d.config.LogFile == "" {
+		d.logger.Info("use nomad logger", "level", d.config.LogLevel)
+	} else {
+		err = os.MkdirAll(filepath.Dir(d.config.LogFile), 0755)
+		if err != nil {
+			return err
+		}
+
+		logFileName := d.config.LogFile
+		if strings.HasSuffix(logFileName, "/") {
+			logFileName += "dtle.log"
+		}
+
+		rotateFile := &lumberjack.Logger{
+			Filename: logFileName,
+			MaxSize:  512, // MB
+			Compress: true,
+		}
+
+		d.logger.Info("switching to dtle logger", "file", d.config.LogFile, "level", d.config.LogLevel)
+
+		d.logger = hclog.New(&hclog.LoggerOptions{
+			Name:   "",
+			Level:  hclog.Info,
+			Output: rotateFile,
+		})
+		g.Logger = d.logger
+
+		err = d.SetLogLevel(d.config.LogLevel)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
@@ -312,28 +361,22 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 		d.logger.Info("SetConfig 1", "DriverConfig", c.AgentConfig.Driver)
 	}
 
-	var dconfig DriverConfig
+	d.config = new(DriverConfig)
 	if len(c.PluginConfig) != 0 {
-		if err := base.MsgPackDecode(c.PluginConfig, &dconfig); err != nil {
+		if err := base.MsgPackDecode(c.PluginConfig, d.config); err != nil {
 			return err
 		}
 	}
 
-	d.config = &dconfig
 	d.logger.Info("SetConfig 2", "config", d.config)
 
-	logLevel := hclog.LevelFromString(d.config.LogLevel)
-	if logLevel == hclog.NoLevel {
-		return fmt.Errorf("invalid log level %v", d.config.LogLevel)
-	}
-	d.logger.SetLevel(logLevel)
-	d.logger.Info("log level was set", "level", logLevel.String())
+	err = d.setupLogger()
 
 	//if dconfig.Memory != "" {
 	//	g.MemAvailable = TODO
 	//}
-	if dconfig.BigTxMaxJobs != 0 {
-		g.BigTxMaxJobs = dconfig.BigTxMaxJobs
+	if d.config.BigTxMaxJobs != 0 {
+		g.BigTxMaxJobs = d.config.BigTxMaxJobs
 	}
 	d.logger.Info("BigTxMaxJobs is set", "value", g.BigTxMaxJobs)
 
@@ -369,7 +412,7 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 						}
 					}()
 				} else {
-					apiErr := setupApiServerFn(d.logger, d.config)
+					apiErr := d.setupApiServerFn(d.logger, d.config)
 					if apiErr != nil {
 						d.logger.Error("error in SetupApiServer", "err", err,
 							"apiAddr", d.config.ApiAddr, "nomadAddr", d.config.NomadAddr)
@@ -418,12 +461,6 @@ func (d *Driver) loopCleanRelayDir() {
 		<-cleanDelay.C
 		cleanDataDir()
 	}
-}
-
-var setupApiServerFn func(logger g.LoggerType, driverConfig *DriverConfig) error
-
-func RegisterSetupApiServerFn(fn func(logger g.LoggerType, driverConfig *DriverConfig) error) {
-	setupApiServerFn = fn
 }
 
 func (d *Driver) TaskConfigSchema() (*hclspec.Spec, error) {
@@ -811,4 +848,18 @@ func (d *Driver) ExecTask(taskID string, cmd []string, timeout time.Duration) (*
 func (d *Driver) Shutdown() {
 	d.logger.Info("Driver.Shutdown")
 	d.signalShutdown()
+}
+
+func (d *Driver) SetLogLevel(level string) error {
+	logLevel := hclog.LevelFromString(level)
+	if logLevel == hclog.NoLevel {
+		return fmt.Errorf("log level should be TRACE, DEBUG or INFO, got %v", level)
+	}
+	d.logger.SetLevel(logLevel)
+
+	return nil
+}
+
+func (d *Driver) SetSetupApiServerFn(fn func(logger g.LoggerType, driverConfig *DriverConfig) (err error)) {
+	d.setupApiServerFn = fn
 }

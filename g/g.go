@@ -2,14 +2,15 @@
 package g
 
 import (
-	hclog "github.com/hashicorp/go-hclog"
-	parsercharset "github.com/pingcap/tidb/parser/charset"
-	"github.com/shirou/gopsutil/v3/mem"
 	"os"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	hclog "github.com/hashicorp/go-hclog"
+	parsercharset "github.com/pingcap/tidb/parser/charset"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 var (

@@ -47,6 +47,7 @@ consul {
 plugin "dtle" {
   config {
     log_level = "INFO"
+    log_file = "/dtle/var/log/dtle/"
     data_dir = "/dtle/var/lib/nomad"
     nats_bind = "127.0.0.1:8193"
     nats_advertise = "127.0.0.1:8193"
