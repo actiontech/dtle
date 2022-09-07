@@ -313,6 +313,7 @@ type DriverConfig struct {
 }
 
 func (d *Driver) setupLogger() (err error) {
+	// set log level for nomad logger
 	err = d.SetLogLevel(d.config.LogLevel)
 	if err != nil {
 		return err
@@ -371,6 +372,9 @@ func (d *Driver) SetConfig(c *base.Config) (err error) {
 	d.logger.Info("SetConfig 2", "config", d.config)
 
 	err = d.setupLogger()
+	if err != nil {
+		return errors.Wrap(err, "setupLogger")
+	}
 
 	//if dconfig.Memory != "" {
 	//	g.MemAvailable = TODO
