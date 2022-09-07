@@ -33,11 +33,13 @@ mkdir -p "$RPM_INSTALL_PREFIX/var/lib/consul"
 mkdir -p "$RPM_INSTALL_PREFIX/var/log/consul"
 mkdir -p "$RPM_INSTALL_PREFIX/var/lib/nomad"
 mkdir -p "$RPM_INSTALL_PREFIX/var/log/nomad"
+mkdir -p "$RPM_INSTALL_PREFIX/var/log/dtle"
 
 chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/lib/consul"
 chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/consul"
 chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/lib/nomad"
 chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/nomad"
+chown -R -L dtle:dtle "$RPM_INSTALL_PREFIX/var/log/dtle"
 
 sed -i 's|INSTALL_PREFIX_MAGIC|'$RPM_INSTALL_PREFIX'|g' $RPM_INSTALL_PREFIX/etc/dtle/*.hcl
 
