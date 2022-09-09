@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	querySetFKChecksOff = "set @@session.foreign_key_checks = 0"
-	querySetFKChecksOn  = "set @@session.foreign_key_checks = 1"
+	querySetFKChecksOff = "set @@session.foreign_key_checks = 0 /*dtle*/"
+	querySetFKChecksOn  = "set @@session.foreign_key_checks = 1 /*dtle*/"
 )
 
 type ApplierIncr struct {
@@ -256,8 +256,9 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	if a.inBigTx && binlogEntry.Index == 0 {
 		a.logger.Info("found resent BinlogEntry inBigTx", "gno", binlogEntry.Coordinates.GetGNO())
 		// src is resending an earlier BinlogEntry
-		if a.dbs[0].Tx != nil {
-			_ = a.dbs[0].Tx.Rollback()
+		_, err = a.dbs[0].Db.ExecContext(a.ctx, "rollback")
+		if err != nil {
+			return errors.Wrapf(err, "rollback on resent big tx")
 		}
 		a.mtsManager.lastEnqueue = 0
 		a.inBigTx = false
@@ -507,27 +508,42 @@ func (a *ApplierIncr) prepareIfNilAndExecute(item *dmlExecItem, workerIdx int) (
 }
 
 // ApplyEventQueries applies multiple DML queries onto the dest table
-func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.EntryContext) error {
+func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.EntryContext) (err error) {
 	logger := a.logger.Named("ApplyBinlogEvent")
 	binlogEntry := binlogEntryCtx.Entry
+	defer atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 
 	dbApplier := a.dbs[workerIdx]
 
-	var err error
 	var timestamp uint32
 	gno := binlogEntry.Coordinates.GetGNO()
 
 	dbApplier.DbMutex.Lock()
-	if dbApplier.Tx == nil {
-		dbApplier.Tx, err = dbApplier.Db.BeginTx(a.ctx, &gosql.TxOptions{})
+	defer dbApplier.DbMutex.Unlock()
+
+	if binlogEntry.Index == 0 && !binlogEntry.IsOneStmtDDL() {
+		_, err = dbApplier.Db.ExecContext(a.ctx, "begin")
 		if err != nil {
 			return err
 		}
 	}
-	defer func() {
-		dbApplier.DbMutex.Unlock()
-		atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
-	}()
+
+	execQuery := func(query string) error {
+		a.logger.Debug("execQuery", "query", query)
+		_, err = dbApplier.Db.ExecContext(a.ctx, query)
+		if err != nil {
+			errCtx := errors.Wrapf(err, "tx.Exec. gno %v queryBegin %v workerIdx %v",
+				binlogEntry.Coordinates.GetGNO(), g.StrLim(query, 10), workerIdx)
+			if sql.IgnoreError(err) {
+				logger.Warn("Ignore error", "err", errCtx)
+				return nil
+			} else {
+				logger.Error("Exec sql error", "err", errCtx)
+				return errCtx
+			}
+		}
+		return nil
+	}
 
 	queueOrExec := func(item *dmlExecItem) error {
 		// TODO check if shutdown?
@@ -553,23 +569,6 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		if event.DML == common.NotDML {
 			var err error
 			logger.Debug("not dml", "query", event.Query)
-
-			execQuery := func(query string) error {
-				a.logger.Debug("execQuery", "query", query)
-				_, err = dbApplier.Tx.ExecContext(a.ctx, query)
-				if err != nil {
-					errCtx := errors.Wrapf(err, "tx.Exec. gno %v iEvent %v queryBegin %v workerIdx %v",
-						binlogEntry.Coordinates.GetGNO(), i, g.StrLim(query, 10), workerIdx)
-					if sql.IgnoreError(err) {
-						logger.Warn("Ignore error", "err", errCtx)
-						return nil
-					} else {
-						logger.Error("Exec sql error", "err", errCtx)
-						return errCtx
-					}
-				}
-				return nil
-			}
 
 			if event.DtleFlags&common.DtleFlagCreateSchemaIfNotExists != 0 {
 				// TODO CHARACTER SET & COLLATE
@@ -786,13 +785,12 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			}
 		}
 
-		if err := dbApplier.Tx.Commit(); err != nil {
+		if _, err := dbApplier.Db.ExecContext(a.ctx, "commit"); err != nil {
 			return errors.Wrap(err, "dbApplier.Tx.Commit")
 		} else {
 			a.mtsManager.Executed(binlogEntry)
 		}
 		a.inBigTx = false
-		dbApplier.Tx = nil
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
 		}

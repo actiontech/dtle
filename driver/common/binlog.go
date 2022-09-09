@@ -84,6 +84,11 @@ func (b *DataEntry) HasDDL() bool {
 	return false
 }
 
+func (b *DataEntry) IsOneStmtDDL() bool {
+	// most DDL is implicit committing
+	return len(b.Events) == 1 && b.Events[0].DML == NotDML
+}
+
 func (b *DataEntry) IsPartOfBigTx() bool {
 	return !(b.Index == 0 && b.Final)
 }

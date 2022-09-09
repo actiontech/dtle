@@ -128,7 +128,6 @@ type Conn struct {
 
 	PsDeleteExecutedGtid *gosql.Stmt
 	PsInsertExecutedGtid *gosql.Stmt
-	Tx                   *gosql.Tx
 }
 
 func CreateDB(mysql_uri string) (*gosql.DB, error) {
