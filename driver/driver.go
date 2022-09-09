@@ -176,6 +176,8 @@ var (
 			hclspec.NewLiteral(`true`)),
 		"DumpEntryLimit": hclspec.NewDefault(hclspec.NewAttr("DumpEntryLimit", "number", false),
 			hclspec.NewLiteral(`67108864`)),
+		"SetGtidNext": hclspec.NewDefault(hclspec.NewAttr("SetGtidNext", "bool", false),
+			hclspec.NewLiteral(`false`)),
 		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
 			"Host":        hclspec.NewAttr("Host", "string", true),

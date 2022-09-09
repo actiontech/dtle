@@ -521,6 +521,25 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 	dbApplier.DbMutex.Lock()
 	defer dbApplier.DbMutex.Unlock()
 
+	// Note: gtid_next cannot be set when there is an ongoing transaction.
+	if a.mysqlContext.SetGtidNext {
+		_, err = dbApplier.Db.ExecContext(a.ctx, fmt.Sprintf("set gtid_next = '%v:%v' /*dtle*/",
+			binlogEntry.Coordinates.GetSidStr(), binlogEntry.Coordinates.GetGNO()))
+		if err != nil {
+			return errors.Wrap(err, "set gtid_next")
+		}
+
+		defer func() {
+			if err != nil {
+				return
+			}
+			_, err1 := dbApplier.Db.ExecContext(a.ctx, "set gtid_next = 'automatic' /*dtle*/")
+			if err1 != nil {
+				err = errors.Wrapf(err1, "restore gtid_next")
+			}
+		}()
+	}
+
 	if binlogEntry.Index == 0 && !binlogEntry.IsOneStmtDDL() {
 		_, err = dbApplier.Db.ExecContext(a.ctx, "begin")
 		if err != nil {
