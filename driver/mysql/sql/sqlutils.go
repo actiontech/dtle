@@ -129,7 +129,6 @@ type Conn struct {
 
 	PsDeleteExecutedGtid *gosql.Stmt
 	PsInsertExecutedGtid *gosql.Stmt
-	Tx                   *gosql.Tx
 }
 
 type DB struct {
