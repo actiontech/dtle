@@ -720,6 +720,7 @@ func (a *Applier) ValidateGrants() error {
 	foundAll := false
 	foundSuper := false
 	foundDBAll := false
+	foundReplicationApplier := false
 
 	err := sql.QueryRowsMap(a.db, query, func(rowMap sql.RowMap) error {
 		for _, grantData := range rowMap {
@@ -733,6 +734,9 @@ func (a *Applier) ValidateGrants() error {
 			if strings.Contains(grant, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%v`.`%v`",
 				g.DtleSchemaName, g.GtidExecutedTableV4)) {
 				foundDBAll = true
+			}
+			if strings.Contains(grant, "REPLICATION_APPLIER") {
+				foundReplicationApplier = true
 			}
 			if base.StringContainsAll(grant, `ALTER`, `CREATE`, `DELETE`, `DROP`, `INDEX`, `INSERT`, `SELECT`, `TRIGGER`, `UPDATE`, ` ON`) {
 				foundDBAll = true
@@ -760,6 +764,9 @@ func (a *Applier) ValidateGrants() error {
 	if foundSuper {
 		a.logger.Info("User has SUPER privileges")
 		return nil
+	}
+	if a.mysqlContext.SetGtidNext && !foundReplicationApplier {
+		return fmt.Errorf("SetGtidNext = true. REPLICATION_APPLIER (8.0) or SUPER is required")
 	}
 	if foundDBAll {
 		a.logger.Info("User has ALL privileges on *.*")
