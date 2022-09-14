@@ -243,47 +243,43 @@ func (e *Extractor) Run() {
 
 	fullCopy := true
 
-	if e.mysqlContext.Gtid == "" {
-		if e.mysqlContext.AutoGtid {
-			e.logger.Info("using AutoGtid (latest position)")
-			coord, err := base.GetSelfBinlogCoordinates(e.db)
-			if err != nil {
-				e.onError(common.TaskStateDead, err)
-				return
-			}
-			e.mysqlContext.Gtid = coord.GtidSet
-			e.logger.Debug("use auto gtid", "gtidset", coord.GtidSet)
-			fullCopy = false
+	if e.mysqlContext.Gtid != "" {
+		fullCopy = false
+	} else if e.mysqlContext.AutoGtid {
+		e.logger.Info("using AutoGtid (latest position)")
+		coord, err := base.GetSelfBinlogCoordinates(e.db)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
+			return
 		}
-
-		if e.mysqlContext.GtidStart != "" {
-			e.logger.Info("calculating Gtid from GtidStart")
-			coord, err := base.GetSelfBinlogCoordinates(e.db)
-			if err != nil {
-				e.onError(common.TaskStateDead, err)
-				return
-			}
-			e.logger.Info("got mysql gtidset", "gtidset", coord.GtidSet)
-
-			e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
-			if err != nil {
-				e.onError(common.TaskStateDead, err)
-				return
-			}
-			e.logger.Info("got Gtid", "Gtid", e.mysqlContext.Gtid)
-			fullCopy = false
+		e.mysqlContext.Gtid = coord.GtidSet
+		e.logger.Debug("use auto gtid", "gtidset", coord.GtidSet)
+		fullCopy = false
+	} else if e.mysqlContext.GtidStart != "" {
+		e.logger.Info("calculating Gtid from GtidStart")
+		coord, err := base.GetSelfBinlogCoordinates(e.db)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
+			return
 		}
+		e.logger.Info("got mysql gtidset", "gtidset", coord.GtidSet)
 
-		if e.mysqlContext.BinlogFile != "" {
-			fullCopy = false
+		e.mysqlContext.Gtid, err = base.GtidSetDiff(coord.GtidSet, e.mysqlContext.GtidStart)
+		if err != nil {
+			e.onError(common.TaskStateDead, err)
+			return
 		}
+		e.logger.Info("got Gtid", "Gtid", e.mysqlContext.Gtid)
+		fullCopy = false
+	} else if e.mysqlContext.BinlogFile != "" {
+		fullCopy = false
+	}
 
+	if !fullCopy {
 		err = e.storeManager.SaveGtidForJob(e.subject, e.mysqlContext.Gtid)
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
 		}
-	} else {
-		fullCopy = false
 	}
 
 	if err := e.sendSysVarAndSqlMode(); err != nil {
