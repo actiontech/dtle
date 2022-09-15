@@ -142,6 +142,8 @@ type KafkaConfig struct {
 	Topic               string
 	Converter           string
 	TimeZone            string
+	User                string
+	Password            string
 	MessageGroupMaxSize uint64
 	MessageGroupTimeout uint64
 

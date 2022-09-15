@@ -82,7 +82,7 @@ var (
 			hclspec.NewLiteral(`""`)),
 		"memory":          hclspec.NewAttr("memory", "string", false),
 		"big_tx_max_jobs": hclspec.NewAttr("big_tx_max_jobs", "number", false),
-		"log_file":        hclspec.NewDefault(hclspec.NewAttr("log_file", "string", false),
+		"log_file": hclspec.NewDefault(hclspec.NewAttr("log_file", "string", false),
 			hclspec.NewLiteral(`"/var/log/dtle"`)),
 	})
 
@@ -164,6 +164,8 @@ var (
 			"TopicWithSchemaTable": hclspec.NewDefault(hclspec.NewAttr("TopicWithSchemaTable", "bool", false),
 				hclspec.NewLiteral(`true`)),
 			"SchemaChangeTopic": hclspec.NewAttr("SchemaChangeTopic", "string", false),
+			"User":              hclspec.NewAttr("User", "string", false),
+			"Password":          hclspec.NewAttr("SchemaChangeTopic", "string", false),
 		})),
 		// Since each job has its own history, this should be smaller than MySQL default (25000).
 		"DependencyHistorySize": hclspec.NewDefault(hclspec.NewAttr("DependencyHistorySize", "number", false),
@@ -229,8 +231,8 @@ type Driver struct {
 	// logger will log to the Nomad agent
 	logger g.LoggerType
 
-	stand     *stand.StanServer
-	apiServer *httprouter.Router
+	stand            *stand.StanServer
+	apiServer        *httprouter.Router
 	setupApiServerFn func(logger g.LoggerType, driverConfig *DriverConfig) error
 
 	config *DriverConfig
