@@ -1716,16 +1716,16 @@ func DeleteJobV2(c echo.Context, filterJobType DtleJobType) error {
 	})
 }
 
-// @Id GetJobGtidV2
-// @Description get src task current gtid.
+// @Id GetJobPosionV2
+// @Description get src task current gtid/scn.
 // @Tags job
-// @Success 200 {object} models.JobGtidResp
+// @Success 200 {object} models.JobPosionResp
 // @Security ApiKeyAuth
 // @Param job_id query string true "job id"
-// @Router /v2/job/gtid [get]
-func GetJobGtidV2(c echo.Context) error {
-	logger := handler.NewLogger().Named("GetJobGtidV2")
-	reqParam := new(models.GetJobGtidReqV2)
+// @Router /v2/job/posion [get]
+func GetJobPosionV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetJobPosionV2")
+	reqParam := new(models.GetJobPosionReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -1739,14 +1739,29 @@ func GetJobGtidV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	Gtid, err := storeManager.GetGtidForJob(reqParam.JobId)
-	if nil != err {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get job status list failed: %v", handler.ConsulAddr, err)))
+	sourceType, err := storeManager.GetSourceType(reqParam.JobId)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; get job src source type failed: %v", handler.ConsulAddr, err)))
+	}
+	var posion string
+	switch sourceType {
+	case "oracle":
+		scn, _, err := storeManager.GetOracleSCNPosForJob(reqParam.JobId)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get scn failed: %v", handler.ConsulAddr, err)))
+		}
+		posion = fmt.Sprintf("%d", scn)
+	case "mysql":
+		posion, err = storeManager.GetGtidForJob(reqParam.JobId)
+		if nil != err {
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get gtid failed: %v", handler.ConsulAddr, err)))
+		}
+
 	}
 
-	return c.JSON(http.StatusOK, &models.JobGtidResp{
-		Gtid:     Gtid,
-		BaseResp: models.BaseResp{},
+	return c.JSON(http.StatusOK, &models.JobPosionResp{
+		Posion:   posion,
+		BaseResp: models.BuildBaseResp(nil),
 	})
 }
 

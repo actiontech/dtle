@@ -467,13 +467,6 @@ definitions:
       subscription_topic:
         type: string
     type: object
-  models.JobGtidResp:
-    properties:
-      gtid:
-        type: string
-      message:
-        type: string
-    type: object
   models.JobListRespV2:
     properties:
       jobs:
@@ -481,6 +474,13 @@ definitions:
           $ref: '#/definitions/common.JobListItemV2'
         type: array
       message:
+        type: string
+    type: object
+  models.JobPosionResp:
+    properties:
+      message:
+        type: string
+      posion:
         type: string
     type: object
   models.KafkaDestTaskConfig:
@@ -1229,25 +1229,6 @@ paths:
       - ApiKeyAuth: []
       tags:
       - database
-  /v2/job/gtid:
-    get:
-      description: get src task current gtid.
-      operationId: GetJobGtidV2
-      parameters:
-      - description: job id
-        in: query
-        name: job_id
-        required: true
-        type: string
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.JobGtidResp'
-      security:
-      - ApiKeyAuth: []
-      tags:
-      - job
   /v2/job/migration/create:
     post:
       consumes:
@@ -1414,6 +1395,25 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2'
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
+  /v2/job/posion:
+    get:
+      description: get src task current gtid/scn.
+      operationId: GetJobPosionV2
+      parameters:
+      - description: job id
+        in: query
+        name: job_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.JobPosionResp'
       security:
       - ApiKeyAuth: []
       tags:

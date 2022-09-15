@@ -283,12 +283,12 @@ type DeleteJobRespV2 struct {
 	BaseResp
 }
 
-type GetJobGtidReqV2 struct {
+type GetJobPosionReqV2 struct {
 	JobId string `query:"job_id" validate:"required"`
 }
 
-type JobGtidResp struct {
-	Gtid string `json:"gtid"`
+type JobPosionResp struct {
+	Posion string `json:"posion"`
 	BaseResp
 }
 

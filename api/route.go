@@ -119,7 +119,7 @@ func SetupApiServer(logger g.LoggerType, driverConfig *dtle.DriverConfig) (err e
 	v2Router.GET("/database/schemas", v2.ListDatabaseSchemasV2)
 	v2Router.GET("/database/columns", v2.ListDatabaseColumnsV2)
 	v2Router.GET("/database/instance_connection", v2.ConnectionV2)
-	v2Router.GET("/job/gtid", v2.GetJobGtidV2)
+	v2Router.GET("/job/posion", v2.GetJobPosionV2)
 	v2Router.GET("/user/list", v2.UserListV2)
 	v2Router.POST("/user/create", v2.CreateUserV2)
 	v2Router.POST("/user/update", v2.UpdateUserV2)
