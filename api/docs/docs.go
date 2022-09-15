@@ -263,37 +263,6 @@ var doc = `{
                 }
             }
         },
-        "/v2/job/gtid": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "get src task current gtid.",
-                "tags": [
-                    "job"
-                ],
-                "operationId": "GetJobGtidV2",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "job id",
-                        "name": "job_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.JobGtidResp"
-                        }
-                    }
-                }
-            }
-        },
         "/v2/job/migration/create": {
             "post": {
                 "security": [
@@ -565,6 +534,37 @@ var doc = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.CreateOrUpdateMysqlToMysqlJobRespV2"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/job/posion": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "get src task current gtid/scn.",
+                "tags": [
+                    "job"
+                ],
+                "operationId": "GetJobPosionV2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "job id",
+                        "name": "job_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.JobPosionResp"
                         }
                     }
                 }
@@ -2830,17 +2830,6 @@ var doc = `{
                 }
             }
         },
-        "models.JobGtidResp": {
-            "type": "object",
-            "properties": {
-                "gtid": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "models.JobListRespV2": {
             "type": "object",
             "properties": {
@@ -2851,6 +2840,17 @@ var doc = `{
                     }
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.JobPosionResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "posion": {
                     "type": "string"
                 }
             }
