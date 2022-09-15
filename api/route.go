@@ -85,7 +85,7 @@ func SetupApiServer(logger g.LoggerType, driverConfig *dtle.DriverConfig) (err e
 	e.POST("/v2/loginWithoutVerifyCode", v2.LoginWithoutVerifyCodeV2)
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
-	v2Router.POST("/log/level", v2.UpdateLogLevelV2)
+	e.POST("/v2/log/level", v2.UpdateLogLevelV2)
 	v2Router.GET("/jobs/migration", v2.MigrationJobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
 	v2Router.POST("/job/migration/create", v2.CreateMigrationJobV2)
@@ -266,7 +266,7 @@ var whiteList = []string{
 	"/v2/mysql/schemas",
 	"/v2/mysql/columns",
 	"/v2/mysql/instance_connection",
-	"/v2/job/gtid",
+	"/v2/job/position",
 	"/v2/user/list_action",
 	"/v2/user/current_user",
 	"/v2/user/reset_password",
