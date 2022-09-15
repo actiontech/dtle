@@ -73,6 +73,8 @@ func NewKafkaManager(kcfg *common.KafkaConfig) (*KafkaManager, error) {
 	}
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
+	config.Net.SASL.User = kcfg.User
+	config.Net.SASL.Password = kcfg.Password
 
 	k.producer, err = sarama.NewSyncProducer(kcfg.Brokers, config)
 	if err != nil {
