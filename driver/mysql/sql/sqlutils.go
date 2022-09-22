@@ -125,7 +125,6 @@ func (this *RowMap) GetBool(key string) bool {
 type Conn struct {
 	DbMutex *sync.Mutex
 	Db      *gosql.Conn
-	Fde     string
 
 	PsDeleteExecutedGtid *gosql.Stmt
 	PsInsertExecutedGtid *gosql.Stmt
@@ -134,12 +133,6 @@ type Conn struct {
 func (c *Conn) SetGtidNextAutomatic(ctx context.Context) (err error) {
 	_, err = c.Db.ExecContext(ctx, "set gtid_next = 'automatic' /*dtle*/")
 	return err
-}
-
-type DB struct {
-	DbMutex *sync.Mutex
-	Db      *gosql.DB
-	Fde     string
 }
 
 func CreateDB(mysql_uri string) (*gosql.DB, error) {
