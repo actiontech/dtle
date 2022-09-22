@@ -125,17 +125,10 @@ func (this *RowMap) GetBool(key string) bool {
 type Conn struct {
 	DbMutex *sync.Mutex
 	Db      *gosql.Conn
-	Fde     string
 
 	PsDeleteExecutedGtid *gosql.Stmt
 	PsInsertExecutedGtid *gosql.Stmt
 	Tx                   *gosql.Tx
-}
-
-type DB struct {
-	DbMutex *sync.Mutex
-	Db      *gosql.DB
-	Fde     string
 }
 
 func CreateDB(mysql_uri string) (*gosql.DB, error) {

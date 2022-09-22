@@ -554,6 +554,8 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 						newColumn.Default = []byte(v)
 					case fmt.Stringer:
 						newColumn.Default = v.String()
+					case nil:
+						newColumn.Default = nil
 					default:
 						newColumn.Default = nil
 						g.Logger.Warn("GetTableColumnsSqle: unknown type for a default value",
