@@ -36,7 +36,7 @@ func main() {
 
 	//sql := "drop view a.v1"
 	//sql := "alter view a.v1 as select * from a.a"
-	sql := "CREATE DATABASE `a` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */"
+	sql := "CREATE DATABASE a DEFAULT CHARACTER SET gb2312"
 	ast, err := p.ParseOneStmt(sql, "", "")
 
 	u.PanicIfErr(err)

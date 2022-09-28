@@ -57,9 +57,13 @@ var charsetInfos = map[string]*Charset{
 	CharsetASCII:   {CharsetASCII, CollationASCII, make(map[string]*Collation), "US ASCII", 1},
 	CharsetLatin1:  {CharsetLatin1, CollationLatin1, make(map[string]*Collation), "Latin1", 1},
 	CharsetBin:     {CharsetBin, CollationBin, make(map[string]*Collation), "binary", 1},
-	CharsetGBK:     {CharsetGBK, CollationGBKBin, make(map[string]*Collation), "gbk", 1},
+	CharsetGBK:     {CharsetGBK, CollationGBKBin, make(map[string]*Collation), "gbk", 4},
 	CharsetLatin2:  {CharsetLatin2, CollationLatin2, make(map[string]*Collation), "Latin2", 1},
 	CharsetUTF32:   {CharsetUTF32, CollationUTF32General, make(map[string]*Collation), "UTF-32", 4},
+	CharsetUTF16:   {CharsetUTF16, CollationUTF16General, make(map[string]*Collation), "UTF-16", 4},
+	CharsetUTF16LE: {CharsetUTF16LE, CollationUTF16LEGeneral, make(map[string]*Collation), "UTF-16LE", 4},
+	CharsetGB2312:  {CharsetGB2312, CollationGB2312Chinese, make(map[string]*Collation), "gb2312", 2},
+	CharsetGB18030: {CharsetGB18030, CollationGB18030Chinese, make(map[string]*Collation), "gb18030",4},
 }
 
 // All the names supported collations should be in the following table.
@@ -72,6 +76,9 @@ var supportedCollationNames = map[string]struct{}{
 	CollationGBKBin:       {},
 	CollationLatin2:       {},
 	CollationUTF32General: {},
+
+	CollationGB2312Bin:     {},
+	CollationGB2312Chinese: {},
 	// TODO other collations?
 }
 
@@ -203,7 +210,10 @@ const (
 	// CollationLatin1 is the default collation for CharsetLatin1.
 	CollationLatin1 = "latin1_bin"
 
-	CollationGBKBin = "gbk_bin"
+	CollationGBKBin        = "gbk_bin"
+	CollationGB2312Chinese = "gb2312_chinese_ci"
+	CollationGB18030Chinese = "gb18030_chinese_ci"
+	CollationGB2312Bin     = "gb2312_bin"
 
 	CharsetARMSCII8          = "armscii8"
 	CharsetBig5              = "big5"
@@ -246,7 +256,8 @@ const (
 	CollationUTF32General    = "utf32_general_ci"
 	CollationUTF32Unicode    = "utf32_unicode_ci"
 	CollationUTF32Unicode520 = "utf32_unicode_520_ci"
-
+	CollationUTF16General    = "utf16_general_ci"
+	CollationUTF16LEGeneral    = "utf16le_general_ci"
 	CollationLatin2 = "latin2_bin"
 )
 
