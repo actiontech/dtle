@@ -151,12 +151,6 @@ func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, lo
 func (e *Extractor) Run() {
 	var err error
 
-	err = e.storeManager.PutSourceType(e.subject, "mysql")
-	if err != nil {
-		e.onError(common.TaskStateDead, errors.Wrap(err, "PutSourceType"))
-		return
-	}
-
 	{
 		jobStatus, _ := e.storeManager.GetJobStatus(e.subject)
 		if jobStatus == common.TargetGtidFinished {
@@ -198,6 +192,14 @@ func (e *Extractor) Run() {
 		}
 		e.logger.Info("after WaitOnJob", "job2", e.mysqlContext.WaitOnJob, "firstWait", firstWait)
 	}
+
+	// PutConfig before WatchNats
+	err = e.storeManager.PutConfig(e.subject, e.mysqlContext)
+	if err != nil {
+		e.onError(common.TaskStateDead, errors.Wrap(err, "PutConfig"))
+		return
+	}
+
 	e.natsAddr, err = e.storeManager.SrcWatchNats(e.subject, e.shutdownCh, func(err error) {
 		e.onError(common.TaskStateDead, err)
 	})
@@ -212,7 +214,7 @@ func (e *Extractor) Run() {
 		return
 	}
 
-	e.logger.Info("Extract binlog events", "mysql", e.mysqlContext.ConnectionConfig.GetAddr())
+	e.logger.Info("Extract binlog events", "mysql", e.mysqlContext.SrcConnectionConfig.GetAddr())
 
 	// Validate job arguments
 	/*	{
@@ -232,6 +234,7 @@ func (e *Extractor) Run() {
 		e.onError(common.TaskStateDead, err)
 		return
 	}
+
 	e.logger.Info("initDBConnections")
 	if err := e.initDBConnections(); err != nil {
 		e.logger.Error("initiateInspector error", "err", err)
@@ -700,7 +703,7 @@ func (e *Extractor) initiateStreaming() error {
 
 //--EventsStreamer--
 func (e *Extractor) initDBConnections() (err error) {
-	eventsStreamerUri := e.mysqlContext.ConnectionConfig.GetDBUri()
+	eventsStreamerUri := e.mysqlContext.SrcConnectionConfig.GetDBUri()
 	if e.db, err = sql.CreateDB(eventsStreamerUri); err != nil {
 		return err
 	}
@@ -710,7 +713,7 @@ func (e *Extractor) initDBConnections() (err error) {
 		return someSysVars.Err
 	}
 	e.logger.Info("Connection validated", "on",
-		hclog.Fmt("%s:%d", e.mysqlContext.ConnectionConfig.Host, e.mysqlContext.ConnectionConfig.Port))
+		hclog.Fmt("%s:%d", e.mysqlContext.SrcConnectionConfig.Host, e.mysqlContext.SrcConnectionConfig.Port))
 
 	e.MySQLVersion = someSysVars.Version
 	e.lowerCaseTableNames = someSysVars.LowerCaseTableNames
@@ -728,7 +731,7 @@ func (e *Extractor) initDBConnections() (err error) {
 			}
 		}
 		// https://github.com/go-sql-driver/mysql#system-variables
-		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.ConnectionConfig.GetSingletonDBUri(),
+		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.SrcConnectionConfig.GetSingletonDBUri(),
 			getTxIsolationVarName(e.mysqlVersionDigit))
 		if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
 			return err

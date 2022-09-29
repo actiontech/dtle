@@ -570,7 +570,7 @@ func buildDatabaseDestTaskConfigMap(config *models.DestTaskConfig) map[string]in
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.BulkInsert1, "BulkInsert1")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.BulkInsert2, "BulkInsert2")
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.SetGtidNext, "SetGtidNext")
-	taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
+	taskConfigInNomadFormat["DestConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 
 	return taskConfigInNomadFormat
 }
@@ -594,7 +594,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]inte
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.Gtid, "Gtid")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.ExpandSyntaxSupport, "ExpandSyntaxSupport")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.DumpEntryLimit, "DumpEntryLimit")
-		taskConfigInNomadFormat["ConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
+		taskConfigInNomadFormat["SrcConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 	}
 	// for Oracle
 	if config.OracleSrcTaskConfig != nil {
@@ -997,12 +997,12 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 		connectionConfig.User = internalTaskConfig.OracleConfig.User
 		connectionConfig.Password = internalTaskConfig.OracleConfig.Password
 		connectionConfig.ServiceName = internalTaskConfig.OracleConfig.ServiceName
-	} else if internalTaskConfig.ConnectionConfig != nil {
+	} else if internalTaskConfig.SrcConnectionConfig != nil {
 		connectionConfig.DatabaseType = "MySQL"
-		connectionConfig.Host = internalTaskConfig.ConnectionConfig.Host
-		connectionConfig.Port = internalTaskConfig.ConnectionConfig.Port
-		connectionConfig.User = internalTaskConfig.ConnectionConfig.User
-		connectionConfig.Password = internalTaskConfig.ConnectionConfig.Password
+		connectionConfig.Host = internalTaskConfig.SrcConnectionConfig.Host
+		connectionConfig.Port = internalTaskConfig.SrcConnectionConfig.Port
+		connectionConfig.User = internalTaskConfig.SrcConnectionConfig.User
+		connectionConfig.Password = internalTaskConfig.SrcConnectionConfig.Password
 		srcTaskDetail.TaskConfig.MysqlSrcTaskConfig = &models.MysqlSrcTaskConfig{
 			ExpandSyntaxSupport: internalTaskConfig.ExpandSyntaxSupport,
 			AutoGtid:            internalTaskConfig.AutoGtid,
@@ -1025,10 +1025,10 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 
 func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfig, allocsFromNomad []nomadApi.Allocation) (destTaskDetail models.MysqlDestTaskDetail) {
 	mysqlConnectionConfig := &models.DatabaseConnectionConfig{
-		Host:         internalTaskConfig.ConnectionConfig.Host,
-		Port:         internalTaskConfig.ConnectionConfig.Port,
-		User:         internalTaskConfig.ConnectionConfig.User,
-		Password:     internalTaskConfig.ConnectionConfig.Password,
+		Host:         internalTaskConfig.DestConnectionConfig.Host,
+		Port:         internalTaskConfig.DestConnectionConfig.Port,
+		User:         internalTaskConfig.DestConnectionConfig.User,
+		Password:     internalTaskConfig.DestConnectionConfig.Password,
 		DatabaseType: "MySQL",
 	}
 	mysqlDestTaskConfig := &models.MysqlDestTaskConfig{
@@ -1750,24 +1750,17 @@ func GetJobPositionV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul failed: %v", handler.ConsulAddr, err)))
 	}
-	sourceType, err := storeManager.GetSourceType(reqParam.JobId)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; get job src source type failed: %v", handler.ConsulAddr, err)))
-	}
 	var position string
-	switch sourceType {
-	case "oracle":
-		scn, _, err := storeManager.GetOracleSCNPosForJob(reqParam.JobId)
-		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get scn failed: %v", handler.ConsulAddr, err)))
-		}
-		position = fmt.Sprintf("%d", scn)
-	case "mysql":
-		position, err = storeManager.GetGtidForJob(reqParam.JobId)
-		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get gtid failed: %v", handler.ConsulAddr, err)))
-		}
 
+	// TODO use 1 key for either task types
+	//scn, _, err := storeManager.GetOracleSCNPosForJob(reqParam.JobId)
+	//if nil != err {
+	//	return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get scn failed: %v", handler.ConsulAddr, err)))
+	//}
+	//position = fmt.Sprintf("%d", scn)
+	position, err = storeManager.GetGtidForJob(reqParam.JobId)
+	if nil != err {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get gtid failed: %v", handler.ConsulAddr, err)))
 	}
 
 	return c.JSON(http.StatusOK, &models.JobPositionResp{

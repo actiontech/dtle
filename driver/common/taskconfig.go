@@ -70,8 +70,10 @@ type DtleTaskConfig struct {
 	SkipCreateDbTable    bool                          `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck   bool                          `codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy  bool                          `codec:"SkipIncrementalCopy"`
-	ConnectionConfig     *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
+	SrcConnectionConfig  *mysqlconfig.ConnectionConfig `codec:"SrcConnectionConfig"`
+	DestConnectionConfig *mysqlconfig.ConnectionConfig `codec:"DestConnectionConfig"`
 	KafkaConfig          *KafkaConfig                  `codec:"KafkaConfig"`
+	DestType             string `codec:"DestType"`
 	// support oracle extractor/applier
 	OracleConfig *config.OracleConfig `codec:"OracleConfig"`
 }

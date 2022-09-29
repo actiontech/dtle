@@ -156,9 +156,10 @@ func NewExtractorOracle(execCtx *common.ExecContext, cfg *common.MySQLDriverConf
 func (e *ExtractorOracle) Run() {
 	var err error
 
-	err = e.storeManager.PutSourceType(e.subject, "oracle")
+	// PutConfig before WatchNats
+	err = e.storeManager.PutConfig(e.subject, e.mysqlContext)
 	if err != nil {
-		e.onError(common.TaskStateDead, errors.Wrap(err, "PutSourceType"))
+		e.onError(common.TaskStateDead, errors.Wrap(err, "PutConfig"))
 		return
 	}
 

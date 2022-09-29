@@ -283,13 +283,17 @@ func (a *Applier) Run() {
 		return
 	}
 
-	sourceType, err := a.storeManager.GetSourceType(a.subject)
+	a.mysqlContext, err = a.storeManager.GetConfig(a.subject)
 	if err != nil {
-		a.onError(common.TaskStateDead, errors.Wrap(err, "watchSourceType"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
 		return
 	}
 
-	if sourceType == "mysql" {
+	var sourceType string
+	if a.mysqlContext.OracleConfig != nil {
+		sourceType = "oracle"
+	} else {
+		sourceType = "mysql"
 		a.prepareGTID()
 	}
 
@@ -656,7 +660,7 @@ func (a *Applier) publishProgress() {
 }
 
 func (a *Applier) InitDB() (err error) {
-	applierUri := a.mysqlContext.ConnectionConfig.GetDBUri()
+	applierUri := a.mysqlContext.DestConnectionConfig.GetDBUri()
 	if a.db, err = sql.CreateDB(applierUri); err != nil {
 		return err
 	}
@@ -679,7 +683,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return someSysVars.Err
 	}
 	a.logger.Debug("Connection validated", "on",
-		hclog.Fmt("%s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port))
+		hclog.Fmt("%s:%d", a.mysqlContext.DestConnectionConfig.Host, a.mysqlContext.DestConnectionConfig.Port))
 
 	a.MySQLVersion = someSysVars.Version
 	a.lowerCaseTableNames = someSysVars.LowerCaseTableNames
@@ -695,7 +699,7 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("after ValidateGrants")
 
-	a.logger.Info("Initiated", "mysql", a.mysqlContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
+	a.logger.Info("Initiated", "mysql", a.mysqlContext.DestConnectionConfig.GetAddr(), "version", a.MySQLVersion)
 
 	return nil
 }

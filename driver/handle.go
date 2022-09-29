@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -195,19 +196,23 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 		}
 	case common.TaskTypeDest:
 		h.logger.Debug("found dest", "allConfig", h.driverConfig)
-		if h.driverConfig.KafkaConfig != nil {
-			h.logger.Debug("found kafka", "KafkaConfig", h.driverConfig.KafkaConfig)
+		switch strings.ToLower(h.driverConfig.DestType) {
+		case "kafka":
 			runner, err = kafka.NewKafkaRunner(ctx, h.driverConfig.KafkaConfig, h.logger,
 				d.storeManager, d.config.NatsAdvertise, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
 			}
-		} else {
+		case "mysql":
 			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
 				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewApplier")
 			}
+		case "":
+			return nil, fmt.Errorf("DestType for dest task is empty")
+		default:
+			return nil, fmt.Errorf("unknown DestType for dest task")
 		}
 	case common.TaskTypeUnknown:
 		return nil, fmt.Errorf("unknown processor type: %+v", h.taskConfig.Name)

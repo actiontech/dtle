@@ -241,10 +241,10 @@ func NewBinlogReader(
 		binlogSyncerConfig := replication.BinlogSyncerConfig{
 			ServerID:       uint32(binlogReader.serverId),
 			Flavor:         "mysql",
-			Host:           cfg.ConnectionConfig.Host,
-			Port:           uint16(cfg.ConnectionConfig.Port),
-			User:           cfg.ConnectionConfig.User,
-			Password:       cfg.ConnectionConfig.Password,
+			Host:           cfg.SrcConnectionConfig.Host,
+			Port:           uint16(cfg.SrcConnectionConfig.Port),
+			User:           cfg.SrcConnectionConfig.User,
+			Password:       cfg.SrcConnectionConfig.Password,
 			RawModeEnabled: false,
 			UseDecimal:     true, // my mod: use string instead of Decimal if UseDecimal = true
 
@@ -288,10 +288,10 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates
 
 	if b.mysqlContext.BinlogRelay {
 		dbConfig := dmconfig.DBConfig{
-			Host:     b.mysqlContext.ConnectionConfig.Host,
-			Port:     b.mysqlContext.ConnectionConfig.Port,
-			User:     b.mysqlContext.ConnectionConfig.User,
-			Password: b.mysqlContext.ConnectionConfig.Password,
+			Host:     b.mysqlContext.SrcConnectionConfig.Host,
+			Port:     b.mysqlContext.SrcConnectionConfig.Port,
+			User:     b.mysqlContext.SrcConnectionConfig.User,
+			Password: b.mysqlContext.SrcConnectionConfig.Password,
 		}
 
 		relayConfig := &dmrelay.Config{
