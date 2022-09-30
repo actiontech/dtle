@@ -20,7 +20,7 @@ require (
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
 	github.com/julienschmidt/httprouter v1.2.0
-	github.com/labstack/echo/v4 v4.4.0
+	github.com/labstack/echo/v4 v4.9.0
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mitchellh/mapstructure v1.3.3
 	github.com/mojocn/base64Captcha v1.3.4

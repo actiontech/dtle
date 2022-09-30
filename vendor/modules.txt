@@ -221,6 +221,8 @@ github.com/godror/knownpb/timestamppb
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
+# github.com/golang-jwt/jwt v3.2.2+incompatible
+github.com/golang-jwt/jwt
 # github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 github.com/golang/freetype
 github.com/golang/freetype/raster
@@ -381,11 +383,11 @@ github.com/klauspost/compress/huff0
 github.com/klauspost/compress/s2
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/labstack/echo/v4 v4.4.0
+# github.com/labstack/echo/v4 v4.9.0
 ## explicit
 github.com/labstack/echo/v4
 github.com/labstack/echo/v4/middleware
-# github.com/labstack/gommon v0.3.0
+# github.com/labstack/gommon v0.3.1
 github.com/labstack/gommon/bytes
 github.com/labstack/gommon/color
 github.com/labstack/gommon/log
@@ -403,9 +405,9 @@ github.com/lytics/datemath
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
-# github.com/mattn/go-colorable v0.1.8
+# github.com/mattn/go-colorable v0.1.11
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.12
+# github.com/mattn/go-isatty v0.0.14
 github.com/mattn/go-isatty
 # github.com/mattn/go-runewidth v0.0.12
 github.com/mattn/go-runewidth

@@ -1,5 +1,162 @@
 # Changelog
 
+## v4.9.0 - 2022-09-04
+
+**Security**
+
+* Fix open redirect vulnerability in handlers serving static directories (e.Static, e.StaticFs, echo.StaticDirectoryHandler) [#2260](https://github.com/labstack/echo/pull/2260)
+
+**Enhancements**
+
+* Allow configuring ErrorHandler in CSRF middleware [#2257](https://github.com/labstack/echo/pull/2257)
+* Replace HTTP method constants in tests with stdlib constants [#2247](https://github.com/labstack/echo/pull/2247)
+
+
+## v4.8.0 - 2022-08-10
+
+**Most notable things**
+
+You can now add any arbitrary HTTP method type as a route [#2237](https://github.com/labstack/echo/pull/2237)
+```go
+e.Add("COPY", "/*", func(c echo.Context) error 
+  return c.String(http.StatusOK, "OK COPY")
+})
+```
+
+You can add custom 404 handler for specific paths [#2217](https://github.com/labstack/echo/pull/2217)
+```go
+e.RouteNotFound("/*", func(c echo.Context) error { return c.NoContent(http.StatusNotFound) })
+
+g := e.Group("/images")
+g.RouteNotFound("/*", func(c echo.Context) error { return c.NoContent(http.StatusNotFound) })
+```
+
+**Enhancements**
+
+* Add new value binding methods (UnixTimeMilli,TextUnmarshaler,JSONUnmarshaler) to Valuebinder [#2127](https://github.com/labstack/echo/pull/2127)
+* Refactor: body_limit middleware unit test [#2145](https://github.com/labstack/echo/pull/2145)
+* Refactor: Timeout mw: rework how test waits for timeout. [#2187](https://github.com/labstack/echo/pull/2187)
+* BasicAuth middleware returns 500 InternalServerError on invalid base64 strings but should return 400 [#2191](https://github.com/labstack/echo/pull/2191)
+* Refactor: duplicated findStaticChild process at findChildWithLabel [#2176](https://github.com/labstack/echo/pull/2176)
+* Allow different param names in different methods with same path scheme [#2209](https://github.com/labstack/echo/pull/2209)
+* Add support for registering handlers for different 404 routes [#2217](https://github.com/labstack/echo/pull/2217)
+* Middlewares should use errors.As() instead of type assertion on HTTPError [#2227](https://github.com/labstack/echo/pull/2227)
+* Allow arbitrary HTTP method types to be added as routes [#2237](https://github.com/labstack/echo/pull/2237)
+
+## v4.7.2 - 2022-03-16
+
+**Fixes**
+
+* Fix nil pointer exception when calling Start again after address binding error [#2131](https://github.com/labstack/echo/pull/2131)
+* Fix CSRF middleware not being able to extract token from multipart/form-data form [#2136](https://github.com/labstack/echo/pull/2136)
+* Fix Timeout middleware write race [#2126](https://github.com/labstack/echo/pull/2126)
+
+**Enhancements**
+
+* Recover middleware should not log panic for aborted handler [#2134](https://github.com/labstack/echo/pull/2134)
+
+
+## v4.7.1 - 2022-03-13
+
+**Fixes**
+
+* Fix `e.Static`, `.File()`, `c.Attachment()` being picky with paths starting with `./`, `../` and `/` after 4.7.0 introduced echo.Filesystem support (Go1.16+) [#2123](https://github.com/labstack/echo/pull/2123)
+
+**Enhancements**
+
+* Remove some unused code [#2116](https://github.com/labstack/echo/pull/2116)
+
+
+## v4.7.0 - 2022-03-01
+
+**Enhancements**
+
+* Add JWT, KeyAuth, CSRF multivalue extractors [#2060](https://github.com/labstack/echo/pull/2060)
+* Add LogErrorFunc to recover middleware [#2072](https://github.com/labstack/echo/pull/2072)
+* Add support for HEAD method query params binding [#2027](https://github.com/labstack/echo/pull/2027)
+* Improve filesystem support with echo.FileFS, echo.StaticFS, group.FileFS, group.StaticFS [#2064](https://github.com/labstack/echo/pull/2064)
+
+**Fixes**
+
+* Fix X-Real-IP bug, improve tests [#2007](https://github.com/labstack/echo/pull/2007)
+* Minor syntax fixes [#1994](https://github.com/labstack/echo/pull/1994), [#2102](https://github.com/labstack/echo/pull/2102), [#2102](https://github.com/labstack/echo/pull/2102)
+
+**General**
+
+* Add cache-control and connection headers [#2103](https://github.com/labstack/echo/pull/2103)
+* Add Retry-After header constant [#2078](https://github.com/labstack/echo/pull/2078)
+* Upgrade `go` directive in `go.mod` to 1.17 [#2049](https://github.com/labstack/echo/pull/2049)
+* Add Pagoda [#2077](https://github.com/labstack/echo/pull/2077) and Souin [#2069](https://github.com/labstack/echo/pull/2069) to 3rd-party middlewares in README
+
+## v4.6.3 - 2022-01-10
+
+**Fixes**
+
+* Fixed Echo version number in greeting message which was not incremented to `4.6.2` [#2066](https://github.com/labstack/echo/issues/2066)
+
+
+## v4.6.2 - 2022-01-08
+
+**Fixes**
+
+* Fixed route containing escaped colon should be matchable but is not matched to request path [#2047](https://github.com/labstack/echo/pull/2047)
+* Fixed a problem that returned wrong content-encoding when the gzip compressed content was empty. [#1921](https://github.com/labstack/echo/pull/1921)
+* Update (test) dependencies [#2021](https://github.com/labstack/echo/pull/2021)
+
+
+**Enhancements**
+
+* Add support for configurable target header for the request_id middleware [#2040](https://github.com/labstack/echo/pull/2040)
+* Change decompress middleware to use stream decompression instead of buffering [#2018](https://github.com/labstack/echo/pull/2018)
+* Documentation updates
+
+
+## v4.6.1 - 2021-09-26
+
+**Enhancements**
+
+* Add start time to request logger middleware values [#1991](https://github.com/labstack/echo/pull/1991)
+
+## v4.6.0 - 2021-09-20
+
+Introduced a new [request logger](https://github.com/labstack/echo/blob/master/middleware/request_logger.go) middleware 
+to help with cases when you want to use some other logging library in your application.
+
+**Fixes**
+
+* fix timeout middleware warning: superfluous response.WriteHeader [#1905](https://github.com/labstack/echo/issues/1905)
+
+**Enhancements**
+
+* Add Cookie to KeyAuth middleware's KeyLookup [#1929](https://github.com/labstack/echo/pull/1929)
+* JWT middleware should ignore case of auth scheme in request header [#1951](https://github.com/labstack/echo/pull/1951)
+* Refactor default error handler to return first if response is already committed [#1956](https://github.com/labstack/echo/pull/1956)
+* Added request logger middleware which helps to use custom logger library for logging requests. [#1980](https://github.com/labstack/echo/pull/1980)
+* Allow escaping of colon in route path so Google Cloud API "custom methods" could be implemented [#1988](https://github.com/labstack/echo/pull/1988)
+
+## v4.5.0 - 2021-08-01
+
+**Important notes**
+
+A **BREAKING CHANGE** is introduced for JWT middleware users.
+The JWT library used for the JWT middleware had to be changed from [github.com/dgrijalva/jwt-go](https://github.com/dgrijalva/jwt-go) to
+[github.com/golang-jwt/jwt](https://github.com/golang-jwt/jwt) due former library being unmaintained and affected by security
+issues.
+The [github.com/golang-jwt/jwt](https://github.com/golang-jwt/jwt) project is a drop-in replacement, but supports only the latest 2 Go versions.
+So for JWT middleware users Go 1.15+ is required. For detailed information please read [#1940](https://github.com/labstack/echo/discussions/)
+
+To change the library imports in all .go files in your project replace all occurrences of `dgrijalva/jwt-go` with `golang-jwt/jwt`.
+
+For Linux CLI you can use:
+```bash
+find -type f -name "*.go" -exec sed -i "s/dgrijalva\/jwt-go/golang-jwt\/jwt/g" {} \;
+go mod tidy
+```
+
+**Fixes**
+
+* Change JWT library to `github.com/golang-jwt/jwt` [#1946](https://github.com/labstack/echo/pull/1946)
+
 ## v4.4.0 - 2021-07-12
 
 **Fixes**
