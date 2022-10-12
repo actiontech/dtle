@@ -2770,6 +2770,17 @@ var doc = `{
                 }
             }
         },
+        "models.DumpProgress": {
+            "type": "object",
+            "properties": {
+                "exec_row_count": {
+                    "type": "integer"
+                },
+                "total_row_count": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.GetTaskProgressRespV2": {
             "type": "object",
             "properties": {
@@ -2809,6 +2820,9 @@ var doc = `{
             "properties": {
                 "delay": {
                     "type": "integer"
+                },
+                "dump_progress": {
+                    "$ref": "#/definitions/models.DumpProgress"
                 },
                 "job_create_time": {
                     "type": "string"
