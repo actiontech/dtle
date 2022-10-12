@@ -523,7 +523,7 @@
                 }
             }
         },
-        "/v2/job/posion": {
+        "/v2/job/position": {
             "get": {
                 "security": [
                     {
@@ -534,7 +534,7 @@
                 "tags": [
                     "job"
                 ],
-                "operationId": "GetJobPosionV2",
+                "operationId": "GetJobPositionV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -548,7 +548,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.JobPosionResp"
+                            "$ref": "#/definitions/models.JobPositionResp"
                         }
                     }
                 }
@@ -2828,13 +2828,13 @@
                 }
             }
         },
-        "models.JobPosionResp": {
+        "models.JobPositionResp": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string"
                 },
-                "posion": {
+                "position": {
                     "type": "string"
                 }
             }

@@ -539,7 +539,7 @@ var doc = `{
                 }
             }
         },
-        "/v2/job/posion": {
+        "/v2/job/position": {
             "get": {
                 "security": [
                     {
@@ -550,7 +550,7 @@ var doc = `{
                 "tags": [
                     "job"
                 ],
-                "operationId": "GetJobPosionV2",
+                "operationId": "GetJobPositionV2",
                 "parameters": [
                     {
                         "type": "string",
@@ -564,7 +564,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.JobPosionResp"
+                            "$ref": "#/definitions/models.JobPositionResp"
                         }
                     }
                 }
@@ -2844,13 +2844,13 @@ var doc = `{
                 }
             }
         },
-        "models.JobPosionResp": {
+        "models.JobPositionResp": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string"
                 },
-                "posion": {
+                "position": {
                     "type": "string"
                 }
             }
