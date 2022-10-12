@@ -476,11 +476,11 @@ definitions:
       message:
         type: string
     type: object
-  models.JobPosionResp:
+  models.JobPositionResp:
     properties:
       message:
         type: string
-      posion:
+      position:
         type: string
     type: object
   models.KafkaDestTaskConfig:
@@ -1399,10 +1399,10 @@ paths:
       - ApiKeyAuth: []
       tags:
       - job
-  /v2/job/posion:
+  /v2/job/position:
     get:
       description: get src task current gtid/scn.
-      operationId: GetJobPosionV2
+      operationId: GetJobPositionV2
       parameters:
       - description: job id
         in: query
@@ -1413,7 +1413,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.JobPosionResp'
+            $ref: '#/definitions/models.JobPositionResp'
       security:
       - ApiKeyAuth: []
       tags:

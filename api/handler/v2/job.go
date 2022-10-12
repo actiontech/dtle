@@ -1716,16 +1716,16 @@ func DeleteJobV2(c echo.Context, filterJobType DtleJobType) error {
 	})
 }
 
-// @Id GetJobPosionV2
+// @Id GetJobPositionV2
 // @Description get src task current gtid/scn.
 // @Tags job
-// @Success 200 {object} models.JobPosionResp
+// @Success 200 {object} models.JobPositionResp
 // @Security ApiKeyAuth
 // @Param job_id query string true "job id"
-// @Router /v2/job/posion [get]
-func GetJobPosionV2(c echo.Context) error {
-	logger := handler.NewLogger().Named("GetJobPosionV2")
-	reqParam := new(models.GetJobPosionReqV2)
+// @Router /v2/job/position [get]
+func GetJobPositionV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("GetJobPositionV2")
+	reqParam := new(models.GetJobPositionReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
@@ -1743,24 +1743,24 @@ func GetJobPosionV2(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; get job src source type failed: %v", handler.ConsulAddr, err)))
 	}
-	var posion string
+	var position string
 	switch sourceType {
 	case "oracle":
 		scn, _, err := storeManager.GetOracleSCNPosForJob(reqParam.JobId)
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get scn failed: %v", handler.ConsulAddr, err)))
 		}
-		posion = fmt.Sprintf("%d", scn)
+		position = fmt.Sprintf("%d", scn)
 	case "mysql":
-		posion, err = storeManager.GetGtidForJob(reqParam.JobId)
+		position, err = storeManager.GetGtidForJob(reqParam.JobId)
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v ; get gtid failed: %v", handler.ConsulAddr, err)))
 		}
 
 	}
 
-	return c.JSON(http.StatusOK, &models.JobPosionResp{
-		Posion:   posion,
+	return c.JSON(http.StatusOK, &models.JobPositionResp{
+		Position: position,
 		BaseResp: models.BuildBaseResp(nil),
 	})
 }
