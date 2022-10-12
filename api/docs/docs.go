@@ -3003,6 +3003,9 @@ var doc = `{
                 "parallel_workers": {
                     "type": "integer"
                 },
+                "set_gtid_next": {
+                    "type": "boolean"
+                },
                 "use_my_sql_dependency": {
                     "type": "boolean"
                 }
