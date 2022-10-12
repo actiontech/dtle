@@ -33,6 +33,12 @@ type JobBaseInfo struct {
 	JobCreateTime     string           `json:"job_create_time"`
 	JobSteps          []common.JobStep `json:"job_steps"`
 	Delay             int64            `json:"delay"`
+	DumpProgress      *DumpProgress    `json:"dump_progress"`
+}
+
+type DumpProgress struct {
+	ExecRowCount  int64 `json:"exec_row_count"`
+	TotalRowCount int64 `json:"total_row_count"`
 }
 
 type DtleNodeInfo struct {

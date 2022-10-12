@@ -428,6 +428,13 @@ definitions:
       source:
         type: string
     type: object
+  models.DumpProgress:
+    properties:
+      exec_row_count:
+        type: integer
+      total_row_count:
+        type: integer
+    type: object
   models.GetTaskProgressRespV2:
     properties:
       message:
@@ -454,6 +461,8 @@ definitions:
     properties:
       delay:
         type: integer
+      dump_progress:
+        $ref: '#/definitions/models.DumpProgress'
       job_create_time:
         type: string
       job_id:

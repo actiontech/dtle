@@ -696,7 +696,9 @@ func GetJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJobType) erro
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	resp.BasicTaskProfile.JobBaseInfo.Delay = getDealy(logger, c.Request().Header, resp.TaskLogs)
+	progress, delay := getTaskProgress(logger, c.Request().Header, resp.TaskLogs)
+	resp.BasicTaskProfile.JobBaseInfo.DumpProgress = progress
+	resp.BasicTaskProfile.JobBaseInfo.Delay = delay
 	resp.BasicTaskProfile.ConnectionInfo.SrcDataBase.Password = "*"
 	resp.BasicTaskProfile.ConnectionInfo.DstDataBase.Password = "*"
 
@@ -727,7 +729,7 @@ func getJobDetail(logger g.LoggerType, jobId string, jobType DtleJobType) (*mode
 	}, nil
 }
 
-func getDealy(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog) int64 {
+func getTaskProgress(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog) (*models.DumpProgress, int64) {
 	url := fmt.Sprintf("http://%v/v2/monitor/task", handler.ApiAddr)
 	for i := range taskLogs {
 		taskLog := taskLogs[i]
@@ -742,13 +744,16 @@ func getDealy(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog
 			}
 			if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, header); nil != err {
 				logger.Warn("forward api failed", "url", url, "err", err)
-				return 0
+				return nil, 0
 			}
-			return res.TaskStatus.DelayCount.Time
+			return &models.DumpProgress{
+				ExecRowCount:  res.TaskStatus.ExecMasterRowCount,
+				TotalRowCount: res.TaskStatus.ReadMasterRowCount,
+			}, res.TaskStatus.DelayCount.Time
 		}
 	}
 	logger.Warn("Unable to get delayed data")
-	return 0
+	return nil, 0
 }
 
 func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *models.SrcTaskDetail,
@@ -1356,7 +1361,10 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 	}
 	basicTaskProfile.Configuration.FailOver = failover
 	basicTaskProfile.ConnectionInfo.SrcDataBase.Password = "*"
-	basicTaskProfile.JobBaseInfo.Delay = getDealy(logger, c.Request().Header, taskLog)
+
+	progress, delay := getTaskProgress(logger, c.Request().Header, taskLog)
+	basicTaskProfile.JobBaseInfo.DumpProgress = progress
+	basicTaskProfile.JobBaseInfo.Delay = delay
 	if len(nomadJob.TaskGroups) != 0 {
 		basicTaskProfile.Configuration.RetryTimes = *nomadJob.TaskGroups[0].RestartPolicy.Attempts
 	}
