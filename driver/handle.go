@@ -189,10 +189,25 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 				return nil, errors.Wrap(err, "NewExtractor")
 			}
 		} else {
-			runner, err = mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
+			e, err := mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewOracleExtractor")
 			}
+			runner = e
+			if h.driverConfig.TwoWaySync {
+				ctx2 := &common.ExecContext{
+					Subject:  ctx.Subject + "_dtrev",
+					StateDir: d.config.DataDir,
+				}
+				cfg2 := &common.MySQLDriverConfig{
+					DtleTaskConfig:   common.DtleTaskConfig{
+						DestType: "mysql",
+					},
+				}
+				e.RevApplier, err = mysql.NewApplier(ctx2, cfg2, h.logger, d.storeManager, d.config.NatsAdvertise,
+					h.waitCh, d.eventer, h.taskConfig, h.ctx)
+			}
+
 		}
 	case common.TaskTypeDest:
 		h.logger.Debug("found dest", "allConfig", h.driverConfig)

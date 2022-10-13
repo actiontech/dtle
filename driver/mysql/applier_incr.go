@@ -130,6 +130,7 @@ func (a *ApplierIncr) Run() (err error) {
 	if err != nil {
 		return err
 	}
+	a.logger.Info("GetServerUUID", "uuid", a.MySQLServerUuid)
 
 	if a.sourceType == "mysql" {
 		err = (&GtidExecutedCreater{

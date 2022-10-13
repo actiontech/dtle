@@ -107,6 +107,7 @@ type Extractor struct {
 	// to avoid writing closed channel, we need to wait for all goroutines that deal with data channels finishing. wg is used for the waiting.
 	wg         sync.WaitGroup
 	targetGtid string
+	RevApplier *Applier
 }
 
 func NewExtractor(execCtx *common.ExecContext, cfg *common.MySQLDriverConfig, logger g.LoggerType, storeManager *common.StoreManager, waitCh chan *drivers.ExitResult, ctx context.Context) (*Extractor, error) {
@@ -206,6 +207,10 @@ func (e *Extractor) Run() {
 	if err != nil {
 		e.onError(common.TaskStateDead, errors.Wrap(err, "SrcWatchNats"))
 		return
+	}
+
+	if e.RevApplier != nil {
+		go e.RevApplier.Run()
 	}
 
 	err = common.GetGtidFromConsul(e.storeManager, e.subject, e.logger, e.mysqlContext)
@@ -1567,6 +1572,13 @@ func (e *Extractor) Shutdown() error {
 
 	e.shutdown = true
 	close(e.shutdownCh)
+
+	if e.RevApplier != nil {
+		err := e.RevApplier.Shutdown()
+		if err != nil {
+			e.logger.Info("error RevApplier.Shutdown", "err", err)
+		}
+	}
 
 	if e.binlogReader != nil && atomic.LoadInt32(&e.binlogReader.BigTxCount) >= 1 {
 		g.SubBigTxJob()

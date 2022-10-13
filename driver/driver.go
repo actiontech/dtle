@@ -146,6 +146,8 @@ var (
 		"SrcConnectionConfig": hclspec.NewBlock("SrcConnectionConfig", false, connectionConfigSpec),
 		"DestConnectionConfig": hclspec.NewBlock("DestConnectionConfig", false, connectionConfigSpec),
 		"WaitOnJob": hclspec.NewAttr("WaitOnJob", "string", false),
+		"TwoWaySync": hclspec.NewDefault(hclspec.NewAttr("TwoWaySync", "bool", false),
+			hclspec.NewLiteral(`false`)),
 		"BulkInsert1": hclspec.NewDefault(hclspec.NewAttr("BulkInsert1", "number", false),
 			hclspec.NewLiteral(`4`)),
 		"BulkInsert2": hclspec.NewDefault(hclspec.NewAttr("BulkInsert2", "number", false),
