@@ -533,7 +533,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			if err != nil {
 				return
 			}
-			_, err1 := dbApplier.Db.ExecContext(a.ctx, "set gtid_next = 'automatic' /*dtle*/")
+			err1 := dbApplier.SetGtidNextAutomatic(a.ctx)
 			if err1 != nil {
 				err = errors.Wrapf(err1, "restore gtid_next")
 			}
@@ -796,6 +796,12 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 	if binlogEntry.Final {
 		if !a.SkipGtidExecutedTable && a.sourceType == "mysql" {
+			if binlogEntry.IsOneStmtDDL() && a.mysqlContext.SetGtidNext {
+				err1 := dbApplier.SetGtidNextAutomatic(a.ctx)
+				if err1 != nil {
+					err = errors.Wrapf(err1, "restore gtid_next")
+				}
+			}
 			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GetGNO())
 			_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
 				a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), binlogEntry.Coordinates.GetGNO())

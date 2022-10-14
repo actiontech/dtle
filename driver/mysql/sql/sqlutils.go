@@ -131,6 +131,11 @@ type Conn struct {
 	PsInsertExecutedGtid *gosql.Stmt
 }
 
+func (c *Conn) SetGtidNextAutomatic(ctx context.Context) (err error) {
+	_, err = c.Db.ExecContext(ctx, "set gtid_next = 'automatic' /*dtle*/")
+	return err
+}
+
 type DB struct {
 	DbMutex *sync.Mutex
 	Db      *gosql.DB
