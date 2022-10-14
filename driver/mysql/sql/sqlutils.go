@@ -130,6 +130,11 @@ type Conn struct {
 	PsInsertExecutedGtid *gosql.Stmt
 }
 
+func (c *Conn) SetGtidNextAutomatic(ctx context.Context) (err error) {
+	_, err = c.Db.ExecContext(ctx, "set gtid_next = 'automatic' /*dtle*/")
+	return err
+}
+
 func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	db, err := gosql.Open("mysql", mysql_uri)
 	if err != nil {
