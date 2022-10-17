@@ -613,6 +613,9 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 			switch realAst := queryInfo.ast.(type) {
 			case *ast.CreateDatabaseStmt:
 				b.sqleAfterCreateSchema(queryInfo.table.Schema)
+				// For `create schema` stmt, currentSchema makes no sense, and is actually buggy.
+				currentSchema = ""
+				currentSchemaRename = ""
 			case *ast.DropDatabaseStmt:
 				b.removeFKChildSchema(queryInfo.table.Schema)
 			case *ast.CreateTableStmt:
