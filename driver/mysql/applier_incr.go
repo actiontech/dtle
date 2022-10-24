@@ -75,6 +75,8 @@ type ApplierIncr struct {
 	inBigTx         bool
 	bigTxEventQueue chan *dmlExecItem
 	bigTxEventWg    sync.WaitGroup
+
+	fwdExtractor *Extractor
 }
 
 func NewApplierIncr(applier *Applier, sourcetype string) (*ApplierIncr, error) {
@@ -285,19 +287,25 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	// whether to skip for each parts.
 
 	// region TestIfExecuted
+	{
+		if a.fwdExtractor != nil {
+			if a.fwdExtractor.binlogReader != nil {
+				if base.GtidSetContains(&a.fwdExtractor.binlogReader.CurrentGtidSetMutex,
+					a.fwdExtractor.binlogReader.CurrentGtidSet, txSid, txGno) {
+					a.logger.Info("skip an fwd executed tx", "sid", txSid, "gno", txGno)
+					a.EntryExecutedHook(binlogEntry) // make gtid continuous
+					return nil
+				}
+			}
+		}
 
-	gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.GetSid().(uuid.UUID))
-	txExecuted := func() bool {
-		a.gtidSetLock.RLock()
-		defer a.gtidSetLock.RUnlock()
-		intervals := base.GetIntervals(a.gtidSet, txSid)
-		return base.IntervalSlicesContainOne(intervals, txGno)
-	}()
-	if txExecuted {
-		a.logger.Info("skip an executed tx", "sid", txSid, "gno", txGno)
-		return nil
+		if base.GtidSetContains(a.gtidSetLock, a.gtidSet, txSid, txGno) {
+			a.logger.Info("skip an executed tx", "sid", txSid, "gno", txGno)
+			return nil
+		}
 	}
 	// endregion
+
 	// this must be after duplication check
 	var rotated bool
 	if a.replayingBinlogFile == binlogEntry.Coordinates.GetLogFile() {
@@ -307,6 +315,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 		a.replayingBinlogFile = binlogEntry.Coordinates.GetLogFile()
 	}
 
+	gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.GetSid().(uuid.UUID))
 	a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
 	if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
 		err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid)

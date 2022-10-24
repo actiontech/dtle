@@ -95,6 +95,7 @@ type Applier struct {
 	targetGtid   gomysql.GTIDSet
 	stateDir     string
 	revExtractor *Extractor
+	fwdExtractor *Extractor
 }
 
 func (a *Applier) Finish1() error {
@@ -328,6 +329,7 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
+	a.ai.fwdExtractor = a.fwdExtractor
 	a.ai.EntryExecutedHook = func(entry *common.DataEntry) {
 		if a.ai.sourceType == "oracle" {
 			err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.GetLogPos(), entry.Coordinates.GetLastCommit())

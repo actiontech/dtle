@@ -7,9 +7,11 @@
 package base
 
 import (
-	uuid "github.com/satori/go.uuid"
+	"sync"
+
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
+	uuid "github.com/satori/go.uuid"
 )
 
 type BinlogEvent struct {
@@ -47,7 +49,10 @@ func GetIntervals(set *gomysql.MysqlGTIDSet, uuidStr string) gomysql.IntervalSli
 	}
 }
 
-func IntervalSlicesContainOne(intervals gomysql.IntervalSlice, gno int64) bool {
+func GtidSetContains(lock *sync.RWMutex, set *gomysql.MysqlGTIDSet, uuidStr string, gno int64) bool {
+	lock.RLock()
+	defer lock.RUnlock()
+	intervals := GetIntervals(set, uuidStr)
 	for i := range intervals {
 		if gno >= intervals[i].Start && gno < intervals[i].Stop {
 			return true

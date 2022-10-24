@@ -210,6 +210,7 @@ func (e *Extractor) Run() {
 	}
 
 	if e.RevApplier != nil {
+		e.RevApplier.fwdExtractor = e
 		go e.RevApplier.Run()
 	}
 
