@@ -17,7 +17,6 @@ type CoordinatesI interface{
 	GetGNO()int64
 	GetSequenceNumber()int64
 	GetLogFile()string
-	GetOSID()string
 }
 
 // todo Support key value general settings  
@@ -75,9 +74,6 @@ func (o *OracleCoordinateTx)GetFieldValue(fieldName string)interface{}{
 	return ""
  }
 
- func (o *OracleCoordinateTx)GetOSID()string{
-	return ""
- }
  type DumpCoordinates interface{
 	GetLogPos() int64
 	GetTxSet() string

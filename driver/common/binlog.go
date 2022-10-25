@@ -52,10 +52,6 @@ func (b *MySQLCoordinateTx)GetFieldValue(fieldName string)interface{}{
 	return b.LogFile
  }
 
- func (b *MySQLCoordinateTx)GetOSID()string{
-	return b.OSID
- }
-
  func (b *MySQLCoordinateTx)GetSequenceNumber()int64{
 	return b.SeqenceNumber
  }

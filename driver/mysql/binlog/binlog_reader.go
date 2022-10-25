@@ -776,8 +776,10 @@ func (b *BinlogReader) checkDtleQueryOSID(query string) error {
 	return nil
 }
 func (b *BinlogReader) setDtleQuery(query string) string {
-	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
-	if coordinate.OSID == "" {
+	if strings.Contains(query, "/*dtle_gtid1") {
+		return query
+	} else {
+		coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 		uuidStr := uuid.UUID(coordinate.SID).String()
 		tag := fmt.Sprintf("/*dtle_gtid1 %v %v %v dtle_gtid*/", b.execCtx.Subject, uuidStr, coordinate.GNO)
 
@@ -787,10 +789,7 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 				return fmt.Sprintf("%v %v END", query[:len(query)-3], tag)
 			}
 		}
-
 		return fmt.Sprintf("%v %v", query, tag)
-	} else {
-		return query
 	}
 }
 
@@ -1240,17 +1239,21 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 				if len(rowsEvent.Rows) == 1 {
 					sidValue := rowsEvent.Rows[0][1]
 					sidByte, ok := sidValue.(string)
-					if !ok {
-						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid type",
-							"type", hclog.Fmt("%T", sidValue))
+					gnoI := rowsEvent.Rows[0][2]
+					gno, okGNO := gnoI.(int64)
+
+					// TODO It will go error if there is zero byte in the UUID.
+					if !ok || !okGNO {
+						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid or gno type",
+							"type", hclog.Fmt("%T %T", sidValue, gnoI))
 					} else {
 						sid, err := uuid.FromBytes([]byte(sidByte))
 						if err != nil {
 							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err, "sid", sidByte)
 						} else {
 							coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
-							coordinate.OSID = sid.String()
-							b.logger.Debug("found an osid", "osid", coordinate.OSID)
+							coordinate.SID = sid
+							coordinate.GNO = gno
 						}
 					}
 				}

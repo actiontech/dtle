@@ -14,7 +14,6 @@ struct DumpEntry {
 struct MySQLCoordinateTx {
 	LogFile string
 	LogPos  int64
-	OSID          string
 	SID           [16]byte
 	GNO           int64
 	LastCommitted int64
