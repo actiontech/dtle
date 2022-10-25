@@ -99,10 +99,10 @@ func decryptMySQLPwd(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.DestT
 
 func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.DestTaskConfig) ([]*models.MysqlTaskValidationReport, error) {
 	taskValidationRes := []*models.MysqlTaskValidationReport{}
+	srcTaskConfig := common.DtleTaskConfig{}
 	// validate src task
 	if apiSrcTask.MysqlSrcTaskConfig != nil {
-		srcTaskConfig := common.DtleTaskConfig{}
-		srcTaskMap := buildDatabaseSrcTaskConfigMap(apiSrcTask)
+		srcTaskMap := buildDatabaseSrcTaskConfigMap(apiSrcTask, apiDestTask, nil)
 		if err := mapstructure.WeakDecode(srcTaskMap, &srcTaskConfig); err != nil {
 			return nil, fmt.Errorf("convert src task config failed: %v", err)
 		}
@@ -151,19 +151,13 @@ func validateTaskConfig(apiSrcTask *models.SrcTaskConfig, apiDestTask *models.De
 	}
 	// validate dest task
 	{
-		destTaskConfig := common.DtleTaskConfig{}
-		destTaskMap := buildDatabaseDestTaskConfigMap(apiDestTask)
-		if err := mapstructure.WeakDecode(destTaskMap, &destTaskConfig); err != nil {
-			return nil, fmt.Errorf("convert dest task config failed: %v", err)
-		}
-
 		validationRes := &models.MysqlTaskValidationReport{
 			TaskName: apiDestTask.TaskName,
 		}
 		destTaskInspector, err := mysql.NewApplier(
 			&common.ExecContext{},
 			&common.MySQLDriverConfig{
-				DtleTaskConfig: destTaskConfig,
+				DtleTaskConfig: srcTaskConfig, // #592: src sends the config to dest.
 			},
 			g.Logger.Named("http api: validateTaskConfig"),
 			nil, "", nil, nil, nil, context.Background())

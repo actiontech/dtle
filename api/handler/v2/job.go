@@ -382,7 +382,9 @@ func createOrUpdateJob(logger g.LoggerType, jobParam *models.CreateOrUpdateMysql
 }
 
 func convertJobToNomadJob(failover bool, jobParams *models.CreateOrUpdateMysqlToMysqlJobParamV2) (*nomadApi.Job, error) {
-	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(jobParams.SrcTask), jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
+	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(
+		buildDatabaseSrcTaskConfigMap(jobParams.SrcTask, jobParams.DestTask, nil),
+		jobParams.SrcTask.TaskName, jobParams.SrcTask.NodeId, failover, jobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
@@ -561,21 +563,13 @@ func buildRestartPolicy(RestartAttempts int) (*nomadApi.ReschedulePolicy, *nomad
 
 func buildDatabaseDestTaskConfigMap(config *models.DestTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
-	if config.MysqlDestTaskConfig == nil {
-		return taskConfigInNomadFormat
-	}
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.UseMySQLDependency, "UseMySQLDependency")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.BulkInsert1, "BulkInsert1")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.BulkInsert2, "BulkInsert2")
-	addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlDestTaskConfig.SetGtidNext, "SetGtidNext")
-	taskConfigInNomadFormat["DestConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
+	taskConfigInNomadFormat["DestType"] = "mysql"
 
 	return taskConfigInNomadFormat
 }
 
-func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]interface{} {
+func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig, destConfig *models.DestTaskConfig,
+	kafkaConfig *models.KafkaDestTaskConfig) map[string]interface{} {
 	taskConfigInNomadFormat := make(map[string]interface{})
 
 	addNotRequiredParamToMap(taskConfigInNomadFormat, config.DropTableIfExists, "DropTableIfExists")
@@ -610,6 +604,24 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig) map[string]inte
 
 	taskConfigInNomadFormat["ReplicateDoDb"] = buildMysqlDataSourceConfigMap(config.ReplicateDoDb)
 	taskConfigInNomadFormat["ReplicateIgnoreDb"] = buildMysqlDataSourceConfigMap(config.ReplicateIgnoreDb)
+
+	if destConfig != nil {
+		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.ParallelWorkers, "ParallelWorkers")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.UseMySQLDependency, "UseMySQLDependency")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.BulkInsert1, "BulkInsert1")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.BulkInsert2, "BulkInsert2")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.SetGtidNext, "SetGtidNext")
+		taskConfigInNomadFormat["DestConnectionConfig"] = buildMysqlConnectionConfigMap(destConfig.ConnectionConfig)
+	} else if kafkaConfig != nil {
+		kafkaMap := make(map[string]interface{})
+		kafkaMap["Brokers"] = kafkaConfig.BrokerAddrs
+		kafkaMap["Topic"] = kafkaConfig.Topic
+		kafkaMap["MessageGroupMaxSize"] = kafkaConfig.MessageGroupMaxSize
+		kafkaMap["MessageGroupTimeout"] = kafkaConfig.MessageGroupTimeout
+		kafkaMap["Converter"] = kafka.CONVERTER_JSON
+		taskConfigInNomadFormat["KafkaConfig"] = kafkaMap
+	}
 
 	return taskConfigInNomadFormat
 }
@@ -1292,7 +1304,7 @@ func createOrUpdateDBToKafkaJob(c echo.Context, logger g.LoggerType, jobType Dtl
 }
 
 func convertDBToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrUpdateMysqlToKafkaJobParamV2) (*nomadApi.Job, error) {
-	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(apiJobParams.SrcTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
+	srcTask, srcDataCenter, err := buildNomadTaskGroupItem(buildDatabaseSrcTaskConfigMap(apiJobParams.SrcTask, nil, apiJobParams.DestTask), apiJobParams.SrcTask.TaskName, apiJobParams.SrcTask.NodeId, failover, apiJobParams.Retry)
 	if nil != err {
 		return nil, fmt.Errorf("build src task failed: %v", err)
 	}
@@ -1313,15 +1325,8 @@ func convertDBToKafkaJobToNomadJob(failover bool, apiJobParams *models.CreateOrU
 }
 
 func buildKafkaDestTaskConfigMap(config *models.KafkaDestTaskConfig) map[string]interface{} {
-	kafkaConfig := make(map[string]interface{})
 	taskConfigInNomadFormat := make(map[string]interface{})
-
-	kafkaConfig["Brokers"] = config.BrokerAddrs
-	kafkaConfig["Topic"] = config.Topic
-	kafkaConfig["MessageGroupMaxSize"] = config.MessageGroupMaxSize
-	kafkaConfig["MessageGroupTimeout"] = config.MessageGroupTimeout
-	kafkaConfig["Converter"] = kafka.CONVERTER_JSON
-	taskConfigInNomadFormat["KafkaConfig"] = kafkaConfig
+	taskConfigInNomadFormat["DestType"] = "kafka"
 
 	return taskConfigInNomadFormat
 }
