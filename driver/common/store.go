@@ -117,31 +117,6 @@ func (sm *StoreManager) GetConfig(jobName string) (*MySQLDriverConfig, error) {
 	return config, nil
 }
 
-func (sm *StoreManager) GetSourceType(jobName string) (string, error) {
-	sm.logger.Debug("GetSourceType")
-
-	var err error
-	key := fmt.Sprintf("dtle/%v/SourceType", jobName)
-
-	kv, err := sm.consulStore.Get(key)
-	if err != nil {
-		return "", err
-	}
-	return string(kv.Value), nil
-}
-
-func (sm *StoreManager) PutSourceType(jobName, sourceType string) error {
-	sm.logger.Debug("PutSourceType")
-
-	var err error
-	key := fmt.Sprintf("dtle/%v/SourceType", jobName)
-	err = sm.consulStore.Put(key, []byte(sourceType), nil)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (sm *StoreManager) GetNatsIfExist(jobName string) (string, bool, error) {
 	natsKey := fmt.Sprintf("dtle/%v/NatsAddr", jobName)
 	kv, err := sm.consulStore.Get(natsKey)

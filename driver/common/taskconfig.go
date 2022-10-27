@@ -59,6 +59,7 @@ type DtleTaskConfig struct {
 	BulkInsert3          int           `codec:"BulkInsert3"`
 	SlaveNetWriteTimeout int           `codec:"SlaveNetWriteTimeout"`
 	BigTxSrcQueue        int32         `codec:"BigTxSrcQueue"`
+	TwoWaySync           bool          `codec:"TwoWaySync"`
 
 	ParallelWorkers       int  `codec:"ParallelWorkers"`
 	DependencyHistorySize int  `codec:"DependencyHistorySize"`
@@ -70,8 +71,10 @@ type DtleTaskConfig struct {
 	SkipCreateDbTable    bool                          `codec:"SkipCreateDbTable"`
 	SkipPrivilegeCheck   bool                          `codec:"SkipPrivilegeCheck"`
 	SkipIncrementalCopy  bool                          `codec:"SkipIncrementalCopy"`
-	ConnectionConfig     *mysqlconfig.ConnectionConfig `codec:"ConnectionConfig"`
+	SrcConnectionConfig  *mysqlconfig.ConnectionConfig `codec:"SrcConnectionConfig"`
+	DestConnectionConfig *mysqlconfig.ConnectionConfig `codec:"DestConnectionConfig"`
 	KafkaConfig          *KafkaConfig                  `codec:"KafkaConfig"`
+	DestType             string `codec:"DestType"`
 	// support oracle extractor/applier
 	OracleConfig *config.OracleConfig `codec:"OracleConfig"`
 }

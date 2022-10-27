@@ -47,7 +47,7 @@ func (i *Inspector) Close() {
 }
 
 func (i *Inspector) InitDB() (err error) {
-	inspectorUri := i.mysqlContext.ConnectionConfig.GetDBUri()
+	inspectorUri := i.mysqlContext.SrcConnectionConfig.GetDBUri()
 	if i.db, err = usql.CreateDB(inspectorUri); err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (i *Inspector) InitDBConnections() (err error) {
 		return err
 	}
 	i.logger.Info("Initiated", "on",
-		hclog.Fmt("%s:%d", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port))
+		hclog.Fmt("%s:%d", i.mysqlContext.SrcConnectionConfig.Host, i.mysqlContext.SrcConnectionConfig.Port))
 	return nil
 }
 
@@ -282,7 +282,7 @@ func (i *Inspector) ValidateBinlogs() error {
 		return err
 	}
 	if !hasBinaryLogs {
-		return fmt.Errorf("%s:%d must have binary logs enabled", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port)
+		return fmt.Errorf("%s:%d must have binary logs enabled", i.mysqlContext.SrcConnectionConfig.Host, i.mysqlContext.SrcConnectionConfig.Port)
 	}
 	if binlogFormat != "ROW" {
 		return fmt.Errorf("it is required to set binlog_format=row")
@@ -295,7 +295,7 @@ func (i *Inspector) ValidateBinlogs() error {
 	i.mysqlContext.BinlogRowImage = strings.ToUpper(i.mysqlContext.BinlogRowImage)
 
 	i.logger.Info("Binary logs validated", "mysql",
-		hclog.Fmt("%v:%v", i.mysqlContext.ConnectionConfig.Host, i.mysqlContext.ConnectionConfig.Port))
+		hclog.Fmt("%v:%v", i.mysqlContext.SrcConnectionConfig.Host, i.mysqlContext.SrcConnectionConfig.Port))
 	return nil
 }
 

@@ -101,8 +101,8 @@ type BinlogReader struct {
 	lowerCaseTableNames mysqlconfig.LowerCaseTableNamesValue
 
 	targetGtid          gomysql.GTIDSet
-	currentGtidSet      gomysql.GTIDSet
-	currentGtidSetMutex sync.RWMutex
+	CurrentGtidSet      *gomysql.MysqlGTIDSet
+	CurrentGtidSetMutex sync.RWMutex
 
 	BigTxCount int32
 }
@@ -210,7 +210,8 @@ func NewBinlogReader(
 		return nil, err
 	}
 
-	binlogReader.currentGtidSet, _ = gomysql.ParseMysqlGTIDSet("")
+	gset, _ := gomysql.ParseMysqlGTIDSet("")
+	binlogReader.CurrentGtidSet = gset.(*gomysql.MysqlGTIDSet)
 	if targetGtid != "" {
 		binlogReader.targetGtid, err = gomysql.ParseMysqlGTIDSet(targetGtid)
 		if err != nil {
@@ -241,10 +242,10 @@ func NewBinlogReader(
 		binlogSyncerConfig := replication.BinlogSyncerConfig{
 			ServerID:       uint32(binlogReader.serverId),
 			Flavor:         "mysql",
-			Host:           cfg.ConnectionConfig.Host,
-			Port:           uint16(cfg.ConnectionConfig.Port),
-			User:           cfg.ConnectionConfig.User,
-			Password:       cfg.ConnectionConfig.Password,
+			Host:           cfg.SrcConnectionConfig.Host,
+			Port:           uint16(cfg.SrcConnectionConfig.Port),
+			User:           cfg.SrcConnectionConfig.User,
+			Password:       cfg.SrcConnectionConfig.Password,
 			RawModeEnabled: false,
 			UseDecimal:     true, // my mod: use string instead of Decimal if UseDecimal = true
 
@@ -288,10 +289,10 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates
 
 	if b.mysqlContext.BinlogRelay {
 		dbConfig := dmconfig.DBConfig{
-			Host:     b.mysqlContext.ConnectionConfig.Host,
-			Port:     b.mysqlContext.ConnectionConfig.Port,
-			User:     b.mysqlContext.ConnectionConfig.User,
-			Password: b.mysqlContext.ConnectionConfig.Password,
+			Host:     b.mysqlContext.SrcConnectionConfig.Host,
+			Port:     b.mysqlContext.SrcConnectionConfig.Port,
+			User:     b.mysqlContext.SrcConnectionConfig.User,
+			Password: b.mysqlContext.SrcConnectionConfig.Password,
 		}
 
 		relayConfig := &dmrelay.Config{
@@ -430,6 +431,22 @@ type parseQueryResult struct {
 	isSkip      bool
 }
 
+func (b *BinlogReader) handleEventGSet(gset gomysql.GTIDSet) {
+	if gset == nil {
+		return
+	}
+
+	b.currentCoord.GtidSet = gset.String()
+	b.CurrentGtidSetMutex.Lock()
+	b.CurrentGtidSet = gset.(*gomysql.MysqlGTIDSet)
+	b.CurrentGtidSetMutex.Unlock()
+	if b.targetGtid != nil {
+		if b.CurrentGtidSetContains(b.targetGtid) {
+			b.onMeetTarget()
+		}
+	}
+}
+
 func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel chan<- *common.EntryContext) error {
 	switch ev.Header.EventType {
 	case replication.GTID_EVENT:
@@ -462,25 +479,13 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 	case replication.XID_EVENT:
 		evt := ev.Event.(*replication.XIDEvent)
 		b.currentCoord.LogPos = int64(ev.Header.LogPos)
-		meetTarget := false
-		if evt.GSet != nil {
-			b.currentCoord.GtidSet = evt.GSet.String()
-			b.currentGtidSet = evt.GSet
-			if b.targetGtid != nil {
-				if b.currentGtidSet.Contain(b.targetGtid) {
-					meetTarget = true
-				}
-			}
-		}
 		// TODO is the pos the start or the end of a event?
 		// pos if which event should be use? Do we need +1?
 		mysqlCoordinates := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 		mysqlCoordinates.LogPos = b.currentCoord.LogPos
-
 		b.sendEntry(entriesChannel)
-		if meetTarget {
-			b.onMeetTarget()
-		}
+
+		b.handleEventGSet(evt.GSet)
 	default:
 		if rowsEvent, ok := ev.Event.(*replication.RowsEvent); ok {
 			return b.handleRowsEvent(ev, rowsEvent, entriesChannel)
@@ -739,6 +744,8 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 		}
 		b.entryContext.OriginalSize += len(ev.RawData)
 		b.sendEntry(entriesChannel)
+
+		b.handleEventGSet(evt.GSet)
 	}
 	return nil
 }
@@ -1785,16 +1792,21 @@ func (b *BinlogReader) SetTargetGtid(gtid string) (err error) {
 		return errors.Wrap(err, "ParseMysqlGTIDSet")
 	}
 
-	b.currentGtidSetMutex.RLock()
-	defer b.currentGtidSetMutex.RUnlock()
-	if b.currentGtidSet.Contain(b.targetGtid) {
+	if b.CurrentGtidSetContains(b.targetGtid) {
 		b.onMeetTarget()
 	}
 	return nil
 }
 
+func (b *BinlogReader) CurrentGtidSetContains(o gomysql.GTIDSet) (r bool) {
+	b.CurrentGtidSetMutex.RLock()
+	defer b.CurrentGtidSetMutex.RUnlock()
+	r = b.CurrentGtidSet.Contain(o)
+	return r
+}
+
 func (b *BinlogReader) onMeetTarget() {
-	b.logger.Info("onMeetTarget", "target", b.targetGtid.String(), "current", b.currentGtidSet.String())
+	b.logger.Info("onMeetTarget", "target", b.targetGtid.String(), "current", b.CurrentGtidSet.String())
 	_ = b.Close()
 }
 

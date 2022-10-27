@@ -90,9 +90,12 @@ type Applier struct {
 	event      *eventer.Eventer
 	taskConfig *drivers.TaskConfig
 
-	gtidSet     *gomysql.MysqlGTIDSet
-	gtidSetLock *sync.RWMutex
-	targetGtid  gomysql.GTIDSet
+	gtidSet      *gomysql.MysqlGTIDSet
+	gtidSetLock  *sync.RWMutex
+	targetGtid   gomysql.GTIDSet
+	stateDir     string
+	revExtractor *Extractor
+	fwdExtractor *Extractor
 }
 
 func (a *Applier) Finish1() error {
@@ -108,6 +111,7 @@ func NewApplier(
 	a = &Applier{
 		logger:          logger.Named("applier").With("job", execCtx.Subject),
 		subject:         execCtx.Subject,
+		stateDir:        execCtx.StateDir,
 		mysqlContext:    cfg,
 		NatsAddr:        natsAddr,
 		rowCopyComplete: make(chan struct{}),
@@ -283,13 +287,33 @@ func (a *Applier) Run() {
 		return
 	}
 
-	sourceType, err := a.storeManager.GetSourceType(a.subject)
+	a.mysqlContext, err = a.storeManager.GetConfig(a.subject)
 	if err != nil {
-		a.onError(common.TaskStateDead, errors.Wrap(err, "watchSourceType"))
+		a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
 		return
 	}
 
-	if sourceType == "mysql" {
+	if a.mysqlContext.TwoWaySync {
+		execCtx2 := &common.ExecContext{
+			Subject:  a.subject + "_dtrev",
+			StateDir: a.stateDir,
+		}
+		var cfg2 = *a.mysqlContext
+		cfg2.SrcConnectionConfig = a.mysqlContext.DestConnectionConfig
+		cfg2.DestConnectionConfig = a.mysqlContext.SrcConnectionConfig
+		cfg2.TwoWaySync = false
+		a.revExtractor, err = NewExtractor(execCtx2, &cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
+		if err != nil {
+			a.onError(common.TaskStateDead, errors.Wrap(err, "reversed Extractor"))
+		}
+		go a.revExtractor.Run()
+	}
+
+	var sourceType string
+	if a.mysqlContext.OracleConfig != nil {
+		sourceType = "oracle"
+	} else {
+		sourceType = "mysql"
 		a.prepareGTID()
 	}
 
@@ -305,6 +329,7 @@ func (a *Applier) Run() {
 		a.onError(common.TaskStateDead, errors.Wrap(err, "NewApplierIncr"))
 		return
 	}
+	a.ai.fwdExtractor = a.fwdExtractor
 	a.ai.EntryExecutedHook = func(entry *common.DataEntry) {
 		if a.ai.sourceType == "oracle" {
 			err = a.storeManager.SaveOracleSCNPos(a.subject, entry.Coordinates.GetLogPos(), entry.Coordinates.GetLastCommit())
@@ -656,7 +681,7 @@ func (a *Applier) publishProgress() {
 }
 
 func (a *Applier) InitDB() (err error) {
-	applierUri := a.mysqlContext.ConnectionConfig.GetDBUri()
+	applierUri := a.mysqlContext.DestConnectionConfig.GetDBUri()
 	if a.db, err = sql.CreateDB(applierUri); err != nil {
 		return err
 	}
@@ -679,7 +704,7 @@ func (a *Applier) initDBConnections() (err error) {
 		return someSysVars.Err
 	}
 	a.logger.Debug("Connection validated", "on",
-		hclog.Fmt("%s:%d", a.mysqlContext.ConnectionConfig.Host, a.mysqlContext.ConnectionConfig.Port))
+		hclog.Fmt("%s:%d", a.mysqlContext.DestConnectionConfig.Host, a.mysqlContext.DestConnectionConfig.Port))
 
 	a.MySQLVersion = someSysVars.Version
 	a.lowerCaseTableNames = someSysVars.LowerCaseTableNames
@@ -695,7 +720,7 @@ func (a *Applier) initDBConnections() (err error) {
 	}
 	a.logger.Debug("after ValidateGrants")
 
-	a.logger.Info("Initiated", "mysql", a.mysqlContext.ConnectionConfig.GetAddr(), "version", a.MySQLVersion)
+	a.logger.Info("Initiated", "mysql", a.mysqlContext.DestConnectionConfig.GetAddr(), "version", a.MySQLVersion)
 
 	return nil
 }
@@ -1069,6 +1094,13 @@ func (a *Applier) Shutdown() error {
 
 	if a.shutdown {
 		return nil
+	}
+
+	if a.revExtractor != nil {
+		err := a.revExtractor.Shutdown()
+		if err != nil {
+			a.logger.Info("err revExtractor.Shutdown", "err", err)
+		}
 	}
 
 	if a.natsConn != nil {

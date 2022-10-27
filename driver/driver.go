@@ -86,6 +86,14 @@ var (
 			hclspec.NewLiteral(`"/var/log/dtle"`)),
 	})
 
+	connectionConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
+		"Host":     hclspec.NewAttr("Host", "string", true),
+		"Port":     hclspec.NewAttr("Port", "number", true),
+		"User":     hclspec.NewAttr("User", "string", true),
+		"Password": hclspec.NewAttr("Password", "string", true),
+		"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
+			hclspec.NewLiteral(`"utf8mb4"`)),
+	})
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a taskConfig within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
@@ -135,15 +143,11 @@ var (
 		"SkipIncrementalCopy":  hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"SlaveNetWriteTimeout": hclspec.NewDefault(hclspec.NewAttr("SlaveNetWriteTimeout", "number", false),
 			hclspec.NewLiteral(`28800`)), // 8 hours
-		"ConnectionConfig": hclspec.NewBlock("ConnectionConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
-			"Host":     hclspec.NewAttr("Host", "string", true),
-			"Port":     hclspec.NewAttr("Port", "number", true),
-			"User":     hclspec.NewAttr("User", "string", true),
-			"Password": hclspec.NewAttr("Password", "string", true),
-			"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
-				hclspec.NewLiteral(`"utf8mb4"`)),
-		})),
+		"SrcConnectionConfig": hclspec.NewBlock("SrcConnectionConfig", false, connectionConfigSpec),
+		"DestConnectionConfig": hclspec.NewBlock("DestConnectionConfig", false, connectionConfigSpec),
 		"WaitOnJob": hclspec.NewAttr("WaitOnJob", "string", false),
+		"TwoWaySync": hclspec.NewDefault(hclspec.NewAttr("TwoWaySync", "bool", false),
+			hclspec.NewLiteral(`false`)),
 		"BulkInsert1": hclspec.NewDefault(hclspec.NewAttr("BulkInsert1", "number", false),
 			hclspec.NewLiteral(`4`)),
 		"BulkInsert2": hclspec.NewDefault(hclspec.NewAttr("BulkInsert2", "number", false),
@@ -178,6 +182,7 @@ var (
 			hclspec.NewLiteral(`67108864`)),
 		"SetGtidNext": hclspec.NewDefault(hclspec.NewAttr("SetGtidNext", "bool", false),
 			hclspec.NewLiteral(`false`)),
+		"DestType": hclspec.NewAttr("DestType", "string", false),
 		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
 			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
 			"Host":        hclspec.NewAttr("Host", "string", true),
@@ -603,13 +608,6 @@ func (d *Driver) verifyDriverConfig(config common.DtleTaskConfig) error {
 
 	if !(1 <= config.BulkInsert1 && config.BulkInsert1 <= config.BulkInsert2) {
 		return fmt.Errorf("expect 1 <= BulkInsert1 <= BulkInsert2. %v %v", config.BulkInsert1, config.BulkInsert2)
-	}
-
-	if config.ConnectionConfig != nil && config.OracleConfig != nil {
-		addErrMsgs("only one src connection config should be set")
-	}
-	if config.ConnectionConfig != nil && config.KafkaConfig != nil {
-		addErrMsgs("only one dest connection config should be set")
 	}
 
 	for _, doDb := range config.ReplicateDoDb {
