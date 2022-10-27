@@ -20,7 +20,13 @@
             "DropTableIfExists": true,
             "Gtid": "",
             "ChunkSize": 2000,
-            "ConnectionConfig": {
+            "SrcConnectionConfig": {
+              "Host": "127.0.0.1",
+              "Port": 3307,
+              "User": "root",
+              "Password": "password"
+            },
+            "DestConnectionConfig": {
               "Host": "127.0.0.1",
               "Port": 3307,
               "User": "root",
@@ -40,12 +46,7 @@
           "Name": "dest",
           "Driver": "dtle",
           "Config": {
-            "ConnectionConfig": {
-              "Host": "127.0.0.1",
-              "Port": 3307,
-              "User": "root",
-              "Password": "password"
-            }
+            "DestType": "mysql"
           }
         }],
         "RestartPolicy": {

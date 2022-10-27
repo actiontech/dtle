@@ -20,11 +20,16 @@
             "DropTableIfExists": true,
             "Gtid": "",
             "ChunkSize": 2000,
-            "ConnectionConfig": {
+            "SrcConnectionConfig": {
               "Host": "127.0.0.1",
               "Port": 3307,
               "User": "root",
               "Password": "password"
+            },
+            "KafkaConfig": {
+              "Topic": "kafka1",
+              "Brokers": ["127.0.0.1:9192", "127.0.0.1:9092"],
+              "Converter": "json"
             }
           }
         }],
@@ -40,11 +45,7 @@
           "Name": "dest",
           "Driver": "dtle",
           "Config": {
-            "KafkaConfig": {
-              "Topic": "kafka1",
-              "Brokers": ["127.0.0.1:9192", "127.0.0.1:9092"],
-              "Converter": "json"
-            }
+            "DestType": "kafka"
           }
         }],
         "RestartPolicy": {

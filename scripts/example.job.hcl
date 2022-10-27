@@ -18,12 +18,25 @@ job "job1" {
         DropTableIfExists = false
         Gtid = ""
         ChunkSize = 2000
-        ConnectionConfig = {
+        SrcConnectionConfig = {
           Host = "127.0.0.1"
           Port = 3307
           User = "root"
           Password = "password"
         }
+        DestConnectionConfig = {
+          Host = "127.0.0.1"
+          Port = 3308
+          User = "root"
+          Password = "password"
+        }
+
+        # For a kafka job, set `KafkaConfig` instead of `DestConnectionConfig`.
+        #KafkaConfig = {
+        #  Topic = "kafka1"
+        #  Brokers = ["127.0.0.1:9192", "127.0.0.1:9092"]
+        #  Converter = "json"
+        #}
       }
     }
     restart { # group or task level
@@ -37,19 +50,8 @@ job "job1" {
     task "dest" {
       driver = "dtle"
       config {
-        ConnectionConfig = {
-          Host = "127.0.0.1"
-          Port = 3308
-          User = "root"
-          Password = "password"
-        }
-
-        # For a kafka job, do not set ConnectionConfig in dest task. Set KafkaConfig instead.
-        #KafkaConfig = {
-        #  Topic = "kafka1"
-        #  Brokers = ["127.0.0.1:9192", "127.0.0.1:9092"]
-        #  Converter = "json"
-        #}
+        # Change to "kafka" for a kafka job.
+        DestType = "mysql"
       }
     }
     restart { # group or task level
