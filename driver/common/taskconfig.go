@@ -76,7 +76,7 @@ type DtleTaskConfig struct {
 	KafkaConfig          *KafkaConfig                  `codec:"KafkaConfig"`
 	DestType             string `codec:"DestType"`
 	// support oracle extractor/applier
-	OracleConfig *config.OracleConfig `codec:"OracleConfig"`
+	SrcOracleConfig *config.OracleConfig `codec:"SrcOracleConfig"`
 }
 
 func (d *DtleTaskConfig) SetDefaultForEmpty() {

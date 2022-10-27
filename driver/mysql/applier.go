@@ -310,7 +310,7 @@ func (a *Applier) Run() {
 	}
 
 	var sourceType string
-	if a.mysqlContext.OracleConfig != nil {
+	if a.mysqlContext.SrcOracleConfig != nil {
 		sourceType = "oracle"
 	} else {
 		sourceType = "mysql"

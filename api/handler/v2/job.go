@@ -599,7 +599,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig, destConfig *mod
 		oracleConfig["Password"] = config.ConnectionConfig.Password
 		oracleConfig["Scn"] = config.OracleSrcTaskConfig.Scn
 		oracleConfig["ServiceName"] = config.ConnectionConfig.ServiceName
-		taskConfigInNomadFormat["OracleConfig"] = oracleConfig
+		taskConfigInNomadFormat["SrcOracleConfig"] = oracleConfig
 	}
 
 	taskConfigInNomadFormat["ReplicateDoDb"] = buildMysqlDataSourceConfigMap(config.ReplicateDoDb)
@@ -1002,13 +1002,13 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 	}
 
 	connectionConfig := new(models.DatabaseConnectionConfig)
-	if internalTaskConfig.OracleConfig != nil {
+	if internalTaskConfig.SrcOracleConfig != nil {
 		connectionConfig.DatabaseType = "Oracle"
-		connectionConfig.Host = internalTaskConfig.OracleConfig.Host
-		connectionConfig.Port = internalTaskConfig.OracleConfig.Port
-		connectionConfig.User = internalTaskConfig.OracleConfig.User
-		connectionConfig.Password = internalTaskConfig.OracleConfig.Password
-		connectionConfig.ServiceName = internalTaskConfig.OracleConfig.ServiceName
+		connectionConfig.Host = internalTaskConfig.SrcOracleConfig.Host
+		connectionConfig.Port = internalTaskConfig.SrcOracleConfig.Port
+		connectionConfig.User = internalTaskConfig.SrcOracleConfig.User
+		connectionConfig.Password = internalTaskConfig.SrcOracleConfig.Password
+		connectionConfig.ServiceName = internalTaskConfig.SrcOracleConfig.ServiceName
 	} else if internalTaskConfig.SrcConnectionConfig != nil {
 		connectionConfig.DatabaseType = "MySQL"
 		connectionConfig.Host = internalTaskConfig.SrcConnectionConfig.Host
@@ -1116,12 +1116,12 @@ func buildJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Alloc
 			switch taskType {
 			case common.TaskTypeSrc:
 				srcTaskDetail = buildSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
-				break
-			case common.TaskTypeDest:
 				destTaskDetail = buildMysqlDestTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
 				break
+			case common.TaskTypeDest:
+				break
 			case common.TaskTypeUnknown:
-				continue
+				break
 			}
 		}
 	}
@@ -1397,15 +1397,15 @@ func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 			switch taskType {
 			case common.TaskTypeSrc:
 				srcTaskDetail = buildSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
-				break
-			case common.TaskTypeDest:
 				if nil == internalTaskConfig.KafkaConfig {
 					return models.KafkaDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("can not find kafka task config from nomad")
 				}
 				destTaskDetail = buildKafkaDestTaskDetail(t.Name, *internalTaskConfig.KafkaConfig, taskGroupToNomadAlloc[*tg.Name])
 				break
+			case common.TaskTypeDest:
+				break
 			case common.TaskTypeUnknown:
-				continue
+				break
 			}
 		}
 	}

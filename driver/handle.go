@@ -182,8 +182,8 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 
 	switch common.TaskTypeFromString(h.taskConfig.Name) {
 	case common.TaskTypeSrc:
-		if h.driverConfig.OracleConfig != nil {
-			h.logger.Debug("found oracle src", "OracleConfig", h.driverConfig.OracleConfig)
+		if h.driverConfig.SrcOracleConfig != nil {
+			h.logger.Debug("found oracle src", "SrcOracleConfig", h.driverConfig.SrcOracleConfig)
 			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewExtractor")

@@ -94,6 +94,14 @@ var (
 		"Charset": hclspec.NewDefault(hclspec.NewAttr("Charset", "string", false),
 			hclspec.NewLiteral(`"utf8mb4"`)),
 	})
+	oracleConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
+		"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
+		"Host":        hclspec.NewAttr("Host", "string", true),
+		"Port":        hclspec.NewAttr("Port", "number", true),
+		"User":        hclspec.NewAttr("User", "string", true),
+		"Password":    hclspec.NewAttr("Password", "string", true),
+		"Scn":         hclspec.NewAttr("Scn", "number", true),
+	})
 	// taskConfigSpec is the hcl specification for the driver config section of
 	// a taskConfig within a job. It is returned in the TaskConfigSchema RPC
 	taskConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
@@ -183,14 +191,7 @@ var (
 		"SetGtidNext": hclspec.NewDefault(hclspec.NewAttr("SetGtidNext", "bool", false),
 			hclspec.NewLiteral(`false`)),
 		"DestType": hclspec.NewAttr("DestType", "string", false),
-		"OracleConfig": hclspec.NewBlock("OracleConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
-			"ServiceName": hclspec.NewAttr("ServiceName", "string", true),
-			"Host":        hclspec.NewAttr("Host", "string", true),
-			"Port":        hclspec.NewAttr("Port", "number", true),
-			"User":        hclspec.NewAttr("User", "string", true),
-			"Password":    hclspec.NewAttr("Password", "string", true),
-			"Scn":         hclspec.NewAttr("Scn", "number", true),
-		})),
+		"SrcOracleConfig": hclspec.NewBlock("SrcOracleConfig", false, oracleConfigSpec),
 	})
 
 	// capabilities is returned by the Capabilities RPC and indicates what

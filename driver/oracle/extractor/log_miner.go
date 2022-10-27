@@ -507,7 +507,7 @@ func (e *ExtractorOracle) calculateSCNPos() (startSCN, committedSCN int64, err e
 	}
 	// first start
 	if committedSCN == 0 {
-		return e.mysqlContext.OracleConfig.Scn, 0, nil
+		return e.mysqlContext.SrcOracleConfig.Scn, 0, nil
 	}
 	// all tx has been committed
 	if oldestUncommittedScn == 0 {

@@ -215,7 +215,7 @@ func (e *ExtractorOracle) Run() {
 		return
 	}
 	fullCopy := true
-	if e.mysqlContext.OracleConfig.Scn != 0 {
+	if e.mysqlContext.SrcOracleConfig.Scn != 0 {
 		fullCopy = false
 	} else if startSCN != 0 || committedSCN != 0 {
 		fullCopy = false
@@ -406,7 +406,7 @@ func (e *ExtractorOracle) Finish1() (err error) {
 }
 
 func (e *ExtractorOracle) getSchemaTablesAndMeta() error {
-	err := e.oracleDB.InitSCN(e.mysqlContext.OracleConfig.Scn)
+	err := e.oracleDB.InitSCN(e.mysqlContext.SrcOracleConfig.Scn)
 	if err != nil {
 		return err
 	}
@@ -647,7 +647,7 @@ func (e *ExtractorOracle) initiateStreaming() error {
 }
 
 func (e *ExtractorOracle) initDBConnections() {
-	oracleDB, err := config.NewDB(e.ctx, e.mysqlContext.OracleConfig)
+	oracleDB, err := config.NewDB(e.ctx, e.mysqlContext.SrcOracleConfig)
 	if err != nil {
 		e.onError(common.TaskStateDead, err)
 	}
