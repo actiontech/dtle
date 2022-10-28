@@ -93,24 +93,12 @@ func (kr *KafkaRunner) Finish1() error {
 	return nil
 }
 
-func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger g.LoggerType, storeManager *common.StoreManager, natsAddr string, waitCh chan *drivers.ExitResult, ctx context.Context) (kr *KafkaRunner, err error) {
-
-	loc := time.UTC
-	if cfg.TimeZone != "" {
-		loc, err = time.LoadLocation(cfg.TimeZone)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if cfg.SchemaChangeTopic == "" {
-		cfg.SchemaChangeTopic = fmt.Sprintf("schema-changes.%s", cfg.Topic)
-	}
+func NewKafkaRunner(execCtx *common.ExecContext, logger g.LoggerType, storeManager *common.StoreManager,
+	natsAddr string, waitCh chan *drivers.ExitResult, ctx context.Context) (kr *KafkaRunner, err error) {
 
 	kr = &KafkaRunner{
 		ctx:          ctx,
 		subject:      execCtx.Subject,
-		kafkaConfig:  cfg,
 		logger:       logger.Named("kafka").With("job", execCtx.Subject),
 		natsAddr:     natsAddr,
 		waitCh:       waitCh,
@@ -121,7 +109,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, cfg *common.KafkaConfig, logger
 		chDumpEntry:     make(chan *common.DumpEntry, 2),
 		chBinlogEntries: make(chan *common.DataEntries, 2),
 
-		location: loc,
+		location: time.UTC, // default value
 
 		memory1:  new(int64),
 		memory2:  new(int64),
@@ -225,7 +213,6 @@ func (kr *KafkaRunner) initNatSubClient() (err error) {
 	return nil
 }
 func (kr *KafkaRunner) Run() {
-	kr.logger.Debug("KafkaRunner.Run", "brokers", kr.kafkaConfig.Brokers)
 	var err error
 
 	{
@@ -255,13 +242,6 @@ func (kr *KafkaRunner) Run() {
 		}
 	}
 
-	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
-	if err != nil {
-		kr.logger.Error("failed to initialize kafka", "err", err)
-		kr.onError(common.TaskStateDead, err)
-		return
-	}
-
 	err = kr.initNatSubClient()
 	if err != nil {
 		kr.logger.Error("initNatSubClient", "err", err)
@@ -286,6 +266,35 @@ func (kr *KafkaRunner) Run() {
 		return
 	}
 
+	taskConfig, err := kr.storeManager.GetConfig(kr.subject)
+	if err != nil {
+		kr.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
+		return
+	}
+
+	kr.kafkaConfig = taskConfig.KafkaConfig
+	kr.logger.Debug("KafkaRunner.Run", "brokers", kr.kafkaConfig.Brokers)
+	kr.kafkaMgr, err = NewKafkaManager(kr.kafkaConfig)
+	if err != nil {
+		kr.logger.Error("failed to initialize kafka", "err", err)
+		kr.onError(common.TaskStateDead, err)
+		return
+	}
+
+	if kr.kafkaConfig.TimeZone != "" {
+		kr.location, err = time.LoadLocation(kr.kafkaConfig.TimeZone)
+		if err != nil {
+			kr.onError(common.TaskStateDead, errors.Wrap(err, "LoadLocation"))
+			return
+		}
+	}
+
+	if kr.kafkaConfig.SchemaChangeTopic == "" {
+		kr.kafkaConfig.SchemaChangeTopic = fmt.Sprintf("schema-changes.%s", kr.kafkaConfig.Topic)
+	}
+
+	go kr.handleFullCopy()
+	go kr.handleIncr()
 	go kr.updateGtidLoop()
 }
 
@@ -513,9 +522,6 @@ func (kr *KafkaRunner) initiateStreaming() error {
 	kr.logger.Debug("KafkaRunner.initiateStreaming")
 
 	var err error
-
-	go kr.handleFullCopy()
-	go kr.handleIncr()
 
 	fullNMM := common.NewNatsMsgMerger(kr.logger.With("nmm", "full"))
 	_, err = kr.natsConn.Subscribe(fmt.Sprintf("%s_full", kr.subject), func(m *gonats.Msg) {
