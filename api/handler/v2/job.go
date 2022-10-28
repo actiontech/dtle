@@ -588,6 +588,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig, destConfig *mod
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.Gtid, "Gtid")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.ExpandSyntaxSupport, "ExpandSyntaxSupport")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.DumpEntryLimit, "DumpEntryLimit")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.TwoWaySync, "TwoWaySync")
 		taskConfigInNomadFormat["SrcConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 	}
 	// for Oracle
@@ -819,6 +820,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				WaitOnJob:           srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.WaitOnJob,
 				AutoGtid:            srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.AutoGtid,
 				DumpEntryLimit:      srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.DumpEntryLimit,
+				TwoWaySync:          srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.TwoWaySync,
 			}
 		} else if srcTaskDetail.TaskConfig.OracleSrcTaskConfig != nil {
 			srcConfig.OracleSrcTaskConfig = &models.OracleSrcTaskConfig{
@@ -1022,6 +1024,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 			BinlogRelay:         internalTaskConfig.BinlogRelay,
 			WaitOnJob:           internalTaskConfig.WaitOnJob,
 			DumpEntryLimit:      internalTaskConfig.DumpEntryLimit,
+			TwoWaySync:          internalTaskConfig.TwoWaySync,
 		}
 	}
 	srcTaskDetail.TaskConfig.ConnectionConfig = connectionConfig
@@ -1960,6 +1963,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 				WaitOnJob:           consulJobItem.JobId,
 				AutoGtid:            true,
 				DumpEntryLimit:      originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.DumpEntryLimit,
+				TwoWaySync:          originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.TwoWaySync,
 			},
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{

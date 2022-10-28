@@ -159,6 +159,7 @@ type MysqlSrcTaskConfig struct {
 	WaitOnJob           string `json:"wait_on_job"`
 	AutoGtid            bool   `json:"auto_gtid"`
 	DumpEntryLimit      int    `json:"dump_entry_limit"`
+	TwoWaySync          bool   `json:"two_way_sync"`
 }
 
 type OracleSrcTaskConfig struct {
