@@ -3046,6 +3046,9 @@ var doc = `{
                 "two_way_sync": {
                     "type": "boolean"
                 },
+                "two_way_sync_gtid": {
+                    "type": "string"
+                },
                 "wait_on_job": {
                     "type": "string"
                 }

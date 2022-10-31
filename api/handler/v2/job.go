@@ -589,6 +589,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig, destConfig *mod
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.ExpandSyntaxSupport, "ExpandSyntaxSupport")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.DumpEntryLimit, "DumpEntryLimit")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.TwoWaySync, "TwoWaySync")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.TwoWaySync, "TwoWaySyncGtid")
 		taskConfigInNomadFormat["SrcConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 	}
 	// for Oracle
@@ -821,6 +822,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				AutoGtid:            srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.AutoGtid,
 				DumpEntryLimit:      srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.DumpEntryLimit,
 				TwoWaySync:          srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.TwoWaySync,
+				TwoWaySyncGtid:      srcTaskDetail.TaskConfig.MysqlSrcTaskConfig.TwoWaySyncGtid,
 			}
 		} else if srcTaskDetail.TaskConfig.OracleSrcTaskConfig != nil {
 			srcConfig.OracleSrcTaskConfig = &models.OracleSrcTaskConfig{
@@ -1025,6 +1027,7 @@ func buildSrcTaskDetail(taskName string, internalTaskConfig common.DtleTaskConfi
 			WaitOnJob:           internalTaskConfig.WaitOnJob,
 			DumpEntryLimit:      internalTaskConfig.DumpEntryLimit,
 			TwoWaySync:          internalTaskConfig.TwoWaySync,
+			TwoWaySyncGtid:      internalTaskConfig.TwoWaySyncGtid,
 		}
 	}
 	srcTaskDetail.TaskConfig.ConnectionConfig = connectionConfig
@@ -1964,6 +1967,7 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 				AutoGtid:            true,
 				DumpEntryLimit:      originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.DumpEntryLimit,
 				TwoWaySync:          originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.TwoWaySync,
+				TwoWaySyncGtid:      originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.TwoWaySyncGtid,
 			},
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{

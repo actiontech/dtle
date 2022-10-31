@@ -301,7 +301,17 @@ func (a *Applier) Run() {
 		var cfg2 = *a.mysqlContext
 		cfg2.SrcConnectionConfig = a.mysqlContext.DestConnectionConfig
 		cfg2.DestConnectionConfig = a.mysqlContext.SrcConnectionConfig
+
+		if strings.ToLower(a.mysqlContext.TwoWaySyncGtid) == "auto" {
+			cfg2.AutoGtid = true
+			cfg2.Gtid = ""
+		} else {
+			cfg2.AutoGtid = false
+			cfg2.Gtid = a.mysqlContext.TwoWaySyncGtid
+		}
 		cfg2.TwoWaySync = false
+		cfg2.TwoWaySyncGtid = ""
+
 		a.revExtractor, err = NewExtractor(execCtx2, &cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "reversed Extractor"))

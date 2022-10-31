@@ -60,6 +60,7 @@ type DtleTaskConfig struct {
 	SlaveNetWriteTimeout int           `codec:"SlaveNetWriteTimeout"`
 	BigTxSrcQueue        int32         `codec:"BigTxSrcQueue"`
 	TwoWaySync           bool          `codec:"TwoWaySync"`
+	TwoWaySyncGtid       string        `codec:"TwoWaySyncGtid"`
 
 	ParallelWorkers       int  `codec:"ParallelWorkers"`
 	DependencyHistorySize int  `codec:"DependencyHistorySize"`

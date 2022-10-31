@@ -160,6 +160,7 @@ type MysqlSrcTaskConfig struct {
 	AutoGtid            bool   `json:"auto_gtid"`
 	DumpEntryLimit      int    `json:"dump_entry_limit"`
 	TwoWaySync          bool   `json:"two_way_sync"`
+	TwoWaySyncGtid      string `json:"two_way_sync_gtid"`
 }
 
 type OracleSrcTaskConfig struct {

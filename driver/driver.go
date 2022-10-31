@@ -140,6 +140,7 @@ var (
 		"GroupMaxSize":         hclspec.NewAttr("GroupMaxSize", "number", false),
 		"GroupTimeout":         hclspec.NewAttr("GroupTimeout", "number", false),
 		"Gtid":                 hclspec.NewAttr("Gtid", "string", false),
+		"TwoWaySyncGtid":       hclspec.NewAttr("TwoWaySyncGtid", "string", false),
 		"BinlogFile":           hclspec.NewAttr("BinlogFile", "string", false),
 		"BinlogPos":            hclspec.NewAttr("BinlogPos", "number", false),
 		"GtidStart":            hclspec.NewAttr("GtidStart", "string", false),
