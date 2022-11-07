@@ -777,9 +777,14 @@ func (b *BinlogReader) checkDtleQueryOSID(query string) error {
 		return fmt.Errorf("bad dtle_gtid splitted for query %v", query)
 	}
 
-	b.logger.Debug("query osid", "osid", ss[1], "gno", b.entryContext.Entry.Coordinates.GetFieldValue("GNO"))
+	b.logger.Debug("query osid", "osid", ss[1], "gno", b.entryContext.Entry.Coordinates.GetGNO())
 
-	b.entryContext.Entry.Coordinates.SetField("OSID", ss[1])
+	sid, err := uuid.FromString(ss[1])
+	if err != nil {
+		return err
+	}
+
+	b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx).SID = sid
 	return nil
 }
 func (b *BinlogReader) setDtleQuery(query string) string {
