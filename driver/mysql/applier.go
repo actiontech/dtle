@@ -260,7 +260,7 @@ func (a *Applier) prepareGTID() {
 
 	a.gtidSet, err = common.DtleParseMysqlGTIDSet(a.mysqlContext.Gtid)
 	if err != nil {
-		a.onError(common.TaskStateDead, errors.Wrap(err, "DtleParseMysqlGTIDSet"))
+		a.onError(common.TaskStateDead, errors.Wrapf(err, "DtleParseMysqlGTIDSet %v", a.mysqlContext.Gtid))
 	}
 	return
 }

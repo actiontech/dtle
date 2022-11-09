@@ -589,7 +589,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig, destConfig *mod
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.ExpandSyntaxSupport, "ExpandSyntaxSupport")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.DumpEntryLimit, "DumpEntryLimit")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.TwoWaySync, "TwoWaySync")
-		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.TwoWaySync, "TwoWaySyncGtid")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, config.MysqlSrcTaskConfig.TwoWaySyncGtid, "TwoWaySyncGtid")
 		taskConfigInNomadFormat["SrcConnectionConfig"] = buildMysqlConnectionConfigMap(config.ConnectionConfig)
 	}
 	// for Oracle
