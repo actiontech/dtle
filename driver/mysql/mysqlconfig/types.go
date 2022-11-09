@@ -69,6 +69,7 @@ type Column struct {
 	IsUnsigned         bool
 	Charset            string
 	Type               ColumnType
+	// Default is currently only used for kafka and limited to basic types.
 	Default            interface{}
 	ColumnType         string
 	Key                string
