@@ -14,10 +14,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/actiontech/dtle/g"
-	"github.com/pingcap/tidb/types"
-
 	"github.com/actiontech/dtle/driver/common"
+	"github.com/actiontech/dtle/g"
 
 	"strconv"
 
@@ -503,8 +501,7 @@ func NewJsonField(optional bool, field string) *Schema {
 
 func NewBitsField(optional bool, field string, length string, defaultValue interface{}) *Schema {
 	if defaultValue != nil {
-		defaultV := defaultValue.(types.BinaryLiteral)
-		defaultValue = base64.StdEncoding.EncodeToString(defaultV)
+		defaultValue = base64.StdEncoding.EncodeToString(defaultValue.([]byte))
 	}
 	return &Schema{
 		Field:    field,

@@ -8,8 +8,6 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/pingcap/tidb/types"
-
 	"github.com/actiontech/dtle/g"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	uuid "github.com/satori/go.uuid"
@@ -63,8 +61,7 @@ type GencodeType interface {
 
 func init() {
 	// "Only types that will be transferred as implementations of interface values need to be registered."
-	gob.Register(types.BinaryLiteral{})
-	gob.Register(types.MyDecimal{})
+	//gob.Register(types.BinaryLiteral{})
 	if g.EnvIsTrue(g.ENV_BIG_MSG_100K) {
 		g.NatsMaxMsg = 100 * 1024 // TODO this does not works
 	}

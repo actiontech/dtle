@@ -10,6 +10,8 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
+	"github.com/hashicorp/go-hclog"
+	"github.com/pingcap/tidb/types"
 	"regexp"
 	"strings"
 	"time"
@@ -545,7 +547,18 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 				if !ok {
 					newColumn.Default = nil
 				} else {
-					newColumn.Default = value.GetValue()
+					switch v := value.GetValue().(type) {
+					case int64, uint64, float32, float64, string, []byte:
+						newColumn.Default = v
+					case types.BinaryLiteral:
+						newColumn.Default = []byte(v)
+					case fmt.Stringer:
+						newColumn.Default = v.String()
+					default:
+						newColumn.Default = nil
+						g.Logger.Warn("GetTableColumnsSqle: unknown type for a default value",
+							"schema", schema, "table", table, "type", hclog.Fmt("%T", v))
+					}
 				}
 			case ast.ColumnOptionUniqKey:
 				newColumn.Key = "UNI"

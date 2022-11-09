@@ -26,7 +26,6 @@ import (
 	"github.com/actiontech/dtle/g"
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/hashicorp/nomad/plugins/drivers"
-	"github.com/pingcap/tidb/types"
 	"github.com/pkg/errors"
 
 	gonats "github.com/nats-io/go-nats"
@@ -1234,7 +1233,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 		case mysqlconfig.BitColumnType:
 			if cols[i].ColumnType == "bit(1)" {
 				if defaultValue != nil {
-					if string(defaultValue.(types.BinaryLiteral)) == "\x01" {
+					if string(defaultValue.([]byte)) == "\x01" {
 						defaultValue = true
 					} else {
 						defaultValue = false
