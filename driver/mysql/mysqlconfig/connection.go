@@ -8,7 +8,11 @@ package mysqlconfig
 
 import (
 	"fmt"
+	"net/url"
 )
+
+// insert TIMESTAMP in UTC
+var utcTimeZoneQueryStr = fmt.Sprintf("time_zone=%v", url.QueryEscape("'+00:00'"))
 
 // ConnectionConfig is the minimal configuration required to connect to a MySQL server
 type ConnectionConfig struct {
@@ -19,19 +23,14 @@ type ConnectionConfig struct {
 	Charset  string
 }
 
-func (c *ConnectionConfig) GetDBUriByDbName(databaseName string) string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%v&maxAllowedPacket=0", c.User, c.Password, c.Host, c.Port, databaseName, c.Charset)
-}
-
 func (c *ConnectionConfig) GetDBUri() string {
-	if "" == c.Charset {
+	if c.Charset == "" {
 		c.Charset = "utf8mb4"
 	}
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=true&charset=%v&multiStatements=true&maxAllowedPacket=0", c.User, c.Password, c.Host, c.Port, c.Charset)
-}
 
-func (c *ConnectionConfig) GetSingletonDBUri() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=false&charset=%v&multiStatements=true&maxAllowedPacket=0", c.User, c.Password, c.Host, c.Port, c.Charset)
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/?timeout=5s&tls=false&autocommit=true&charset=%v&%v&%v&%v",
+		c.User, c.Password, c.Host, c.Port, c.Charset, utcTimeZoneQueryStr,
+		"multiStatements=true", "maxAllowedPacket=0")
 }
 
 func (c *ConnectionConfig) GetAddr() string {
