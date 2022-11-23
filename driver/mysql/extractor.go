@@ -737,7 +737,7 @@ func (e *Extractor) initDBConnections() (err error) {
 			}
 		}
 		// https://github.com/go-sql-driver/mysql#system-variables
-		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.SrcConnectionConfig.GetSingletonDBUri(),
+		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.SrcConnectionConfig.GetDBUri(),
 			getTxIsolationVarName(e.mysqlVersionDigit))
 		if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
 			return err

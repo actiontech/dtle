@@ -253,7 +253,8 @@ func NewBinlogReader(
 			HeartbeatPeriod:      3 * time.Second,
 			ReadTimeout:          12 * time.Second,
 
-			ParseTime: false, // must be false, or gencode will complain.
+			ParseTime:               false, // must be false, or gencode will complain.
+			TimestampStringLocation: time.UTC,
 
 			MemLimitSize:    int64(g.MemAvailable / 5),
 			MemLimitSeconds: 2,
@@ -322,10 +323,9 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates
 		ctx, b.relayCancelF = context.WithCancel(b.ctx)
 
 		{
-			loc, _ := time.LoadLocation("Local") // TODO
 			brConfig := &dmstreamer.BinlogReaderConfig{
 				RelayDir: b.getBinlogDir(),
-				Timezone: loc,
+				Timezone: time.UTC,
 			}
 			b.binlogReader = dmstreamer.NewBinlogReader(dmlog.L(), brConfig)
 		}
