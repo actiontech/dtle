@@ -1259,14 +1259,11 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid or gno type",
 							"type", hclog.Fmt("%T %T", sidValue, gnoI))
 					} else {
-						sid, err := uuid.FromBytes([]byte(sidByte))
-						if err != nil {
-							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err, "sid", sidByte)
-						} else {
-							coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
-							coordinate.SID = sid
-							coordinate.GNO = gno
-						}
+						var sid uuid.UUID     // will be initialized to 0
+						copy(sid[:], sidByte) // len(sidByte) might be less than 16 #1034
+						coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
+						coordinate.SID = sid
+						coordinate.GNO = gno
 					}
 				}
 				// If OSID is target mysql SID, skip applying the binlogEntry.
