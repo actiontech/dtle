@@ -654,7 +654,11 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 
 		ack := &common.BigTxAck{}
 		_, err = ack.Unmarshal(m.Data)
-		e.logger.Debug("bigtx_ack", "gno", ack.GNO, "index", ack.Index)
+		if err != nil {
+			e.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Unmarshal"))
+		}
+		e.logger.Info("bigtx_ack", "gno", ack.GNO, "index", ack.Index,
+			"count", atomic.LoadInt32(&e.binlogReader.BigTxCount))
 
 		if !e.shutdown {
 			newVal := atomic.AddInt32(&e.binlogReader.BigTxCount, -1)

@@ -473,6 +473,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			Entry:        entry,
 			TableItems:   nil,
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
+			Rows:         0,
 		}
 	case replication.QUERY_EVENT:
 		return b.handleQueryEvent(ev, entriesChannel)
@@ -807,15 +808,19 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 	isBig := b.entryContext.Entry.IsPartOfBigTx()
+	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	if isBig {
 		newVal := atomic.AddInt32(&b.BigTxCount, 1)
 		if newVal == 1 {
 			g.AddBigTxJob()
 		}
+		b.logger.Info("send bigtx entry", "gno", coordinate.GNO,
+			"index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final, "count", newVal,
+			"rows", b.entryContext.Rows)
 	}
-	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	b.logger.Debug("sendEntry", "gno", coordinate.GNO, "events", len(b.entryContext.Entry.Events),
-		"isBig", isBig, "index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final)
+		"isBig", isBig, "index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final,
+		"rows", b.entryContext.Rows)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	select {
 	case <-b.shutdownCh:
@@ -1913,6 +1918,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		switch dml {
 		case common.InsertDML, common.DeleteDML:
 			if whereTrue0 {
+				b.entryContext.Rows += 1
 				b.entryContext.OriginalSize += avgRowSize
 				dmlEvent.Rows = append(dmlEvent.Rows, row0)
 			} else {
@@ -1929,6 +1935,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 			if !whereTrue0 && !whereTrue1 {
 				// append no rows
 			} else {
+				b.entryContext.Rows += 1
 				if whereTrue0 {
 					b.entryContext.OriginalSize += avgRowSize
 					dmlEvent.Rows = append(dmlEvent.Rows, row0)
@@ -2004,6 +2011,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 				Entry:        entry,
 				TableItems:   nil,
 				OriginalSize: 1,
+				Rows:         0,
 			}
 		}
 	}
