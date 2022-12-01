@@ -197,6 +197,7 @@ func (a *ApplierIncr) bigTxQueueExecutor() {
 	for {
 		item := <-a.bigTxEventQueue
 		if item == nil {
+			// chan closed in Shutdown()
 			break
 		}
 
@@ -252,9 +253,11 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 
 func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	binlogEntry := entryCtx.Entry
+	isBig := binlogEntry.IsPartOfBigTx()
+	txGno := binlogEntry.Coordinates.GetGNO()
 
 	if a.inBigTx && binlogEntry.Index == 0 {
-		a.logger.Info("found resent BinlogEntry inBigTx", "gno", binlogEntry.Coordinates.GetGNO())
+		a.logger.Info("bigtx: found resent BinlogEntry", "gno", txGno)
 		// src is resending an earlier BinlogEntry
 		_, err = a.dbs[0].Db.ExecContext(a.ctx, "rollback")
 		if err != nil {
@@ -317,6 +320,9 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	gtidSetItem.NRow += 1
 	if binlogEntry.Coordinates.GetSequenceNumber() == 0 {
 		// MySQL 5.6: non mts
+		if isBig {
+			a.inBigTx = true
+		}
 		err := a.setTableItemForBinlogEntry(entryCtx)
 		if err != nil {
 			return err
@@ -354,21 +360,21 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 			}
 
 			hasDDL := binlogEntry.HasDDL()
-			// DDL must be executed separatedly
-			if hasDDL || a.prevDDL {
-				a.logger.Debug("MTS found DDL. WaitForAllCommitted",
-					"gno", binlogEntry.Coordinates.GetGNO(), "hasDDL", hasDDL, "prevDDL", a.prevDDL)
+			inMiddleDDL := hasDDL || a.prevDDL // DDL must be executed separatedly
+			if inMiddleDDL || isBig {
+				a.logger.Info("WaitForAllCommitted",
+					"gno", txGno, "seq", binlogEntry.Coordinates.GetSequenceNumber(),
+					"lc", binlogEntry.Coordinates.GetLastCommit(), "leq", a.mtsManager.lastEnqueue,
+					"hasDDL", hasDDL, "prevDDL", a.prevDDL,
+					"bigtx", isBig, "index", binlogEntry.Index)
 				if !a.mtsManager.WaitForAllCommitted() {
 					return nil // shutdown
 				}
 			}
 			a.prevDDL = hasDDL
 
-			if binlogEntry.IsPartOfBigTx() {
+			if isBig {
 				a.inBigTx = true
-				if !a.mtsManager.WaitForAllCommitted() {
-					return nil // shutdown
-				}
 				a.wsManager.resetCommonParent(binlogEntry.Coordinates.GetSequenceNumber())
 			}
 		}
@@ -378,17 +384,18 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 			return err
 		}
 
-		if !binlogEntry.IsPartOfBigTx() && !a.mysqlContext.UseMySQLDependency {
+		if !isBig && !a.mysqlContext.UseMySQLDependency {
 			newLC := a.wsManager.GatLastCommit(entryCtx, a.logger)
 			binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted = newLC
 			a.logger.Debug("WritesetManager", "lc", newLC, "seq", binlogEntry.Coordinates.GetSequenceNumber(),
 				"gno", binlogEntry.Coordinates.GetGNO())
 		}
 
-		if binlogEntry.IsPartOfBigTx() {
+		if isBig {
 			if binlogEntry.Index == 0 {
 				a.mtsManager.lastEnqueue = binlogEntry.Coordinates.GetSequenceNumber()
 			}
+			a.logger.Info("bigtx ApplyBinlogEvent", "gno", txGno, "index", binlogEntry.Index)
 			err = a.ApplyBinlogEvent(0, entryCtx)
 			if err != nil {
 				return err
@@ -510,6 +517,7 @@ func (a *ApplierIncr) prepareIfNilAndExecute(item *dmlExecItem, workerIdx int) (
 // ApplyEventQueries applies multiple DML queries onto the dest table
 func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.EntryContext) (err error) {
 	logger := a.logger.Named("ApplyBinlogEvent")
+	binlogEntryCtx.Rows = 0 // count for logging
 	binlogEntry := binlogEntryCtx.Entry
 	defer atomic.AddInt64(a.memory2, -int64(binlogEntry.Size()))
 
@@ -524,7 +532,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 	// Note: gtid_next cannot be set when there is an ongoing transaction.
 	if a.mysqlContext.SetGtidNext {
 		_, err = dbApplier.Db.ExecContext(a.ctx, fmt.Sprintf("set gtid_next = '%v:%v' /*dtle*/",
-			binlogEntry.Coordinates.GetSidStr(), binlogEntry.Coordinates.GetGNO()))
+			binlogEntry.Coordinates.GetSidStr(), gno))
 		if err != nil {
 			return errors.Wrap(err, "set gtid_next")
 		}
@@ -552,7 +560,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		_, err = dbApplier.Db.ExecContext(a.ctx, query)
 		if err != nil {
 			errCtx := errors.Wrapf(err, "tx.Exec. gno %v queryBegin %v workerIdx %v",
-				binlogEntry.Coordinates.GetGNO(), g.StrLim(query, 10), workerIdx)
+				gno, g.StrLim(query, 10), workerIdx)
 			if sql.IgnoreError(err) {
 				logger.Warn("Ignore error", "err", errCtx)
 				return nil
@@ -566,7 +574,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 
 	queueOrExec := func(item *dmlExecItem) error {
 		// TODO check if shutdown?
-		if !a.noBigTxDMLPipe && a.inBigTx {
+		if a.inBigTx && !a.noBigTxDMLPipe {
 			a.bigTxEventWg.Add(1)
 			select {
 			case <-a.shutdownCh:
@@ -583,7 +591,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		if a.HasShutdown() {
 			break
 		}
-		logger.Debug("binlogEntry.Events", "gno", binlogEntry.Coordinates.GetGNO(), "event", i)
+		logger.Debug("binlogEntry.Events", "gno", gno, "event", i)
 
 		if event.DML == common.NotDML {
 			var err error
@@ -672,6 +680,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			switch event.DML {
 			case common.InsertDML:
 				nRows := len(event.Rows)
+				binlogEntryCtx.Rows += nRows
 				for i := 0; i < nRows; {
 					var pstmt **gosql.Stmt
 					var rows [][]interface{}
@@ -706,6 +715,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					}
 				}
 			case common.DeleteDML:
+				binlogEntryCtx.Rows += len(event.Rows)
 				for _, row := range event.Rows {
 					pstmt := &tableItem.PsDelete[workerIdx]
 					query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(event.DatabaseName, event.TableName,
@@ -723,15 +733,16 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 			case common.UpdateDML:
 				if len(event.Rows) % 2 != 0 {
 					return fmt.Errorf("bad update event. row number is not 2N %v gno %v",
-						len(event.Rows), binlogEntry.Coordinates.GetGNO())
+						len(event.Rows), gno)
 				}
+				binlogEntryCtx.Rows += len(event.Rows) / 2
 				for i := 0; i < len(event.Rows); i += 2 {
 					rowBefore := event.Rows[i]
 					rowAfter  := event.Rows[i+1]
 
 					if len(rowBefore) == 0 && len(rowAfter) == 0 {
 						return fmt.Errorf("bad update event. row number is not 2N %v gno %v",
-							len(event.Rows), binlogEntry.Coordinates.GetGNO())
+							len(event.Rows), gno)
 					}
 
 					if len(rowBefore) == 0 { // insert
@@ -789,12 +800,16 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		timestamp = event.Timestamp
 		atomic.AddUint64(&a.appliedQueryCount, uint64(1))
 	}
+	if a.inBigTx && !a.noBigTxDMLPipe {
+		a.logger.Info("a.bigTxEventWg.Wait before", "gno", gno, "index", binlogEntry.Index)
+	}
 	a.bigTxEventWg.Wait()
 	if a.HasShutdown() {
 		return fmt.Errorf("ApplyBinlogEvent: applier has been shutdown. gno %v", gno)
 	}
 
 	if binlogEntry.Final {
+		isBigTx := binlogEntry.IsPartOfBigTx()
 		if !a.SkipGtidExecutedTable && a.sourceType == "mysql" {
 			if binlogEntry.IsOneStmtDDL() && a.mysqlContext.SetGtidNext {
 				err1 := dbApplier.SetGtidNextAutomatic(a.ctx)
@@ -802,14 +817,25 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 					err = errors.Wrapf(err1, "restore gtid_next")
 				}
 			}
-			logger.Debug("insert gno", "gno", binlogEntry.Coordinates.GetGNO())
+
+			if a.logTxCommit || isBigTx {
+				logger.Info("insert gno", "gno", gno, "bigtx", isBigTx, "index", binlogEntry.Index,
+					"rows", binlogEntryCtx.Rows)
+			} else {
+				logger.Debug("insert gno", "gno", gno, "rows", binlogEntryCtx.Rows)
+			}
+
 			_, err = dbApplier.PsInsertExecutedGtid.ExecContext(a.ctx,
-				a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), binlogEntry.Coordinates.GetGNO())
+				a.subject, binlogEntry.Coordinates.GetSid().(uuid.UUID).Bytes(), gno)
 			if err != nil {
 				return errors.Wrap(err, "insert gno")
 			}
 		}
 
+		if a.logTxCommit || isBigTx {
+			logger.Info("committing tx", "gno", gno, "bigtx", isBigTx, "index", binlogEntry.Index,
+				"rows", binlogEntryCtx.Rows)
+		}
 		if _, err := dbApplier.Db.ExecContext(a.ctx, "commit"); err != nil {
 			return errors.Wrap(err, "dbApplier.Tx.Commit")
 		} else {
@@ -819,12 +845,15 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 		if a.printTps {
 			atomic.AddUint32(&a.txLastNSeconds, 1)
 		}
-		if a.logTxCommit {
-			logger.Info("applier tx committed", "gno", binlogEntry.Coordinates.GetGNO())
+		if a.logTxCommit || isBigTx {
+			logger.Info("applier tx committed", "gno", gno, "bigtx", isBigTx, "index", binlogEntry.Index,
+				"rows", binlogEntryCtx.Rows)
 		} else {
-			logger.Debug("applier tx committed", "gno", binlogEntry.Coordinates.GetGNO())
+			logger.Debug("applier tx committed", "gno", gno, "rows", binlogEntryCtx.Rows)
 		}
 		atomic.AddUint32(&a.appliedTxCount, 1)
+	} else {
+		logger.Info("uncommitted bigtx part", "gno", gno, "index", binlogEntry.Index, "rows", binlogEntryCtx.Rows)
 	}
 	a.EntryExecutedHook(binlogEntry)
 

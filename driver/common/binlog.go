@@ -64,6 +64,7 @@ type EntryContext struct {
 	// Only a DML has a tableItem. For a DDL, its tableItem is nil.
 	TableItems  []*ApplierTableItem
 	OriginalSize  int // size of binlog entry
+	Rows          int // for logging
 }
 
 func NewBinlogEntry() *DataEntry {
