@@ -443,7 +443,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 	table string) (r *common.ColumnList, fkParents []*ast.TableName, err error) {
 	tableInfo, exists := sqleContext.GetTable(schema, table)
 	if !exists {
-		return nil, nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
+		return nil, nil, fmt.Errorf("table does not exist in sqle context. table: %v.%v", schema, table)
 	}
 
 	cStmt := tableInfo.MergedTable
