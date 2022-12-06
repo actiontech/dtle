@@ -511,7 +511,7 @@ func (a *ApplierIncr) prepareIfNilAndExecute(item *dmlExecItem, workerIdx int) (
 	}
 
 	if err != nil {
-		a.logger.Error("error at exec", "gno", item.gno, "err", err)
+		a.logger.Error("error at exec", "gno", item.gno, "err", err, "worker", workerIdx)
 		return err
 	}
 
