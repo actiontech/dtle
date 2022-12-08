@@ -1668,13 +1668,17 @@ func (e *Extractor) CheckAndApplyLowerCaseTableNames() {
 	if e.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
 		lowerConfigItem := func(configItem []*common.DataSource) {
 			for _, d := range configItem {
+				g.LowerString(&d.TableSchema)
 				g.LowerString(&d.TableSchemaRename)
-				g.LowerString(&d.TableSchemaRegex)
-				g.LowerString(&d.TableSchemaRename)
+				if d.TableSchemaRegex != "" {
+					d.TableSchemaRegex = "(?i)" + d.TableSchemaRegex
+				}
 				for _, table := range d.Tables {
 					g.LowerString(&table.TableName)
-					g.LowerString(&table.TableRegex)
 					g.LowerString(&table.TableRename)
+					if table.TableRegex != "" {
+						table.TableRegex = "(?i)" + table.TableRegex
+					}
 				}
 			}
 		}
