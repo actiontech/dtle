@@ -50,7 +50,7 @@ func GetTaskProgressV2(c echo.Context) error {
 			break
 		}
 		if "" == nodeId {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find out which node the allocation is running on")))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot find out which node the allocation is running on")))
 		}
 		url = handler.BuildUrl(fmt.Sprintf("/v1/node/%v", nodeId))
 		logger.Info("invoke nomad api begin", "url", url)
@@ -108,7 +108,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		if nil != err {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get task stats failed: %v. allocation_id=%v task_name=%v", err, reqParam.AllocationId, reqParam.TaskName)))
 		} else if !ok {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find the task. allocation_id=%v task_name=%v", reqParam.AllocationId, reqParam.TaskName)))
+			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot find the task. allocation_id=%v task_name=%v", reqParam.AllocationId, reqParam.TaskName)))
 		}
 
 		// build response struct
@@ -176,7 +176,7 @@ func GetTaskProgressV2(c echo.Context) error {
 func getApiAddrFromAgentConfig(agentConfig map[string]interface{}) (ip, port string, err error) {
 	plugins, ok := agentConfig["Plugins"].([]interface{})
 	if !ok {
-		return "", "", fmt.Errorf("can not find plugin config")
+		return "", "", fmt.Errorf("cannot find plugin config")
 	}
 
 	for _, p := range plugins {
@@ -184,7 +184,7 @@ func getApiAddrFromAgentConfig(agentConfig map[string]interface{}) (ip, port str
 		if plugin["Name"] == g.PluginName {
 			driverConfig, ok := plugin["Config"].(map[string]interface{})
 			if !ok {
-				return "", "", fmt.Errorf("can not find driver config within dtle plugin config")
+				return "", "", fmt.Errorf("cannot find driver config within dtle plugin config")
 			}
 			addr := driverConfig["api_addr"].(string)
 			if ip, port, err = net.SplitHostPort(addr); nil != err {
@@ -196,5 +196,5 @@ func getApiAddrFromAgentConfig(agentConfig map[string]interface{}) (ip, port str
 		}
 	}
 
-	return "", "", fmt.Errorf("can not find dtle config")
+	return "", "", fmt.Errorf("cannot find dtle config")
 }

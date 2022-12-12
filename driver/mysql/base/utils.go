@@ -443,7 +443,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 	table string) (r *common.ColumnList, fkParents []*ast.TableName, err error) {
 	tableInfo, exists := sqleContext.GetTable(schema, table)
 	if !exists {
-		return nil, nil, fmt.Errorf("table does not exists in sqle context. table: %v.%v", schema, table)
+		return nil, nil, fmt.Errorf("table does not exist in sqle context. table: %v.%v", schema, table)
 	}
 
 	cStmt := tableInfo.MergedTable
@@ -543,11 +543,10 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 				newColumn.Nullable = false
 			case ast.ColumnOptionAutoIncrement:
 			case ast.ColumnOptionDefaultValue:
-				value, ok := colOpt.Expr.(ast.ValueExpr)
-				if !ok {
-					newColumn.Default = nil
-				} else {
-					switch v := value.GetValue().(type) {
+				expectNil := false
+				switch exp := colOpt.Expr.(type) {
+				case ast.ValueExpr:
+					switch v := exp.GetValue().(type) {
 					case int64, uint64, float32, float64, string, []byte:
 						newColumn.Default = v
 					case types.BinaryLiteral:
@@ -556,11 +555,20 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 						newColumn.Default = v.String()
 					case nil:
 						newColumn.Default = nil
-					default:
-						newColumn.Default = nil
-						g.Logger.Warn("GetTableColumnsSqle: unknown type for a default value",
-							"schema", schema, "table", table, "type", hclog.Fmt("%T", v))
+						expectNil = true
 					}
+				case *ast.FuncCallExpr:
+					if col.Tp.Tp == parsermysql.TypeTimestamp {
+						if exp.FnName.L == "current_timestamp" {
+							// See # 537. "1970-01-01 00:00:00" is debezium's representation for CURRENT_TIMESTAMP.
+							// TODO It would be better to put it in dest/kafka.
+							newColumn.Default = "1970-01-01 00:00:00"
+						}
+					}
+				}
+				if newColumn.Default == nil && !expectNil {
+					g.Logger.Warn("GetTableColumnsSqle: cannot handle a default value",
+						"schema", schema, "table", table, "column", col.Name, "type", hclog.Fmt("%T", colOpt.Expr))
 				}
 			case ast.ColumnOptionUniqKey:
 				newColumn.Key = "UNI"

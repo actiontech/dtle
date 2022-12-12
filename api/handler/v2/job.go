@@ -1404,7 +1404,7 @@ func buildMysqlToKafkaJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []no
 			case common.TaskTypeSrc:
 				srcTaskDetail = buildSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
 				if nil == internalTaskConfig.KafkaConfig {
-					return models.KafkaDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("can not find kafka task config from nomad")
+					return models.KafkaDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("cannot find kafka task config from nomad")
 				}
 				destTaskDetail = buildKafkaDestTaskDetail(t.Name, *internalTaskConfig.KafkaConfig, taskGroupToNomadAlloc[*tg.Name])
 				break
@@ -1492,7 +1492,7 @@ func PauseJobV2(c echo.Context, filterJobType DtleJobType) error {
 	}
 
 	if len(nomadAllocs) == 0 {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot find allocations of the job[%v]", reqParam.JobId)))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
@@ -1598,7 +1598,7 @@ func ResumeJobV2(c echo.Context, filterJobType DtleJobType) error {
 	}
 
 	if len(nomadAllocs) == 0 {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; can not find allocations of the job", reqParam.JobId)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("job_id=%v; cannot find allocations of the job", reqParam.JobId)))
 	}
 
 	// update metadata first
@@ -1847,7 +1847,7 @@ func ReverseStartJobV2(c echo.Context, filterJobType DtleJobType) error {
 	}
 
 	if len(nomadAllocs) == 0 {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("can not find allocations of the job[%v]", reqParam.JobId)))
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot find allocations of the job[%v]", reqParam.JobId)))
 	}
 
 	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)

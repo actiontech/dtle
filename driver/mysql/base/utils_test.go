@@ -255,6 +255,7 @@ func TestGetTableColumnsSqle(t *testing.T) {
 	sqls := []string{
 		"create table a.text_columns(id int(11) not null primary key,c_text longtext)",
 		"create table a.binary_columns(id int(11) not null primary key, c_binary varbinary(255))",
+		"create table a.timestamp1(id int(11) primary key, val timestamp default current_timestamp)",
 	}
 	for i := range sqls {
 		stmt, err := p.ParseOneStmt(sqls[i], "", "")
@@ -290,6 +291,15 @@ func TestGetTableColumnsSqle(t *testing.T) {
 				sqleContext: sqleCtx,
 				schema:      "a",
 				table:       "binary_columns",
+			},
+			want:    nil,
+			wantErr: false,
+		}, {
+			name:    "timestamp",
+			args:    args{
+				sqleContext: sqleCtx,
+				schema:      "a",
+				table:       "timestamp1",
 			},
 			want:    nil,
 			wantErr: false,

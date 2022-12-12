@@ -87,8 +87,8 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 	args []interface{}, stmt *gosql.Stmt) (result string, columnArgs []interface{}, hasUK bool, err error) {
 
 	if !(len(args) >= tableColumns.Len() || len(args) == len(columnMapTo)) {
-		return result, columnArgs, hasUK, fmt.Errorf("args count differs from table column count in BuildDMLDeleteQuery %v %v %v",
-			len(args), tableColumns.Len(), len(columnMapTo))
+		return result, columnArgs, hasUK, fmt.Errorf("BuildDMLDeleteQuery bad args count %v %v %v %v.%v",
+			len(args), tableColumns.Len(), len(columnMapTo), databaseName, tableName)
 	}
 
 	comparisons := []string{}
@@ -172,13 +172,13 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 
 		if iRow == 0 {
 			if !(len(args) >= tableColumns.Len() || len(args) == len(columnMapTo)) {
-				return "", nil, fmt.Errorf("BuildDMLInsertQuery: args count differs from table column count %v %v %v",
-					len(args), tableColumns.Len(), len(columnMapTo))
+				return "", nil, fmt.Errorf("BuildDMLInsertQuery: bad args count %v %v %v %v.%v",
+					len(args), tableColumns.Len(), len(columnMapTo), databaseName, tableName)
 			}
 		} else {
 			if len(args) != len(rows[0]) {
-				return "", nil, fmt.Errorf("BuildDMLInsertQuery: args count differs from args0 %v %v",
-					len(args), len(rows[0]))
+				return "", nil, fmt.Errorf("BuildDMLInsertQuery: args count differs from args0 %v %v %v.%v",
+					len(args), len(rows[0]), databaseName, tableName)
 			}
 		}
 

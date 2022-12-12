@@ -654,7 +654,11 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 
 		ack := &common.BigTxAck{}
 		_, err = ack.Unmarshal(m.Data)
-		e.logger.Debug("bigtx_ack", "gno", ack.GNO, "index", ack.Index)
+		if err != nil {
+			e.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Unmarshal"))
+		}
+		e.logger.Info("bigtx_ack", "gno", ack.GNO, "index", ack.Index,
+			"count", atomic.LoadInt32(&e.binlogReader.BigTxCount))
 
 		if !e.shutdown {
 			newVal := atomic.AddInt32(&e.binlogReader.BigTxCount, -1)
@@ -737,7 +741,7 @@ func (e *Extractor) initDBConnections() (err error) {
 			}
 		}
 		// https://github.com/go-sql-driver/mysql#system-variables
-		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.SrcConnectionConfig.GetSingletonDBUri(),
+		dumpUri := fmt.Sprintf("%s&%s='REPEATABLE-READ'", e.mysqlContext.SrcConnectionConfig.GetDBUri(),
 			getTxIsolationVarName(e.mysqlVersionDigit))
 		if e.singletonDB, err = sql.CreateDB(dumpUri); err != nil {
 			return err
@@ -1664,13 +1668,17 @@ func (e *Extractor) CheckAndApplyLowerCaseTableNames() {
 	if e.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
 		lowerConfigItem := func(configItem []*common.DataSource) {
 			for _, d := range configItem {
+				g.LowerString(&d.TableSchema)
 				g.LowerString(&d.TableSchemaRename)
-				g.LowerString(&d.TableSchemaRegex)
-				g.LowerString(&d.TableSchemaRename)
+				if d.TableSchemaRegex != "" {
+					d.TableSchemaRegex = "(?i)" + d.TableSchemaRegex
+				}
 				for _, table := range d.Tables {
 					g.LowerString(&table.TableName)
-					g.LowerString(&table.TableRegex)
 					g.LowerString(&table.TableRename)
+					if table.TableRegex != "" {
+						table.TableRegex = "(?i)" + table.TableRegex
+					}
 				}
 			}
 		}

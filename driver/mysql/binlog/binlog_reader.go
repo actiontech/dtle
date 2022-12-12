@@ -253,7 +253,8 @@ func NewBinlogReader(
 			HeartbeatPeriod:      3 * time.Second,
 			ReadTimeout:          12 * time.Second,
 
-			ParseTime: false, // must be false, or gencode will complain.
+			ParseTime:               false, // must be false, or gencode will complain.
+			TimestampStringLocation: time.UTC,
 
 			MemLimitSize:    int64(g.MemAvailable / 5),
 			MemLimitSeconds: 2,
@@ -322,10 +323,9 @@ func (b *BinlogReader) ConnectBinlogStreamer(coordinates common.MySQLCoordinates
 		ctx, b.relayCancelF = context.WithCancel(b.ctx)
 
 		{
-			loc, _ := time.LoadLocation("Local") // TODO
 			brConfig := &dmstreamer.BinlogReaderConfig{
 				RelayDir: b.getBinlogDir(),
-				Timezone: loc,
+				Timezone: time.UTC,
 			}
 			b.binlogReader = dmstreamer.NewBinlogReader(dmlog.L(), brConfig)
 		}
@@ -473,6 +473,7 @@ func (b *BinlogReader) handleEvent(ev *replication.BinlogEvent, entriesChannel c
 			Entry:        entry,
 			TableItems:   nil,
 			OriginalSize: 1, // GroupMaxSize is default to 1 and we send on EntriesSize >= GroupMaxSize
+			Rows:         0,
 		}
 	case replication.QUERY_EVENT:
 		return b.handleQueryEvent(ev, entriesChannel)
@@ -591,12 +592,12 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 
 		b.sqleExecDDL(currentSchema, queryInfo.ast)
 
-		sql := queryInfo.sql
+		sql1 := queryInfo.sql
 		realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
 		tableName := queryInfo.table.Table
 
 		if b.skipQueryDDL(realSchema, tableName) {
-			b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
+			b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql1,
 				"realSchema", realSchema, "tableName", tableName, "gno", gno)
 		} else {
 			var table *common.Table
@@ -625,7 +626,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				b.removeFKChildSchema(queryInfo.table.Schema)
 			case *ast.CreateTableStmt:
 				b.logger.Debug("ddl is create table")
-				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query8)
+				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, sql1)
 				if err != nil {
 					return err
 				}
@@ -639,7 +640,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					}
 				}
 			case *ast.DropIndexStmt:
-				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query8)
+				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, sql1)
 				if err != nil {
 					return err
 				}
@@ -664,7 +665,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				}
 
 				if !b.skipQueryDDL(newSchemaName, newTableName) {
-					_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, query8)
+					_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, sql1)
 					if err != nil {
 						return err
 					}
@@ -676,7 +677,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
 						"newTable", newTableName)
 					if !b.skipQueryDDL(newSchemaName, newTableName) {
-						_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, query8)
+						_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, sql1)
 						if err != nil {
 							return err
 						}
@@ -706,18 +707,18 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 			schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
 			if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 ||
 				len(columnMapFrom) > 0 {
-				sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, columnMapFrom)
+				sql1, err = b.loadMapping(sql1, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, columnMapFrom)
 				if nil != err {
 					return fmt.Errorf("ddl mapping failed: %v", err)
 				}
 			}
 
 			if skipBySqlFilter(queryInfo.ast, b.sqlFilter) {
-				b.logger.Debug("skipped a ddl event.", "query", query8)
+				b.logger.Debug("skipped a ddl event.", "query", sql1)
 			} else {
 				if realSchema == "" || queryInfo.table.Table == "" {
 					b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-						"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
+						"schema", realSchema, "table", queryInfo.table.Table, "query", sql1)
 				}
 
 				if errConvertToUTF8 != nil {
@@ -726,7 +727,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 
 				event := common.NewQueryEventAffectTable(
 					currentSchemaRename,
-					b.setDtleQuery(sql),
+					b.setDtleQuery(sql1),
 					common.NotDML,
 					queryInfo.table,
 					ev.Header.Timestamp,
@@ -807,15 +808,19 @@ func (b *BinlogReader) setDtleQuery(query string) string {
 
 func (b *BinlogReader) sendEntry(entriesChannel chan<- *common.EntryContext) {
 	isBig := b.entryContext.Entry.IsPartOfBigTx()
+	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	if isBig {
 		newVal := atomic.AddInt32(&b.BigTxCount, 1)
 		if newVal == 1 {
 			g.AddBigTxJob()
 		}
+		b.logger.Info("send bigtx entry", "gno", coordinate.GNO,
+			"index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final, "count", newVal,
+			"rows", b.entryContext.Rows)
 	}
-	coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
 	b.logger.Debug("sendEntry", "gno", coordinate.GNO, "events", len(b.entryContext.Entry.Events),
-		"isBig", isBig, "index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final)
+		"isBig", isBig, "index", b.entryContext.Entry.Index, "final", b.entryContext.Entry.Final,
+		"rows", b.entryContext.Rows)
 	atomic.AddInt64(b.memory, int64(b.entryContext.Entry.Size()))
 	select {
 	case <-b.shutdownCh:
@@ -1037,7 +1042,6 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		result.isRecognized = false
 		return result, nil
 	}
-	result.ast = stmt
 
 	setSchema := func(schema *string) {
 		if b.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
@@ -1115,11 +1119,12 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 			}
 
 			if len(newTables) == 0 {
+				// No tables included. Add the first table and ignore the whole stmt.
 				newTables = v.Tables[:1]
 				setTable(v.Tables[0], false)
 			}
 
-			if len(newTables) != len(v.Tables) {
+			if rewrite || len(newTables) != len(v.Tables) {
 				v.Tables = newTables
 				rewrite = true
 			}
@@ -1157,7 +1162,15 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		}
 		result.sql = bs.String()
 		b.logger.Debug("resolveQuery. rewrite", "sql", result.sql)
+
+		// Re-generate ast. See #1036.
+		stmt, err = parser.New().ParseOneStmt(result.sql, "", "")
+		if err != nil {
+			return result, err
+		}
 	}
+
+	result.ast = stmt
 
 	return result, nil
 }
@@ -1259,14 +1272,11 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid or gno type",
 							"type", hclog.Fmt("%T %T", sidValue, gnoI))
 					} else {
-						sid, err := uuid.FromBytes([]byte(sidByte))
-						if err != nil {
-							b.logger.Error("cycle-prevention: cannot convert sid to uuid", "err", err, "sid", sidByte)
-						} else {
-							coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
-							coordinate.SID = sid
-							coordinate.GNO = gno
-						}
+						var sid uuid.UUID     // will be initialized to 0
+						copy(sid[:], sidByte) // len(sidByte) might be less than 16 #1034
+						coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
+						coordinate.SID = sid
+						coordinate.GNO = gno
 					}
 				}
 				// If OSID is target mysql SID, skip applying the binlogEntry.
@@ -1916,6 +1926,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 		switch dml {
 		case common.InsertDML, common.DeleteDML:
 			if whereTrue0 {
+				b.entryContext.Rows += 1
 				b.entryContext.OriginalSize += avgRowSize
 				dmlEvent.Rows = append(dmlEvent.Rows, row0)
 			} else {
@@ -1932,6 +1943,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 			if !whereTrue0 && !whereTrue1 {
 				// append no rows
 			} else {
+				b.entryContext.Rows += 1
 				if whereTrue0 {
 					b.entryContext.OriginalSize += avgRowSize
 					dmlEvent.Rows = append(dmlEvent.Rows, row0)
@@ -2007,6 +2019,7 @@ func (b *BinlogReader) handleRowsEvent(ev *replication.BinlogEvent, rowsEvent *r
 				Entry:        entry,
 				TableItems:   nil,
 				OriginalSize: 1,
+				Rows:         0,
 			}
 		}
 	}
