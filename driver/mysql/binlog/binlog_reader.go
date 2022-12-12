@@ -592,12 +592,12 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 
 		b.sqleExecDDL(currentSchema, queryInfo.ast)
 
-		sql := queryInfo.sql
+		sql1 := queryInfo.sql
 		realSchema := g.StringElse(queryInfo.table.Schema, currentSchema)
 		tableName := queryInfo.table.Table
 
 		if b.skipQueryDDL(realSchema, tableName) {
-			b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql,
+			b.logger.Info("Skip QueryEvent", "currentSchema", currentSchema, "sql", sql1,
 				"realSchema", realSchema, "tableName", tableName, "gno", gno)
 		} else {
 			var table *common.Table
@@ -626,7 +626,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				b.removeFKChildSchema(queryInfo.table.Schema)
 			case *ast.CreateTableStmt:
 				b.logger.Debug("ddl is create table")
-				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query8)
+				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, sql1)
 				if err != nil {
 					return err
 				}
@@ -640,7 +640,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					}
 				}
 			case *ast.DropIndexStmt:
-				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, query8)
+				_, err := b.updateTableMeta(currentSchema, table, realSchema, tableName, gno, sql1)
 				if err != nil {
 					return err
 				}
@@ -665,7 +665,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 				}
 
 				if !b.skipQueryDDL(newSchemaName, newTableName) {
-					_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, query8)
+					_, err := b.updateTableMeta(currentSchema, fromTable, newSchemaName, newTableName, gno, sql1)
 					if err != nil {
 						return err
 					}
@@ -677,7 +677,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 					b.logger.Debug("updating meta for rename table", "newSchema", newSchemaName,
 						"newTable", newTableName)
 					if !b.skipQueryDDL(newSchemaName, newTableName) {
-						_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, query8)
+						_, err := b.updateTableMeta(currentSchema, nil, newSchemaName, newTableName, gno, sql1)
 						if err != nil {
 							return err
 						}
@@ -707,18 +707,18 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 			schemaRenameMap, schemaNameToTablesRenameMap := b.generateRenameMaps()
 			if len(schemaRenameMap) > 0 || len(schemaNameToTablesRenameMap) > 0 ||
 				len(columnMapFrom) > 0 {
-				sql, err = b.loadMapping(sql, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, columnMapFrom)
+				sql1, err = b.loadMapping(sql1, currentSchema, schemaRenameMap, schemaNameToTablesRenameMap, queryInfo.ast, columnMapFrom)
 				if nil != err {
 					return fmt.Errorf("ddl mapping failed: %v", err)
 				}
 			}
 
 			if skipBySqlFilter(queryInfo.ast, b.sqlFilter) {
-				b.logger.Debug("skipped a ddl event.", "query", query8)
+				b.logger.Debug("skipped a ddl event.", "query", sql1)
 			} else {
 				if realSchema == "" || queryInfo.table.Table == "" {
 					b.logger.Info("NewQueryEventAffectTable. found empty schema or table.",
-						"schema", realSchema, "table", queryInfo.table.Table, "query", sql)
+						"schema", realSchema, "table", queryInfo.table.Table, "query", sql1)
 				}
 
 				if errConvertToUTF8 != nil {
@@ -727,7 +727,7 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 
 				event := common.NewQueryEventAffectTable(
 					currentSchemaRename,
-					b.setDtleQuery(sql),
+					b.setDtleQuery(sql1),
 					common.NotDML,
 					queryInfo.table,
 					ev.Header.Timestamp,
