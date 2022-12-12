@@ -1031,7 +1031,6 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		result.isRecognized = false
 		return result, nil
 	}
-	result.ast = stmt
 
 	setSchema := func(schema *string) {
 		if b.lowerCaseTableNames != mysqlconfig.LowerCaseTableNames0 {
@@ -1109,11 +1108,12 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 			}
 
 			if len(newTables) == 0 {
+				// No tables included. Add the first table and ignore the whole stmt.
 				newTables = v.Tables[:1]
 				setTable(v.Tables[0], false)
 			}
 
-			if len(newTables) != len(v.Tables) {
+			if rewrite || len(newTables) != len(v.Tables) {
 				v.Tables = newTables
 				rewrite = true
 			}
@@ -1151,7 +1151,15 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		}
 		result.sql = bs.String()
 		b.logger.Debug("resolveQuery. rewrite", "sql", result.sql)
+
+		// Re-generate ast. See #1036.
+		stmt, err = parser.New().ParseOneStmt(result.sql, "", "")
+		if err != nil {
+			return result, err
+		}
 	}
+
+	result.ast = stmt
 
 	return result, nil
 }
