@@ -67,8 +67,8 @@ func GetTaskProgressV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
 	}
 	logger.Info("got target host", "targetHost", targetHost)
-	selfNomadHost, _, err := net.SplitHostPort(handler.NomadHost)
-	if nil != err {
+	selfNomadHost, _, err := net.SplitHostPort(handler.ApiAddr)
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get self nomad host failed: %v", err)))
 	}
 

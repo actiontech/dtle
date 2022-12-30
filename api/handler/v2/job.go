@@ -1123,8 +1123,10 @@ func buildJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Alloc
 			taskType := common.TaskTypeFromString(t.Name)
 			switch taskType {
 			case common.TaskTypeSrc:
-				srcTaskDetail = buildSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
-				destTaskDetail = buildMysqlDestTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
+				srcTaskDetail = buildSrcTaskDetail(
+					common.TaskTypeSrc, internalTaskConfig, taskGroupToNomadAlloc[common.TaskTypeSrc])
+				destTaskDetail = buildMysqlDestTaskDetail(
+					common.TaskTypeDest, internalTaskConfig, taskGroupToNomadAlloc[common.TaskTypeDest])
 				break
 			case common.TaskTypeDest:
 				break
