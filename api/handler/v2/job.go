@@ -797,8 +797,10 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 		if err != nil {
 			return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
 		}
-		if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok && basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
-			basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
+		if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok {
+			if basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
+				basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
+			}
 		}
 
 	}
@@ -1114,7 +1116,7 @@ func buildJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Alloc
 	for _, tg := range nomadJob.TaskGroups {
 		for _, t := range tg.Tasks {
 			internalTaskConfig, err := convertTaskConfigMapToInternalTaskConfig(t.Config)
-			if nil != err {
+			if err != nil {
 				return models.MysqlDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
 			}
 

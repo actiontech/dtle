@@ -25,13 +25,14 @@ import (
 // @Router /v2/monitor/task [get]
 func GetTaskProgressV2(c echo.Context) error {
 	logger := handler.NewLogger().Named("GetTaskProgressV2")
+
 	reqParam := new(models.GetTaskProgressReqV2)
 	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
 	targetNomadAddr := reqParam.NomadHttpAddress
-	if "" == targetNomadAddr {
+	if targetNomadAddr == "" {
 		// find out the node that the task is running
 		logger.Info("find out the node that the task is running")
 		url := handler.BuildUrl("/v1/allocations")
@@ -43,13 +44,12 @@ func GetTaskProgressV2(c echo.Context) error {
 		logger.Info("invoke nomad api finished")
 		nodeId := ""
 		for _, alloc := range nomadAllocs {
-			if alloc.ID != reqParam.AllocationId {
-				continue
+			if alloc.ID == reqParam.AllocationId {
+				nodeId = alloc.NodeID
+				break
 			}
-			nodeId = alloc.NodeID
-			break
 		}
-		if "" == nodeId {
+		if nodeId == "" {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot find out which node the allocation is running on")))
 		}
 		url = handler.BuildUrl(fmt.Sprintf("/v1/node/%v", nodeId))
@@ -63,7 +63,7 @@ func GetTaskProgressV2(c echo.Context) error {
 	}
 
 	targetHost, _, err := net.SplitHostPort(targetNomadAddr)
-	if nil != err {
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
 	}
 	logger.Info("got target host", "targetHost", targetHost)
@@ -81,12 +81,12 @@ func GetTaskProgressV2(c echo.Context) error {
 		// invoke http://%v/v1/agent/self to get api_addr
 		url := fmt.Sprintf("http://%v/v1/agent/self", targetNomadAddr)
 		nomadAgentSelf := nomadApi.AgentSelf{}
-		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAgentSelf); nil != err {
+		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAgentSelf); err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
 		}
 
 		_, targetPort, err := getApiAddrFromAgentConfig(nomadAgentSelf.Config)
-		if nil != err {
+		if err != nil {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
 		}
 		forwardAddr := fmt.Sprintf("%s:%s", targetHost, targetPort)
@@ -115,7 +115,7 @@ func GetTaskProgressV2(c echo.Context) error {
 		var currentCoordinates *models.CurrentCoordinates
 		var delayCount *models.DelayCount
 		var throughputStat *models.ThroughputStat
-		if nil != taskStatus.CurrentCoordinates {
+		if taskStatus.CurrentCoordinates != nil {
 			currentCoordinates = &models.CurrentCoordinates{
 				File:               taskStatus.CurrentCoordinates.File,
 				Position:           taskStatus.CurrentCoordinates.Position,
@@ -126,14 +126,14 @@ func GetTaskProgressV2(c echo.Context) error {
 			}
 		}
 
-		if nil != taskStatus.DelayCount {
+		if taskStatus.DelayCount != nil {
 			delayCount = &models.DelayCount{
 				Num:  taskStatus.DelayCount.Num,
 				Time: taskStatus.DelayCount.Time,
 			}
 		}
 
-		if nil != taskStatus.ThroughputStat {
+		if taskStatus.ThroughputStat != nil {
 			throughputStat = &models.ThroughputStat{
 				Num:  taskStatus.ThroughputStat.Num,
 				Time: taskStatus.ThroughputStat.Time,
