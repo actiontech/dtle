@@ -320,6 +320,7 @@ func (a *Applier) Run() {
 		a.revExtractor, err = NewExtractor(execCtx2, &cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "reversed Extractor"))
+			return
 		}
 		go a.revExtractor.Run()
 	}
@@ -364,11 +365,13 @@ func (a *Applier) Run() {
 			}).Marshal(nil)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Marshal"))
+				return
 			}
 			_, err = a.natsConn.Request(fmt.Sprintf("%s_bigtx_ack", a.subject),
 				bs, 1*time.Minute)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Request"))
+				return
 			}
 		}
 	}
