@@ -34,6 +34,7 @@ type JobBaseInfo struct {
 	JobSteps          []common.JobStep `json:"job_steps"`
 	Delay             int64            `json:"delay"`
 	DumpProgress      *DumpProgress    `json:"dump_progress"`
+	JobStage          string           `json:"job_stage"`
 }
 
 type DumpProgress struct {

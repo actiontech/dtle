@@ -189,6 +189,11 @@ func (a *Applier) updateGtidLoop() {
 			if a.mysqlContext.Gtid != "" {
 				if a.stage != JobIncrCopy {
 					a.stage = JobIncrCopy
+					err := a.storeManager.PutJobStage(a.subject, JobIncrCopy)
+					if err != nil {
+						a.onError(common.TaskStateDead, errors.Wrap(err, "PutJobStage"))
+						return
+					}
 					a.sendEvent(JobIncrCopy)
 				}
 			}
@@ -374,6 +379,10 @@ func (a *Applier) Run() {
 	}
 	if a.stage != JobFullCopy {
 		a.stage = JobFullCopy
+		err = a.storeManager.PutJobStage(a.subject, a.stage)
+		if err != nil {
+			a.onError(common.TaskStateDead, err)
+		}
 		a.sendEvent(JobFullCopy)
 	}
 

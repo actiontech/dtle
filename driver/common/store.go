@@ -621,6 +621,29 @@ func (sm *StoreManager) WatchTree(dir string, stopCh <-chan struct{}) (<-chan []
 	return sm.consulStore.WatchTree(dir, stopCh)
 }
 
+// return: ExecRowCount, TotalRowCount
+func (sm *StoreManager) GetFullProgress(jobName string) (int64, int64, error) {
+	// TODO
+	return 42, 42, nil
+}
+
+func (sm *StoreManager) PutJobStage(jobName string, stage string) error {
+	key := fmt.Sprintf("dtle/%v/JobStage", jobName)
+	return sm.consulStore.Put(key, []byte(stage), nil)
+}
+
+func (sm *StoreManager) GetJobStage(jobName string) (string, error) {
+	key := fmt.Sprintf("dtle/%v/JobStage", jobName)
+	kv, err := sm.consulStore.Get(key)
+	if err == store.ErrKeyNotFound {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+
+	return string(kv.Value), nil
+}
+
 // consul store item
 
 func NewDefaultRole(tenant string) *Role {

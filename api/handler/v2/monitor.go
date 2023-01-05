@@ -9,8 +9,6 @@ import (
 
 	"github.com/actiontech/dtle/api/handler"
 	"github.com/actiontech/dtle/api/models"
-	mysql "github.com/actiontech/dtle/driver"
-	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/labstack/echo/v4"
 )
 
@@ -31,143 +29,45 @@ func GetTaskProgressV2(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	targetNomadAddr := reqParam.NomadHttpAddress
-	if targetNomadAddr == "" {
-		// find out the node that the task is running
-		logger.Info("find out the node that the task is running")
-		url := handler.BuildUrl("/v1/allocations")
-		logger.Info("invoke nomad api begin", "url", url)
-		nomadAllocs := []nomadApi.Allocation{}
-		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAllocs); nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
-		}
-		logger.Info("invoke nomad api finished")
-		nodeId := ""
-		for _, alloc := range nomadAllocs {
-			if alloc.ID == reqParam.AllocationId {
-				nodeId = alloc.NodeID
-				break
-			}
-		}
-		if nodeId == "" {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot find out which node the allocation is running on")))
-		}
-		url = handler.BuildUrl(fmt.Sprintf("/v1/node/%v", nodeId))
-		logger.Info("invoke nomad api begin", "url", url)
-		nomadNode := nomadApi.Node{}
-		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadNode); nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
-		}
-		logger.Info("invoke nomad api finished")
-		targetNomadAddr = nomadNode.HTTPAddr
-	}
+	logger.Warn("/v2/monitor/task is unimplemented, returning dummy data", "AllocationId", reqParam.AllocationId)
 
-	targetHost, _, err := net.SplitHostPort(targetNomadAddr)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
-	}
-	logger.Info("got target host", "targetHost", targetHost)
-	selfNomadHost, _, err := net.SplitHostPort(handler.ApiAddr)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get self nomad host failed: %v", err)))
-	}
+	//storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	//if err != nil {
+	//	return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("consul_addr=%v; connect to consul: failed: %v", handler.ConsulAddr, err)))
+	//}
+
+	//storeManager.GetGtidForJob(reqParam.)
 
 	res := models.GetTaskProgressRespV2{
 		BaseResp: models.BuildBaseResp(nil),
 	}
-	if targetHost != selfNomadHost {
-		logger.Info("forwarding...", "targetHost", targetHost)
-		// forward
-		// invoke http://%v/v1/agent/self to get api_addr
-		url := fmt.Sprintf("http://%v/v1/agent/self", targetNomadAddr)
-		nomadAgentSelf := nomadApi.AgentSelf{}
-		if err := handler.InvokeApiWithKvData(http.MethodGet, url, nil, &nomadAgentSelf); err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("invoke nomad api %v failed: %v", url, err)))
-		}
-
-		_, targetPort, err := getApiAddrFromAgentConfig(nomadAgentSelf.Config)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get target host failed: %v", err)))
-		}
-		forwardAddr := fmt.Sprintf("%s:%s", targetHost, targetPort)
-		logger.Info("forwarding...", "forwardAddr", forwardAddr)
-
-		url = fmt.Sprintf("http://%v/v2/monitor/task", forwardAddr)
-		args := map[string]string{
-			"allocation_id": reqParam.AllocationId,
-			"task_name":     reqParam.TaskName,
-			"nomad_address": targetNomadAddr,
-		}
-		logger.Info("forwarding... invoke target dtle api begin", "url", url)
-		if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, c.Request().Header); nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("forward api %v failed: %v", url, err)))
-		}
-		logger.Info("forwarding... invoke target dtle api finished")
-	} else {
-		taskStatus, ok, err := mysql.AllocIdTaskNameToTaskHandler.GetTaskStatistics(reqParam.AllocationId, reqParam.TaskName)
-		if nil != err {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("get task stats failed: %v. allocation_id=%v task_name=%v", err, reqParam.AllocationId, reqParam.TaskName)))
-		} else if !ok {
-			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(fmt.Errorf("cannot find the task. allocation_id=%v task_name=%v", reqParam.AllocationId, reqParam.TaskName)))
-		}
-
-		// build response struct
-		var currentCoordinates *models.CurrentCoordinates
-		var delayCount *models.DelayCount
-		var throughputStat *models.ThroughputStat
-		if taskStatus.CurrentCoordinates != nil {
-			currentCoordinates = &models.CurrentCoordinates{
-				File:               taskStatus.CurrentCoordinates.File,
-				Position:           taskStatus.CurrentCoordinates.Position,
-				GtidSet:            taskStatus.CurrentCoordinates.GtidSet,
-				RelayMasterLogFile: taskStatus.CurrentCoordinates.RelayMasterLogFile,
-				ReadMasterLogPos:   taskStatus.CurrentCoordinates.ReadMasterLogPos,
-				RetrievedGtidSet:   taskStatus.CurrentCoordinates.RetrievedGtidSet,
-			}
-		}
-
-		if taskStatus.DelayCount != nil {
-			delayCount = &models.DelayCount{
-				Num:  taskStatus.DelayCount.Num,
-				Time: taskStatus.DelayCount.Time,
-			}
-		}
-
-		if taskStatus.ThroughputStat != nil {
-			throughputStat = &models.ThroughputStat{
-				Num:  taskStatus.ThroughputStat.Num,
-				Time: taskStatus.ThroughputStat.Time,
-			}
-		}
-
-		res.TaskStatus = &models.TaskProgress{
-			CurrentCoordinates: currentCoordinates,
-			DelayCount:         delayCount,
-			ProgressPct:        taskStatus.ProgressPct,
-			ExecMasterRowCount: taskStatus.ExecMasterRowCount,
-			ExecMasterTxCount:  taskStatus.ExecMasterTxCount,
-			ReadMasterRowCount: taskStatus.ReadMasterRowCount,
-			ReadMasterTxCount:  taskStatus.ReadMasterTxCount,
-			ETA:                taskStatus.ETA,
-			Backlog:            taskStatus.Backlog,
-			ThroughputStat:     throughputStat,
-			NatsMsgStat: &models.NatsMessageStatistics{
-				InMsgs:     taskStatus.MsgStat.InMsgs,
-				OutMsgs:    taskStatus.MsgStat.OutMsgs,
-				InBytes:    taskStatus.MsgStat.InBytes,
-				OutBytes:   taskStatus.MsgStat.OutBytes,
-				Reconnects: taskStatus.MsgStat.Reconnects,
-			},
-			BufferStat: &models.BufferStat{
-				BinlogEventQueueSize: taskStatus.BufferStat.BinlogEventQueueSize,
-				ExtractorTxQueueSize: taskStatus.BufferStat.ExtractorTxQueueSize,
-				ApplierTxQueueSize:   taskStatus.BufferStat.ApplierTxQueueSize,
-				SendByTimeout:        taskStatus.BufferStat.SendByTimeout,
-				SendBySizeFull:       taskStatus.BufferStat.SendBySizeFull,
-			},
-			Stage:     taskStatus.Stage,
-			Timestamp: taskStatus.Timestamp,
-		}
+	res.TaskStatus = &models.TaskProgress{
+		CurrentCoordinates: &models.CurrentCoordinates{},
+		DelayCount:         &models.DelayCount{},
+		//ProgressPct:        taskStatus.ProgressPct,
+		ExecMasterRowCount: 0,
+		ExecMasterTxCount:  0,
+		ReadMasterRowCount: 0,
+		ReadMasterTxCount:  0,
+		//ETA:                taskStatus.ETA,
+		//Backlog:            taskStatus.Backlog,
+		//ThroughputStat:     throughputStat,
+		//NatsMsgStat: &models.NatsMessageStatistics{
+		//	InMsgs:     taskStatus.MsgStat.InMsgs,
+		//	OutMsgs:    taskStatus.MsgStat.OutMsgs,
+		//	InBytes:    taskStatus.MsgStat.InBytes,
+		//	OutBytes:   taskStatus.MsgStat.OutBytes,
+		//	Reconnects: taskStatus.MsgStat.Reconnects,
+		//},
+		//BufferStat: &models.BufferStat{
+		//	BinlogEventQueueSize: taskStatus.BufferStat.BinlogEventQueueSize,
+		//	ExtractorTxQueueSize: taskStatus.BufferStat.ExtractorTxQueueSize,
+		//	ApplierTxQueueSize:   taskStatus.BufferStat.ApplierTxQueueSize,
+		//	SendByTimeout:        taskStatus.BufferStat.SendByTimeout,
+		//	SendBySizeFull:       taskStatus.BufferStat.SendBySizeFull,
+		//},
+		Stage:     "TODO",
+		//Timestamp: taskStatus.Timestamp,
 	}
 
 	return c.JSON(http.StatusOK, &res)

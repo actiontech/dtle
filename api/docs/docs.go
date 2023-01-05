@@ -2833,6 +2833,9 @@ var doc = `{
                 "job_status": {
                     "type": "string"
                 },
+                "job_stage": {
+                    "type": "string"
+                },
                 "job_steps": {
                     "type": "array",
                     "items": {
