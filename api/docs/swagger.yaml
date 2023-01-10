@@ -469,6 +469,8 @@ definitions:
         type: string
       job_status:
         type: string
+      job_stage:
+        type: string
       job_steps:
         items:
           $ref: '#/definitions/common.JobStep'

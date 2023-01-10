@@ -189,6 +189,11 @@ func (a *Applier) updateGtidLoop() {
 			if a.mysqlContext.Gtid != "" {
 				if a.stage != JobIncrCopy {
 					a.stage = JobIncrCopy
+					err := a.storeManager.PutJobStage(a.subject, JobIncrCopy)
+					if err != nil {
+						a.onError(common.TaskStateDead, errors.Wrap(err, "PutJobStage"))
+						return
+					}
 					a.sendEvent(JobIncrCopy)
 				}
 			}
@@ -315,6 +320,7 @@ func (a *Applier) Run() {
 		a.revExtractor, err = NewExtractor(execCtx2, &cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "reversed Extractor"))
+			return
 		}
 		go a.revExtractor.Run()
 	}
@@ -359,21 +365,28 @@ func (a *Applier) Run() {
 			}).Marshal(nil)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Marshal"))
+				return
 			}
 			_, err = a.natsConn.Request(fmt.Sprintf("%s_bigtx_ack", a.subject),
 				bs, 1*time.Minute)
 			if err != nil {
 				a.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. Request"))
+				return
 			}
 		}
 	}
 	a.ai.OnError = a.onError
 
+	go a.updateDumpProgressLoop()
 	if sourceType == "mysql" {
 		go a.updateGtidLoop()
 	}
 	if a.stage != JobFullCopy {
 		a.stage = JobFullCopy
+		err = a.storeManager.PutJobStage(a.subject, a.stage)
+		if err != nil {
+			a.onError(common.TaskStateDead, err)
+		}
 		a.sendEvent(JobFullCopy)
 	}
 
@@ -1174,4 +1187,24 @@ func (a *Applier) enableForeignKeyChecks() error {
 		}
 	}
 	return nil
+}
+
+func (a *Applier) updateDumpProgressLoop() {
+	var err error
+	interval := 10
+	a.logger.Debug("updateDumpProgressLoop", "interval", interval)
+
+	for {
+		if a.shutdown {
+			return
+		}
+
+		err = a.storeManager.PutDumpProgress(a.subject, a.TotalRowsReplayed, a.mysqlContext.RowsEstimate)
+		if err != nil {
+			a.onError(common.TaskStateDead, err)
+			return
+		}
+
+		time.Sleep(time.Duration(interval) * time.Second)
+	}
 }

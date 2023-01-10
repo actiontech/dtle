@@ -621,6 +621,54 @@ func (sm *StoreManager) WatchTree(dir string, stopCh <-chan struct{}) (<-chan []
 	return sm.consulStore.WatchTree(dir, stopCh)
 }
 
+func (sm *StoreManager) PutJobStage(jobName string, stage string) error {
+	key := fmt.Sprintf("dtle/%v/JobStage", jobName)
+	return sm.consulStore.Put(key, []byte(stage), nil)
+}
+
+func (sm *StoreManager) GetJobStage(jobName string) (string, error) {
+	key := fmt.Sprintf("dtle/%v/JobStage", jobName)
+	kv, err := sm.consulStore.Get(key)
+	if err == store.ErrKeyNotFound {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+
+	return string(kv.Value), nil
+}
+
+func (sm *StoreManager) PutDumpProgress(jobName string, exec int64, total int64) error {
+	key := fmt.Sprintf("dtle/%v/DumpProgress", jobName)
+	bs, err := json.Marshal([]int64{exec, total})
+	if err != nil {
+		return err
+	}
+	return sm.consulStore.Put(key, bs, nil)
+}
+
+// return: ExecRowCount, TotalRowCount
+func (sm *StoreManager) GetDumpProgress(jobName string) (int64, int64, error) {
+	key := fmt.Sprintf("dtle/%v/DumpProgress", jobName)
+	kv, err:= sm.consulStore.Get(key)
+	if err == store.ErrKeyNotFound {
+		return 0, 0, nil
+	} else if err != nil {
+		return 0, 0, err
+	}
+
+	var r []int64
+	err = json.Unmarshal(kv.Value, &r)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(r) != 2 {
+		return 0, 0, fmt.Errorf("unexpected len for %v. found %v", key, len(r))
+	}
+
+	return r[0], r[1], nil
+}
+
 // consul store item
 
 func NewDefaultRole(tenant string) *Role {

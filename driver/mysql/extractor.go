@@ -288,6 +288,7 @@ func (e *Extractor) Run() {
 		err = e.storeManager.SaveGtidForJob(e.subject, e.mysqlContext.Gtid)
 		if err != nil {
 			e.onError(common.TaskStateDead, err)
+			return
 		}
 	}
 
@@ -650,6 +651,7 @@ func (e *Extractor) initNatsPubClient(natsAddr string) (err error) {
 		err := e.natsConn.Publish(m.Reply, nil)
 		if err != nil {
 			e.onError(common.TaskStateDead, errors.Wrap(err, "bigtx_ack. reply"))
+			return
 		}
 
 		ack := &common.BigTxAck{}
@@ -1144,7 +1146,7 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 }
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
-func (e *Extractor) mysqlDump() error {
+func (e *Extractor) mysqlDump() (retErr error) {
 	defer e.singletonDB.Close()
 	var tx sql.QueryAble
 	var err error
@@ -1263,9 +1265,7 @@ func (e *Extractor) mysqlDump() error {
 					}
 					step++*/
 					e.logger.Info("Step: committing transaction", "n", step)
-					if err := realTx.Commit(); err != nil {
-						e.onError(common.TaskStateDead, err)
-					}
+					retErr = realTx.Commit()
 				}()
 			} else {
 				e.logger.Warn("Failed to get a consistenct TX with GTID. Will retry.", "gtidMatchRound", gtidMatchRound)
@@ -1303,51 +1303,48 @@ func (e *Extractor) mysqlDump() error {
 
 	e.gotCoordinateCh <- struct{}{}
 
-	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
-	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-	if !e.mysqlContext.SkipCreateDbTable {
-		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas",
-			"replicateDoDb", e.replicateDoDb)
+	// Go through all tables to get DDL and row numbers.
+	for _, db := range e.replicateDoDb {
+		if strings.ToLower(db.TableSchema) == "mysql" {
+			continue
+		}
 
-		for _, db := range e.replicateDoDb {
-			var dbSQL string
-			if strings.ToLower(db.TableSchema) != "mysql" {
-				if db.TableSchemaRename != "" {
-					dbSQL, err = base.RenameCreateSchemaAddINE(db.CreateSchemaString, db.TableSchemaRename)
-					if err != nil {
-						e.onError(common.TaskStateDead, err)
-					}
-				} else {
-					dbSQL = db.CreateSchemaString
-				}
-
-			}
-			entry := &common.DumpEntry{
-				DbSQL: dbSQL,
-			}
-			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
-			atomic.AddInt64(&e.TotalRowsCopied, 1)
-			if err := e.encodeAndSendDumpEntry(entry); err != nil {
-				e.onError(common.TaskStateDead, err)
-			}
-
-			for _, tbCtx := range db.TableMap {
-				tb := tbCtx.Table
-				if tb.TableSchema != db.TableSchema {
-					continue
-				}
-				total, err := e.CountTableRows(tb)
+		// Create the schema.
+		entry := &common.DumpEntry{}
+		if !e.mysqlContext.SkipCreateDbTable {
+			if db.TableSchemaRename != "" {
+				entry.DbSQL, err = base.RenameCreateSchemaAddINE(db.CreateSchemaString, db.TableSchemaRename)
 				if err != nil {
-					return err
+					return errors.Wrap(err, "RenameCreateSchemaAddINE")
 				}
-				tb.Counter = total
-				var tbSQL []string
+			} else {
+				entry.DbSQL = db.CreateSchemaString
+			}
+		}
+		if err := e.encodeAndSendDumpEntry(entry); err != nil {
+			return errors.Wrap(err, "encodeAndSendDumpEntry. create schema entry")
+		}
+
+		// Create the tables.
+		for _, tbCtx := range db.TableMap {
+			tb := tbCtx.Table
+			tb.Counter, err = e.CountTableRows(tb)
+			if err != nil {
+				return errors.Wrapf(err, "CountTableRows %v.%v", tb.TableSchema, tb.TableName)
+			}
+			e.logger.Info("count table", "schema", db.TableSchema, "table", tb.TableName, "rows", tb.Counter)
+
+			entry := &common.DumpEntry{
+				TbSQL:      []string{},
+				TotalCount: tb.Counter,
+			}
+			if !e.mysqlContext.SkipCreateDbTable {
 				if strings.ToLower(tb.TableType) == "view" {
 					/*tbSQL, err = base.ShowCreateView(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
 					if err != nil {
 						return err
 					}*/
-				} else if strings.ToLower(tb.TableSchema) != "mysql" {
+				} else {
 					ctStmt, err := base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName)
 					if err != nil {
 						return err
@@ -1362,23 +1359,17 @@ func (e *Extractor) mysqlDump() error {
 					}
 
 					if e.mysqlContext.DropTableIfExists {
-						tbSQL = append(tbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s.%s",
+						entry.TbSQL = append(entry.TbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s.%s",
 							mysqlconfig.EscapeName(targetSchema), mysqlconfig.EscapeName(targetTable)))
 					}
-					tbSQL = append(tbSQL, ctStmt)
-				}
-				entry := &common.DumpEntry{
-					TbSQL:      tbSQL,
-					TotalCount: tb.Counter,
-				}
-				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
-				atomic.AddInt64(&e.TotalRowsCopied, 1)
-				if err := e.encodeAndSendDumpEntry(entry); err != nil {
-					e.onError(common.TaskStateDead, err)
+					entry.TbSQL = append(entry.TbSQL, ctStmt)
 				}
 			}
-			e.tableCount += len(db.TableMap)
+			if err := e.encodeAndSendDumpEntry(entry); err != nil {
+				return errors.Wrap(err, "encodeAndSendDumpEntry. create table")
+			}
 		}
+		e.tableCount += len(db.TableMap)
 	}
 	step++
 
@@ -1401,7 +1392,7 @@ func (e *Extractor) mysqlDump() error {
 			d := NewDumper(e.ctx, tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1,
 				e.mysqlContext.DumpEntryLimit)
 			if err := d.Dump(); err != nil {
-				e.onError(common.TaskStateDead, err)
+				return errors.Wrapf(err, "d.Dump %v.%v", t.TableSchema, t.TableName)
 			}
 			e.dumpers = append(e.dumpers, d)
 			// Scan the rows in the table ...
@@ -1410,22 +1401,20 @@ func (e *Extractor) mysqlDump() error {
 				if !d.sentTableDef {
 					tableBs, err := common.EncodeTable(d.Table)
 					if err != nil {
-						err = errors.Wrap(err, "full copy: EncodeTable")
-						e.onError(common.TaskStateDead, err)
-						return err
+						return errors.Wrap(err, "full copy: EncodeTable")
 					} else {
 						entry.Table = tableBs
 						d.sentTableDef = true
 					}
 				}
 				if err = e.encodeAndSendDumpEntry(entry); err != nil {
-					e.onError(common.TaskStateDead, err)
+					return errors.Wrap(err, "encodeAndSendDumpEntry. dump")
 				}
 				atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
 				atomic.AddInt64(d.Memory, -memSize)
 			}
 			if d.Err != nil {
-				e.onError(common.TaskStateDead, d.Err)
+				return errors.Wrap(err, "d.Err")
 			}
 		}
 	}

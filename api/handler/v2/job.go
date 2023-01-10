@@ -710,11 +710,14 @@ func GetJobDetail(c echo.Context, logger g.LoggerType, jobType DtleJobType) erro
 		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 	}
 
-	progress, delay := getTaskProgress(logger, c.Request().Header, resp.TaskLogs)
+	progress, delay, stage := getTaskProgress(logger, c.Request().Header, resp.TaskLogs, reqParam.JobId)
+
 	resp.BasicTaskProfile.JobBaseInfo.DumpProgress = progress
 	resp.BasicTaskProfile.JobBaseInfo.Delay = delay
 	resp.BasicTaskProfile.ConnectionInfo.SrcDataBase.Password = "*"
 	resp.BasicTaskProfile.ConnectionInfo.DstDataBase.Password = "*"
+
+	resp.BasicTaskProfile.JobBaseInfo.JobStage = stage
 
 	return c.JSON(http.StatusOK, resp)
 }
@@ -743,31 +746,30 @@ func getJobDetail(logger g.LoggerType, jobId string, jobType DtleJobType) (*mode
 	}, nil
 }
 
-func getTaskProgress(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog) (*models.DumpProgress, int64) {
-	url := fmt.Sprintf("http://%v/v2/monitor/task", handler.ApiAddr)
-	for i := range taskLogs {
-		taskLog := taskLogs[i]
-		allocationId := taskLogs[i].AllocationId
-		if taskLog.Status == nomadApi.AllocDesiredStatusRun && taskLog.Target == common.TaskTypeDest {
-			res := models.GetTaskProgressRespV2{
-				BaseResp: models.BuildBaseResp(nil),
-			}
-			args := map[string]string{
-				"allocation_id": allocationId,
-				"task_name":     common.TaskTypeDest,
-			}
-			if err := handler.InvokeApiWithKvData(http.MethodGet, url, args, &res, header); nil != err {
-				logger.Warn("forward api failed", "url", url, "err", err)
-				return nil, 0
-			}
-			return &models.DumpProgress{
-				ExecRowCount:  res.TaskStatus.ExecMasterRowCount,
-				TotalRowCount: res.TaskStatus.ReadMasterRowCount,
-			}, res.TaskStatus.DelayCount.Time
-		}
+// return: progress, delay, stage
+func getTaskProgress(logger g.LoggerType, header http.Header, taskLogs []models.TaskLog, jobId string) (*models.DumpProgress, int64, string) {
+	storeManager, err := common.NewStoreManager([]string{handler.ConsulAddr}, logger)
+	if err != nil {
+		logger.Warn("getTaskProgress: failed to connect to consul", "ConsulAddr", handler.ConsulAddr, "err", err)
+		return nil, 0, ""
 	}
-	logger.Warn("Unable to get delayed data")
-	return nil, 0
+
+	execRowCount, totalRowCount, err := storeManager.GetDumpProgress(jobId)
+	progress := &models.DumpProgress{
+		ExecRowCount:  execRowCount,
+		TotalRowCount: totalRowCount,
+	}
+	if err != nil {
+		logger.Warn("getTaskProgress: failed to GetJobStatus", "ConsulAddr", handler.ConsulAddr, "err", err)
+		return nil, 0, ""
+	}
+
+	stage, err := storeManager.GetJobStage(jobId)
+	if err != nil {
+		logger.Warn("getTaskProgress: failed to GetJobStatus", "ConsulAddr", handler.ConsulAddr, "err", err)
+		return nil, 0, ""
+	}
+	return progress, 0, stage
 }
 
 func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *models.SrcTaskDetail,
@@ -797,8 +799,10 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 		if err != nil {
 			return models.BasicTaskProfile{}, nil, fmt.Errorf("find nomad job list err %v", err)
 		}
-		if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok && basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
-			basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
+		if nomadJobItem, ok := nomadJobMap[consulJobItem.JobId]; ok {
+			if basicTaskProfile.JobBaseInfo.JobStatus == common.DtleJobStatusNonPaused {
+				basicTaskProfile.JobBaseInfo.JobStatus = nomadJobItem.Status
+			}
 		}
 
 	}
@@ -1114,15 +1118,17 @@ func buildJobDetailResp(nomadJob nomadApi.Job, nomadAllocations []nomadApi.Alloc
 	for _, tg := range nomadJob.TaskGroups {
 		for _, t := range tg.Tasks {
 			internalTaskConfig, err := convertTaskConfigMapToInternalTaskConfig(t.Config)
-			if nil != err {
+			if err != nil {
 				return models.MysqlDestTaskDetail{}, models.SrcTaskDetail{}, fmt.Errorf("convert task config failed: %v", err)
 			}
 
 			taskType := common.TaskTypeFromString(t.Name)
 			switch taskType {
 			case common.TaskTypeSrc:
-				srcTaskDetail = buildSrcTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
-				destTaskDetail = buildMysqlDestTaskDetail(t.Name, internalTaskConfig, taskGroupToNomadAlloc[*tg.Name])
+				srcTaskDetail = buildSrcTaskDetail(
+					common.TaskTypeSrc, internalTaskConfig, taskGroupToNomadAlloc[common.TaskTypeSrc])
+				destTaskDetail = buildMysqlDestTaskDetail(
+					common.TaskTypeDest, internalTaskConfig, taskGroupToNomadAlloc[common.TaskTypeDest])
 				break
 			case common.TaskTypeDest:
 				break
@@ -1373,9 +1379,10 @@ func GetSubscriptionJobDetailV2(c echo.Context) error {
 	basicTaskProfile.Configuration.FailOver = failover
 	basicTaskProfile.ConnectionInfo.SrcDataBase.Password = "*"
 
-	progress, delay := getTaskProgress(logger, c.Request().Header, taskLog)
+	progress, delay, stage := getTaskProgress(logger, c.Request().Header, taskLog, reqParam.JobId)
 	basicTaskProfile.JobBaseInfo.DumpProgress = progress
 	basicTaskProfile.JobBaseInfo.Delay = delay
+	basicTaskProfile.JobBaseInfo.JobStage = stage
 	if len(nomadJob.TaskGroups) != 0 {
 		basicTaskProfile.Configuration.RetryTimes = *nomadJob.TaskGroups[0].RestartPolicy.Attempts
 	}
