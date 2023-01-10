@@ -754,7 +754,7 @@ func getTaskProgress(logger g.LoggerType, header http.Header, taskLogs []models.
 		return nil, 0, ""
 	}
 
-	execRowCount, totalRowCount, err := storeManager.GetFullProgress(jobId)
+	execRowCount, totalRowCount, err := storeManager.GetDumpProgress(jobId)
 	progress := &models.DumpProgress{
 		ExecRowCount:  execRowCount,
 		TotalRowCount: totalRowCount,

@@ -377,6 +377,7 @@ func (a *Applier) Run() {
 	}
 	a.ai.OnError = a.onError
 
+	go a.updateDumpProgressLoop()
 	if sourceType == "mysql" {
 		go a.updateGtidLoop()
 	}
@@ -1186,4 +1187,24 @@ func (a *Applier) enableForeignKeyChecks() error {
 		}
 	}
 	return nil
+}
+
+func (a *Applier) updateDumpProgressLoop() {
+	var err error
+	interval := 10
+	a.logger.Debug("updateDumpProgressLoop", "interval", interval)
+
+	for {
+		if a.shutdown {
+			return
+		}
+
+		err = a.storeManager.PutDumpProgress(a.subject, a.TotalRowsReplayed, a.mysqlContext.RowsEstimate)
+		if err != nil {
+			a.onError(common.TaskStateDead, err)
+			return
+		}
+
+		time.Sleep(time.Duration(interval) * time.Second)
+	}
 }

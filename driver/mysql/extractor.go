@@ -1303,51 +1303,48 @@ func (e *Extractor) mysqlDump() (retErr error) {
 
 	e.gotCoordinateCh <- struct{}{}
 
-	// Transform the current schema so that it reflects the *current* state of the MySQL server's contents.
-	// First, get the DROP TABLE and CREATE TABLE statement (with keys and constraint definitions) for our tables ...
-	if !e.mysqlContext.SkipCreateDbTable {
-		e.logger.Info("generating DROP and CREATE statements to reflect current database schemas",
-			"replicateDoDb", e.replicateDoDb)
+	// Go through all tables to get DDL and row numbers.
+	for _, db := range e.replicateDoDb {
+		if strings.ToLower(db.TableSchema) == "mysql" {
+			continue
+		}
 
-		for _, db := range e.replicateDoDb {
-			var dbSQL string
-			if strings.ToLower(db.TableSchema) != "mysql" {
-				if db.TableSchemaRename != "" {
-					dbSQL, err = base.RenameCreateSchemaAddINE(db.CreateSchemaString, db.TableSchemaRename)
-					if err != nil {
-						return errors.Wrap(err, "RenameCreateSchemaAddINE")
-					}
-				} else {
-					dbSQL = db.CreateSchemaString
-				}
-
-			}
-			entry := &common.DumpEntry{
-				DbSQL: dbSQL,
-			}
-			atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
-			atomic.AddInt64(&e.TotalRowsCopied, 1)
-			if err := e.encodeAndSendDumpEntry(entry); err != nil {
-				return errors.Wrap(err, "encodeAndSendDumpEntry. create schema entry")
-			}
-
-			for _, tbCtx := range db.TableMap {
-				tb := tbCtx.Table
-				if tb.TableSchema != db.TableSchema {
-					continue
-				}
-				total, err := e.CountTableRows(tb)
+		// Create the schema.
+		entry := &common.DumpEntry{}
+		if !e.mysqlContext.SkipCreateDbTable {
+			if db.TableSchemaRename != "" {
+				entry.DbSQL, err = base.RenameCreateSchemaAddINE(db.CreateSchemaString, db.TableSchemaRename)
 				if err != nil {
-					return errors.Wrapf(err, "CountTableRows %v.%v", tb.TableSchema, tb.TableName)
+					return errors.Wrap(err, "RenameCreateSchemaAddINE")
 				}
-				tb.Counter = total
-				var tbSQL []string
+			} else {
+				entry.DbSQL = db.CreateSchemaString
+			}
+		}
+		if err := e.encodeAndSendDumpEntry(entry); err != nil {
+			return errors.Wrap(err, "encodeAndSendDumpEntry. create schema entry")
+		}
+
+		// Create the tables.
+		for _, tbCtx := range db.TableMap {
+			tb := tbCtx.Table
+			tb.Counter, err = e.CountTableRows(tb)
+			if err != nil {
+				return errors.Wrapf(err, "CountTableRows %v.%v", tb.TableSchema, tb.TableName)
+			}
+			e.logger.Info("count table", "schema", db.TableSchema, "table", tb.TableName, "rows", tb.Counter)
+
+			entry := &common.DumpEntry{
+				TbSQL:      []string{},
+				TotalCount: tb.Counter,
+			}
+			if !e.mysqlContext.SkipCreateDbTable {
 				if strings.ToLower(tb.TableType) == "view" {
 					/*tbSQL, err = base.ShowCreateView(e.singletonDB, tb.TableSchema, tb.TableName, e.mysqlContext.DropTableIfExists)
 					if err != nil {
 						return err
 					}*/
-				} else if strings.ToLower(tb.TableSchema) != "mysql" {
+				} else {
 					ctStmt, err := base.ShowCreateTable(e.singletonDB, tb.TableSchema, tb.TableName)
 					if err != nil {
 						return err
@@ -1362,23 +1359,17 @@ func (e *Extractor) mysqlDump() (retErr error) {
 					}
 
 					if e.mysqlContext.DropTableIfExists {
-						tbSQL = append(tbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s.%s",
+						entry.TbSQL = append(entry.TbSQL, fmt.Sprintf("DROP TABLE IF EXISTS %s.%s",
 							mysqlconfig.EscapeName(targetSchema), mysqlconfig.EscapeName(targetTable)))
 					}
-					tbSQL = append(tbSQL, ctStmt)
-				}
-				entry := &common.DumpEntry{
-					TbSQL:      tbSQL,
-					TotalCount: tb.Counter,
-				}
-				atomic.AddInt64(&e.mysqlContext.RowsEstimate, 1)
-				atomic.AddInt64(&e.TotalRowsCopied, 1)
-				if err := e.encodeAndSendDumpEntry(entry); err != nil {
-					return errors.Wrap(err, "encodeAndSendDumpEntry. create table")
+					entry.TbSQL = append(entry.TbSQL, ctStmt)
 				}
 			}
-			e.tableCount += len(db.TableMap)
+			if err := e.encodeAndSendDumpEntry(entry); err != nil {
+				return errors.Wrap(err, "encodeAndSendDumpEntry. create table")
+			}
 		}
+		e.tableCount += len(db.TableMap)
 	}
 	step++
 
