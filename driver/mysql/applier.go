@@ -1199,7 +1199,12 @@ func (a *Applier) updateDumpProgressLoop() {
 			return
 		}
 
-		err = a.storeManager.PutDumpProgress(a.subject, a.TotalRowsReplayed, a.mysqlContext.RowsEstimate)
+		exec := a.TotalRowsReplayed
+		total := a.mysqlContext.RowsEstimate
+		if total < exec || a.stage == JobIncrCopy {
+			total = exec
+		}
+		err = a.storeManager.PutDumpProgress(a.subject, exec, total)
 		if err != nil {
 			a.onError(common.TaskStateDead, err)
 			return

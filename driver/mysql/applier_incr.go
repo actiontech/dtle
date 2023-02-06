@@ -256,8 +256,17 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 
 func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	binlogEntry := entryCtx.Entry
-	isBig := binlogEntry.IsPartOfBigTx()
 	txGno := binlogEntry.Coordinates.GetGNO()
+	a.logger.Debug("a binlogEntry.", "remaining", len(a.incrBytesQueue), "gno", txGno,
+		"lc", binlogEntry.Coordinates.GetLastCommit(), "seq", binlogEntry.Coordinates.GetSequenceNumber(),
+		"index", binlogEntry.Index, "final", binlogEntry.Final)
+
+	if binlogEntry.Coordinates.GetSid() == uuid.UUID([16]byte{0}) {
+		return a.handleEntryOracle(entryCtx)
+	}
+
+	isBig := binlogEntry.IsPartOfBigTx()
+	txSid := binlogEntry.Coordinates.GetSidStr()
 
 	if a.inBigTx && binlogEntry.Index == 0 {
 		a.logger.Info("bigtx: found resent BinlogEntry", "gno", txGno)
@@ -270,64 +279,52 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 		a.inBigTx = false
 	}
 
-	if binlogEntry.Coordinates.GetSid() == uuid.UUID([16]byte{0}) {
-		return a.handleEntryOracle(entryCtx)
-	}
-	txSid := binlogEntry.Coordinates.GetSidStr()
-
-	a.logger.Debug("a binlogEntry.", "remaining", len(a.incrBytesQueue),
-		"gno", txGno, "lc", binlogEntry.Coordinates.GetLastCommit(),
-		"seq", binlogEntry.Coordinates.GetSequenceNumber())
-
+	// region TestIfExecuted
+	skipEntry := false
 	if txSid == a.MySQLServerUuid {
-		a.logger.Debug("skipping a dtle tx.", "osid", txSid)
+		a.logger.Debug("skipping a binlogEntry with the same sid as target.", "sid", txSid)
+		skipEntry = true
+	} else if a.fwdExtractor != nil {
+		if a.fwdExtractor.binlogReader != nil {
+			if base.GtidSetContains(&a.fwdExtractor.binlogReader.CurrentGtidSetMutex,
+				a.fwdExtractor.binlogReader.CurrentGtidSet, txSid, txGno) {
+				skipEntry = true
+				a.logger.Info("skip an fwd executed tx", "sid", txSid, "gno", txGno)
+			}
+		}
+	} else if base.GtidSetContains(a.gtidSetLock, a.gtidSet, txSid, txGno) {
+		a.logger.Info("skip an executed tx", "sid", txSid, "gno", txGno)
+		skipEntry = true
+	}
+
+	// Note: the gtidExecuted will be updated after commit.
+	// For a big-tx, we determine whether to skip for each parts.
+	if skipEntry {
 		a.EntryExecutedHook(binlogEntry) // make gtid continuous
 		return nil
 	}
-
-	// Note: the gtidExecuted will be updated after commit. For a big-tx, we determine
-	// whether to skip for each parts.
-
-	// region TestIfExecuted
-	{
-		if a.fwdExtractor != nil {
-			if a.fwdExtractor.binlogReader != nil {
-				if base.GtidSetContains(&a.fwdExtractor.binlogReader.CurrentGtidSetMutex,
-					a.fwdExtractor.binlogReader.CurrentGtidSet, txSid, txGno) {
-					a.logger.Info("skip an fwd executed tx", "sid", txSid, "gno", txGno)
-					a.EntryExecutedHook(binlogEntry) // make gtid continuous
-					return nil
-				}
-			}
-		}
-
-		if base.GtidSetContains(a.gtidSetLock, a.gtidSet, txSid, txGno) {
-			a.logger.Info("skip an executed tx", "sid", txSid, "gno", txGno)
-			return nil
-		}
-	}
 	// endregion
 
-	// this must be after duplication check
-	var rotated bool
-	if a.replayingBinlogFile == binlogEntry.Coordinates.GetLogFile() {
-		rotated = false
-	} else {
-		rotated = true
-		a.replayingBinlogFile = binlogEntry.Coordinates.GetLogFile()
-	}
-
-	gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.GetSid().(uuid.UUID))
-	a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
-	if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
-		err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid)
-		if err != nil {
-			return err
+	rotated := false
+	if binlogEntry.Index == 0 {
+		// this must be after duplication check
+		if a.replayingBinlogFile != binlogEntry.Coordinates.GetLogFile() {
+			rotated = true
+			a.replayingBinlogFile = binlogEntry.Coordinates.GetLogFile()
 		}
-		gtidSetItem.NRow = 1
+
+		gtidSetItem := a.gtidItemMap.GetItem(binlogEntry.Coordinates.GetSid().(uuid.UUID))
+		a.logger.Debug("gtidSetItem", "NRow", gtidSetItem.NRow)
+		if gtidSetItem.NRow >= cleanupGtidExecutedLimit {
+			err = a.cleanGtidExecuted(binlogEntry.Coordinates.GetSid().(uuid.UUID), txSid)
+			if err != nil {
+				return err
+			}
+			gtidSetItem.NRow = 1
+		}
+		gtidSetItem.NRow += 1
 	}
 
-	gtidSetItem.NRow += 1
 	if binlogEntry.Coordinates.GetSequenceNumber() == 0 {
 		// MySQL 5.6: non mts
 		if isBig {
