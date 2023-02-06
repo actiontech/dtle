@@ -300,10 +300,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	// Note: the gtidExecuted will be updated after commit.
 	// For a big-tx, we determine whether to skip for each parts.
 	if skipEntry {
-		if binlogEntry.Final {
-			a.EntryExecutedHook(binlogEntry) // make gtid continuous
-		}
-
+		a.EntryExecutedHook(binlogEntry) // make gtid continuous
 		return nil
 	}
 	// endregion
