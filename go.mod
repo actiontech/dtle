@@ -19,7 +19,7 @@ require (
 	github.com/hashicorp/go-hclog v1.0.0
 	github.com/hashicorp/nomad v1.1.2
 	github.com/hashicorp/nomad/api v0.0.0-20200529203653-c4416b26d3eb
-	github.com/julienschmidt/httprouter v1.2.0
+	github.com/julienschmidt/httprouter v1.3.0
 	github.com/labstack/echo/v4 v4.4.0
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mitchellh/mapstructure v1.3.3
@@ -33,7 +33,7 @@ require (
 	github.com/pingcap/tidb v1.1.0-beta.0.20211025024448-36e694bfc536
 	github.com/pingcap/tidb/parser v0.0.0-20220216061539-43e666ba7c23
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.5.1
+	github.com/prometheus/client_golang v1.11.1
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
 	github.com/shirou/gopsutil/v3 v3.21.11
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
