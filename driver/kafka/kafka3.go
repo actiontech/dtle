@@ -762,8 +762,9 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 					value = TimeValue(valueStr)
 				case mysqlconfig.TimestampColumnType:
 					if valueStr != "" {
-						value = TimeStamp(valueStr, kr.location)
+						value = TimeStamp(valueStr)
 					} else {
+						// TODO what?
 						value = TimeValue(valueStr)
 					}
 				case mysqlconfig.BinaryColumnType:
@@ -790,13 +791,14 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 						valueStr = "char(255)"
 					}
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
-				case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
-					if valueStr != "" && columnList[i].ColumnType == "datetime" {
+				case mysqlconfig.DateTimeColumnType:
+					if valueStr != "" {
 						value = DateTimeValue(valueStr, kr.location)
-					} else if valueStr != "" {
+					}
+				case mysqlconfig.DateColumnType:
+					 if valueStr != "" {
 						value = DateValue(valueStr)
 					}
-
 				case mysqlconfig.YearColumnType:
 					if valueStr != "" {
 						value = YearValue(valueStr)
@@ -1072,17 +1074,21 @@ func (kr *KafkaRunner) kafkaConvertArg(column *mysqlconfig.Column, theValue inte
 				theValue = int64(theValue.(uint64))
 			}
 		}
-	case mysqlconfig.TimeColumnType, mysqlconfig.TimestampColumnType:
-		if theValue != nil && column.ColumnType == "timestamp" {
-			theValue = TimeStamp(theValue.(string), kr.location)
-		} else if theValue != nil {
+	case mysqlconfig.TimeColumnType:
+		if theValue != nil {
 			theValue = TimeValue(theValue.(string))
 		}
-	case mysqlconfig.DateColumnType, mysqlconfig.DateTimeColumnType:
-		if theValue != nil && column.ColumnType == "datetime" {
-			theValue = DateTimeValue(theValue.(string), kr.location)
-		} else if theValue != nil {
+	case mysqlconfig.TimestampColumnType:
+		if theValue != nil {
+			theValue = TimeStamp(theValue.(string))
+		}
+	case mysqlconfig.DateColumnType:
+		if theValue != nil {
 			theValue = DateValue(theValue.(string))
+		}
+	case mysqlconfig.DateTimeColumnType:
+		if theValue != nil {
+			theValue = DateTimeValue(theValue.(string), kr.location)
 		}
 	case mysqlconfig.VarbinaryColumnType:
 		if theValue != nil {
@@ -1294,11 +1300,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 		case mysqlconfig.DecimalColumnType:
 			field = NewDecimalField(cols[i].Precision, cols[i].Scale, optional, fieldName, defaultValue)
 		case mysqlconfig.DateColumnType:
-			if cols[i].ColumnType == "datetime" {
-				field = NewDateTimeField(optional, fieldName, defaultValue, loc)
-			} else {
-				field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
-			}
+			field = NewDateField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysqlconfig.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysqlconfig.DateTimeColumnType:
@@ -1306,7 +1308,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 		case mysqlconfig.TimeColumnType:
 			field = NewTimeField(optional, fieldName, defaultValue)
 		case mysqlconfig.TimestampColumnType:
-			field = NewTimeStampField(optional, fieldName, defaultValue, loc)
+			field = NewTimeStampField(optional, fieldName, defaultValue)
 		case mysqlconfig.JSONColumnType:
 			field = NewJsonField(optional, fieldName)
 		default:

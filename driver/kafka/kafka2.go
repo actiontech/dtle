@@ -50,7 +50,9 @@ const (
 )
 
 const (
-	LAYOUT = "2006-01-02 15:04:05"
+	MySQLDateTimeFormat = "2006-01-02 15:04:05"
+	MySQLDateFormat     = "2006-01-02"
+	dbzTimestampFormat  = "2006-01-02T15:04:05Z"
 )
 
 var (
@@ -465,7 +467,7 @@ func NewDateTimeField(optional bool, field string, defaultValue interface{}, loc
 	}
 }
 func DateTimeValue(dateTime string, loc *time.Location) int64 {
-	tm2, err := time.ParseInLocation(LAYOUT, dateTime, loc)
+	tm2, err := time.ParseInLocation(MySQLDateTimeFormat, dateTime, loc)
 	if err != nil {
 		return 0
 	}
@@ -477,17 +479,16 @@ func DateTimeValue(dateTime string, loc *time.Location) int64 {
 	return tm2.Unix()*1000 + ms
 }
 func DateValue(date string) int64 {
-	tm2, err := time.Parse(LAYOUT, date+" 00:00:00")
+	tm2, err := time.Parse(MySQLDateFormat, date)
 	if err != nil {
 		return 0
 	}
 	return tm2.Unix() / 60 / 60 / 24
 }
-func TimeStamp(timestamp string, loc *time.Location) string {
-	tm2, _ := time.ParseInLocation(LAYOUT, timestamp, loc)
-	value := tm2.In(time.UTC).Format(LAYOUT)
-	timestamp = value[:10] + "T" + value[11:] + "Z"
-	return timestamp
+func TimeStamp(timestamp string) string {
+	// dtle always read timestamp in UTC
+	tm2, _ := time.ParseInLocation(MySQLDateTimeFormat, timestamp, time.UTC)
+	return tm2.In(time.UTC).Format(dbzTimestampFormat)
 }
 
 func NewJsonField(optional bool, field string) *Schema {
@@ -556,13 +557,12 @@ func NewSetField(theType SchemaType, optional bool, field string, allowed string
 		Version: 1,
 	}
 }
-func NewTimeStampField(optional bool, field string, defaultValue interface{}, loc *time.Location) *Schema {
+func NewTimeStampField(optional bool, field string, defaultValue interface{}) *Schema {
 	if defaultValue == "CURRENT_TIMESTAMP" {
 		defaultValue = "1970-01-01T00:00:00Z"
 	} else if defaultValue != nil {
-		tm2, _ := time.ParseInLocation(LAYOUT, defaultValue.(string), loc)
-		value := tm2.In(time.UTC).Format(LAYOUT)
-		defaultValue = value[:10] + "T" + value[11:] + "Z"
+		tm2, _ := time.ParseInLocation(MySQLDateTimeFormat, defaultValue.(string), time.UTC)
+		defaultValue = tm2.In(time.UTC).Format(dbzTimestampFormat)
 	}
 	return &Schema{
 		Field:    field,
