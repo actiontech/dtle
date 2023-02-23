@@ -170,7 +170,7 @@ var (
 			"Brokers": hclspec.NewAttr("Brokers", "list(string)", true),
 			"Converter": hclspec.NewDefault(hclspec.NewAttr("Converter", "string", false),
 				hclspec.NewLiteral(`"json"`)),
-			"TimeZone": hclspec.NewDefault(hclspec.NewAttr("TimeZone", "string", false),
+			"DateTimeZone": hclspec.NewDefault(hclspec.NewAttr("DateTimeZone", "string", false),
 				hclspec.NewLiteral(`"UTC"`)),
 			"MessageGroupMaxSize": hclspec.NewAttr("MessageGroupMaxSize", "number", false),
 			"MessageGroupTimeout": hclspec.NewAttr("MessageGroupTimeout", "number", false),

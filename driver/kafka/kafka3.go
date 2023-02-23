@@ -63,7 +63,8 @@ type KafkaRunner struct {
 	BinlogFile string
 	BinlogPos  int64
 
-	location *time.Location
+	// Only for Datetime column type. Not for
+	dateTimeLocation *time.Location
 
 	chBinlogEntries chan *common.DataEntries
 	chDumpEntry     chan *common.DumpEntry
@@ -108,7 +109,7 @@ func NewKafkaRunner(execCtx *common.ExecContext, logger g.LoggerType, storeManag
 		chDumpEntry:     make(chan *common.DumpEntry, 2),
 		chBinlogEntries: make(chan *common.DataEntries, 2),
 
-		location: time.UTC, // default value
+		dateTimeLocation: time.UTC, // default value
 
 		memory1:  new(int64),
 		memory2:  new(int64),
@@ -280,8 +281,8 @@ func (kr *KafkaRunner) Run() {
 		return
 	}
 
-	if kr.kafkaConfig.TimeZone != "" {
-		kr.location, err = time.LoadLocation(kr.kafkaConfig.TimeZone)
+	if kr.kafkaConfig.DateTimeZone != "" {
+		kr.dateTimeLocation, err = time.LoadLocation(kr.kafkaConfig.DateTimeZone)
 		if err != nil {
 			kr.onError(common.TaskStateDead, errors.Wrap(err, "LoadLocation"))
 			return
@@ -318,7 +319,7 @@ func (kr *KafkaRunner) getOrSetTable(schemaName string, tableName string,
 	} else {
 		kr.logger.Debug("new table info", "schemaName", schemaName, "tableName", tableName)
 		tableIdent := fmt.Sprintf("%v.%v.%v", kr.kafkaMgr.Cfg.Topic, table.TableSchema, table.TableName)
-		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.location)
+		colDefs, keyColDefs := kafkaColumnListToColDefs(table.OriginalTableColumns, kr.dateTimeLocation)
 		keySchema := &SchemaJson{
 			schema: NewKeySchema(tableIdent, keyColDefs),
 		}
@@ -793,7 +794,7 @@ func (kr *KafkaRunner) kafkaTransformSnapshotData(
 					value = base64.StdEncoding.EncodeToString([]byte(valueStr))
 				case mysqlconfig.DateTimeColumnType:
 					if valueStr != "" {
-						value = DateTimeValue(valueStr, kr.location)
+						value = DateTimeValue(valueStr, kr.dateTimeLocation)
 					}
 				case mysqlconfig.DateColumnType:
 					 if valueStr != "" {
@@ -1088,7 +1089,7 @@ func (kr *KafkaRunner) kafkaConvertArg(column *mysqlconfig.Column, theValue inte
 		}
 	case mysqlconfig.DateTimeColumnType:
 		if theValue != nil {
-			theValue = DateTimeValue(theValue.(string), kr.location)
+			theValue = DateTimeValue(theValue.(string), kr.dateTimeLocation)
 		}
 	case mysqlconfig.VarbinaryColumnType:
 		if theValue != nil {
@@ -1224,7 +1225,7 @@ func reverseBytes(bytes []byte) string {
 	return value
 }
 
-func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (valColDefs ColDefs, keyColDefs ColDefs) {
+func kafkaColumnListToColDefs(colList *common.ColumnList, dateTimeLoc *time.Location) (valColDefs ColDefs, keyColDefs ColDefs) {
 	cols := colList.ColumnList()
 	for i, _ := range cols {
 		var field *Schema
@@ -1304,7 +1305,7 @@ func kafkaColumnListToColDefs(colList *common.ColumnList, loc *time.Location) (v
 		case mysqlconfig.YearColumnType:
 			field = NewYearField(SCHEMA_TYPE_INT32, optional, fieldName, defaultValue)
 		case mysqlconfig.DateTimeColumnType:
-			field = NewDateTimeField(optional, fieldName, defaultValue, loc)
+			field = NewDateTimeField(optional, fieldName, defaultValue, dateTimeLoc)
 		case mysqlconfig.TimeColumnType:
 			field = NewTimeField(optional, fieldName, defaultValue)
 		case mysqlconfig.TimestampColumnType:
