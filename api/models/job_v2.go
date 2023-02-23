@@ -232,6 +232,7 @@ type KafkaDestTaskConfig struct {
 	NodeId              string   `json:"node_id,omitempty"`
 	BrokerAddrs         []string `json:"kafka_broker_addrs" validate:"required" example:"127.0.0.1:9092"`
 	Topic               string   `json:"kafka_topic" validate:"required"`
+	DateTimeZone        string   `json:"kafka_date_time_zone"`
 	MessageGroupMaxSize uint64   `json:"message_group_max_size"`
 	MessageGroupTimeout uint64   `json:"message_group_timeout"`
 }

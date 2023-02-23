@@ -622,6 +622,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig, destConfig *mod
 		kafkaMap["MessageGroupMaxSize"] = kafkaConfig.MessageGroupMaxSize
 		kafkaMap["MessageGroupTimeout"] = kafkaConfig.MessageGroupTimeout
 		kafkaMap["Converter"] = kafka.CONVERTER_JSON
+		kafkaMap["DateTimeZone"] = kafkaConfig.DateTimeZone
 		taskConfigInNomadFormat["KafkaConfig"] = kafkaMap
 	}
 
@@ -1433,6 +1434,7 @@ func buildKafkaDestTaskDetail(taskName string, internalTaskKafkaConfig common.Ka
 		Topic:               internalTaskKafkaConfig.Topic,
 		MessageGroupMaxSize: internalTaskKafkaConfig.MessageGroupMaxSize,
 		MessageGroupTimeout: internalTaskKafkaConfig.MessageGroupTimeout,
+		DateTimeZone:        internalTaskKafkaConfig.DateTimeZone,
 	}
 
 	for _, a := range allocsFromNomad {
