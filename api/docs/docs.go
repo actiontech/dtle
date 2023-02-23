@@ -2830,10 +2830,10 @@ var doc = `{
                 "job_id": {
                     "type": "string"
                 },
-                "job_status": {
+                "job_stage": {
                     "type": "string"
                 },
-                "job_stage": {
+                "job_status": {
                     "type": "string"
                 },
                 "job_steps": {
@@ -2888,6 +2888,9 @@ var doc = `{
                     "example": [
                         "127.0.0.1:9092"
                     ]
+                },
+                "kafka_date_time_zone": {
+                    "type": "string"
                 },
                 "kafka_topic": {
                     "type": "string"
