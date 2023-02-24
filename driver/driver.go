@@ -82,8 +82,7 @@ var (
 			hclspec.NewLiteral(`""`)),
 		"memory":          hclspec.NewAttr("memory", "string", false),
 		"big_tx_max_jobs": hclspec.NewAttr("big_tx_max_jobs", "number", false),
-		"log_file": hclspec.NewDefault(hclspec.NewAttr("log_file", "string", false),
-			hclspec.NewLiteral(`"/var/log/dtle"`)),
+		"log_file":        hclspec.NewAttr("log_file", "string", false),
 	})
 
 	connectionConfigSpec = hclspec.NewObject(map[string]*hclspec.Spec{
