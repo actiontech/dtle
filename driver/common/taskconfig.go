@@ -75,7 +75,7 @@ type DtleTaskConfig struct {
 	SrcConnectionConfig  *mysqlconfig.ConnectionConfig `codec:"SrcConnectionConfig"`
 	DestConnectionConfig *mysqlconfig.ConnectionConfig `codec:"DestConnectionConfig"`
 	KafkaConfig          *KafkaConfig                  `codec:"KafkaConfig"`
-	DestType             string `codec:"DestType"`
+	DestType             string                        `codec:"DestType"`
 	// support oracle extractor/applier
 	SrcOracleConfig *config.OracleConfig `codec:"SrcOracleConfig"`
 }
@@ -146,7 +146,7 @@ type KafkaConfig struct {
 	Brokers             []string
 	Topic               string
 	Converter           string
-	TimeZone            string
+	DateTimeZone        string
 	User                string
 	Password            string
 	MessageGroupMaxSize uint64

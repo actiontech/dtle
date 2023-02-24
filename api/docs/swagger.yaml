@@ -467,9 +467,9 @@ definitions:
         type: string
       job_id:
         type: string
-      job_status:
-        type: string
       job_stage:
+        type: string
+      job_status:
         type: string
       job_steps:
         items:
@@ -502,6 +502,8 @@ definitions:
         items:
           type: string
         type: array
+      kafka_date_time_zone:
+        type: string
       kafka_topic:
         type: string
       message_group_max_size:
