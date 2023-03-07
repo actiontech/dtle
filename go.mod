@@ -41,8 +41,8 @@ require (
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
 	github.com/thinkeridea/go-extend v1.3.2
-	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
-	golang.org/x/text v0.3.7
+	golang.org/x/net v0.7.0
+	golang.org/x/text v0.7.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 
