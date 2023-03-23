@@ -1086,6 +1086,13 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		result.isSkip = true
 	case *ast.AlterTableStmt:
 		setTable(v.Table, false)
+		for _, spec := range v.Specs {
+			switch spec.Tp {
+			case ast.AlterTableRenameTable:
+				mayLowerTable(spec.NewTable)
+			}
+		}
+
 	case *ast.RevokeStmt, *ast.RevokeRoleStmt:
 		result.isExpand = true
 	case *ast.SetPwdStmt:
