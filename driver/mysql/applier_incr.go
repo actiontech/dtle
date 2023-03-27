@@ -18,6 +18,7 @@ import (
 	gomysql "github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
+	mysqldriver "github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -233,11 +234,21 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 		case entryContext := <-a.applyBinlogMtsTxQueue:
 			hasEntry = true
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GetGNO())
-			if err := a.ApplyBinlogEvent(workerIndex, entryContext); err != nil {
-				a.OnError(common.TaskStateDead, err) // TODO coordinate with other goroutine
-				keepLoop = false
-			} else {
-				// do nothing
+			const deadlockTryLimit = 3
+			for iTry := 0; ; iTry++ {
+				err := a.ApplyBinlogEvent(workerIndex, entryContext)
+				if err != nil {
+					if merr, isME := err.(*mysqldriver.MySQLError); isME {
+						if merr.Number == sql.ErrLockDeadlock && iTry < deadlockTryLimit {
+							logger.Info("found deadlock. will retry tx", "gno", entryContext.Entry.Coordinates.GetGNO(),
+								"iTry", iTry)
+							continue
+						}
+					}
+					a.OnError(common.TaskStateDead, err) // TODO coordinate with other goroutine
+					keepLoop = false
+				}
+				break;
 			}
 			logger.Debug("after ApplyBinlogEvent.", "gno", entryContext.Entry.Coordinates.GetGNO())
 		case <-t.C:
