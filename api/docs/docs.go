@@ -3017,6 +3017,9 @@ var doc = `{
                 "bulk_insert2": {
                     "type": "integer"
                 },
+                "retry_tx_limit": {
+                    "type": "integer"
+                },
                 "dependency_history_size": {
                     "type": "integer"
                 },

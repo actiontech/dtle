@@ -331,7 +331,7 @@ func createOrUpdateJob(logger g.LoggerType, jobParam *models.CreateOrUpdateMysql
 	if jobParam.SrcTask.GroupTimeout == 0 {
 		jobParam.SrcTask.GroupTimeout = common.DefaultSrcGroupTimeout
 	}
-	logger.Info("MysqlDestTaskConfig", jobParam.DestTask.MysqlDestTaskConfig)
+	logger.Info("MysqlDestTaskConfig", "config", jobParam.DestTask.MysqlDestTaskConfig)
 	if jobParam.DestTask.MysqlDestTaskConfig != nil {
 		if jobParam.DestTask.MysqlDestTaskConfig.ParallelWorkers == 0 {
 			jobParam.DestTask.MysqlDestTaskConfig.ParallelWorkers = common.DefaultNumWorkers
@@ -613,6 +613,7 @@ func buildDatabaseSrcTaskConfigMap(config *models.SrcTaskConfig, destConfig *mod
 		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.DependencyHistorySize, "DependencyHistorySize")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.BulkInsert1, "BulkInsert1")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.BulkInsert2, "BulkInsert2")
+		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.RetryTxLimit, "RetryTxLimit")
 		addNotRequiredParamToMap(taskConfigInNomadFormat, destConfig.MysqlDestTaskConfig.SetGtidNext, "SetGtidNext")
 		taskConfigInNomadFormat["DestConnectionConfig"] = buildMysqlConnectionConfigMap(destConfig.ConnectionConfig)
 	} else if kafkaConfig != nil {
@@ -883,6 +884,7 @@ func buildBasicTaskProfile(logger g.LoggerType, jobId string, srcTaskDetail *mod
 				DependencyHistorySize: destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.DependencyHistorySize,
 				BulkInsert1:           destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.BulkInsert1,
 				BulkInsert2:           destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.BulkInsert2,
+				RetryTxLimit:          destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.RetryTxLimit,
 				SetGtidNext:           destMySqlTaskDetail.TaskConfig.MysqlDestTaskConfig.SetGtidNext,
 			}
 			basicTaskProfile.Configuration.DstConfig = models.DstConfig{MysqlDestTaskConfig: mysqlDstConfig}
@@ -1060,6 +1062,7 @@ func buildMysqlDestTaskDetail(taskName string, internalTaskConfig common.DtleTas
 		DependencyHistorySize: internalTaskConfig.DependencyHistorySize,
 		BulkInsert1:           internalTaskConfig.BulkInsert1,
 		BulkInsert2:           internalTaskConfig.BulkInsert2,
+		RetryTxLimit:          internalTaskConfig.RetryTxLimit,
 		SetGtidNext:           internalTaskConfig.SetGtidNext,
 	}
 	destTaskDetail.TaskConfig = models.DestTaskConfig{

@@ -234,12 +234,11 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 		case entryContext := <-a.applyBinlogMtsTxQueue:
 			hasEntry = true
 			logger.Debug("a binlogEntry MTS dequeue", "gno", entryContext.Entry.Coordinates.GetGNO())
-			const deadlockTryLimit = 3
 			for iTry := 0; ; iTry++ {
 				err := a.ApplyBinlogEvent(workerIndex, entryContext)
 				if err != nil {
 					if merr, isME := err.(*mysqldriver.MySQLError); isME {
-						if merr.Number == sql.ErrLockDeadlock && iTry < deadlockTryLimit {
+						if merr.Number == sql.ErrLockDeadlock && iTry < a.mysqlContext.RetryTxLimit {
 							logger.Info("found deadlock. will retry tx", "gno", entryContext.Entry.Coordinates.GetGNO(),
 								"iTry", iTry)
 							continue

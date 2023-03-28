@@ -182,6 +182,7 @@ type MysqlDestTaskConfig struct {
 	DependencyHistorySize int  `json:"dependency_history_size"`
 	BulkInsert1           int  `json:"bulk_insert1"`
 	BulkInsert2           int  `json:"bulk_insert2"`
+	RetryTxLimit          int  `json:"retry_tx_limit"`
 	SetGtidNext           bool `json:"set_gtid_next"`
 }
 

@@ -57,6 +57,7 @@ type DtleTaskConfig struct {
 	BulkInsert1          int           `codec:"BulkInsert1"`
 	BulkInsert2          int           `codec:"BulkInsert2"`
 	BulkInsert3          int           `codec:"BulkInsert3"`
+	RetryTxLimit         int           `codec:"RetryTxLimit"`
 	SlaveNetWriteTimeout int           `codec:"SlaveNetWriteTimeout"`
 	BigTxSrcQueue        int32         `codec:"BigTxSrcQueue"`
 	TwoWaySync           bool          `codec:"TwoWaySync"`
@@ -116,7 +117,7 @@ type MySQLDriverConfig struct {
 	RowCopyStartTime time.Time
 	RowCopyEndTime   time.Time
 
-	Stage string
+	Stage        string
 }
 
 // ElapsedRowCopyTime returns time since starting to copy chunks of rows
