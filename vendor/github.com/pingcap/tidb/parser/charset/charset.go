@@ -54,6 +54,7 @@ var supportedCollations = make([]*Collation, 0, len(supportedCollationNames))
 var charsetInfos = map[string]*Charset{
 	CharsetUTF8:    {CharsetUTF8, CollationUTF8, make(map[string]*Collation), "UTF-8 Unicode", 3},
 	CharsetUTF8MB4: {CharsetUTF8MB4, CollationUTF8MB4, make(map[string]*Collation), "UTF-8 Unicode", 4},
+	CharsetUTF8MB3: {CharsetUTF8MB3, CollationUTF8MB3, make(map[string]*Collation), "UTF-8 Unicode", 3},
 	CharsetASCII:   {CharsetASCII, CollationASCII, make(map[string]*Collation), "US ASCII", 1},
 	CharsetLatin1:  {CharsetLatin1, CollationLatin1, make(map[string]*Collation), "Latin1", 1},
 	CharsetBin:     {CharsetBin, CollationBin, make(map[string]*Collation), "binary", 1},
@@ -70,6 +71,7 @@ var charsetInfos = map[string]*Charset{
 var supportedCollationNames = map[string]struct{}{
 	CollationUTF8:         {},
 	CollationUTF8MB4:      {},
+	CollationUTF8MB3:      {},
 	CollationASCII:        {},
 	CollationLatin1:       {},
 	CollationBin:          {},
@@ -199,8 +201,10 @@ const (
 	CollationUTF8 = "utf8_bin"
 	// CharsetUTF8MB4 represents 4 bytes utf8, which works the same way as utf8 in Go.
 	CharsetUTF8MB4 = "utf8mb4"
+	CharsetUTF8MB3 = "utf8mb3"
 	// CollationUTF8MB4 is the default collation for CharsetUTF8MB4.
 	CollationUTF8MB4 = "utf8mb4_bin"
+	CollationUTF8MB3 = "utf8mb3_bin"
 	// CharsetASCII is a subset of UTF8.
 	CharsetASCII = "ascii"
 	// CollationASCII is the default collation for CharsetACSII.
