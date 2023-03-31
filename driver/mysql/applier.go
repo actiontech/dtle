@@ -40,6 +40,7 @@ import (
 const (
 	cleanupGtidExecutedLimit = 2048
 	pingInterval             = 10 * time.Second
+	retryTxDelay             = 1 * time.Millisecond
 	JobIncrCopy              = "job_stage_incr"
 	JobFullCopy              = "job_stage_full"
 )

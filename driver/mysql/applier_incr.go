@@ -241,6 +241,7 @@ func (a *ApplierIncr) MtsWorker(workerIndex int) {
 						if merr.Number == sql.ErrLockDeadlock && iTry < a.mysqlContext.RetryTxLimit {
 							logger.Info("found deadlock. will retry tx", "gno", entryContext.Entry.Coordinates.GetGNO(),
 								"iTry", iTry)
+							time.Sleep(retryTxDelay)
 							continue
 						}
 					}

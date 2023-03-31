@@ -163,7 +163,7 @@ var (
 		"BulkInsert3": hclspec.NewDefault(hclspec.NewAttr("BulkInsert3", "number", false),
 			hclspec.NewLiteral(`128`)),
 		"RetryTxLimit": hclspec.NewDefault(hclspec.NewAttr("RetryTxLimit", "number", false),
-			hclspec.NewLiteral(`3`)),
+			hclspec.NewLiteral(`5`)),
 		"BigTxSrcQueue": hclspec.NewDefault(hclspec.NewAttr("BigTxSrcQueue", "number", false),
 			hclspec.NewLiteral(`3`)),
 		"KafkaConfig": hclspec.NewBlock("KafkaConfig", false, hclspec.NewObject(map[string]*hclspec.Spec{
