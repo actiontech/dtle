@@ -371,8 +371,8 @@ func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*common.Ta
 
 func ListColumns(db *gosql.DB, dbName, tableName string) (columns []string, err error) {
 	// Get table columns name
-	query := fmt.Sprintf("select COLUMN_NAME from information_schema.columns where table_name='%s' and table_schema = '%s';", tableName, dbName)
-	rows, err := db.Query(query)
+	query := "select COLUMN_NAME from information_schema.columns where table_schema=? and table_name=? order by ORDINAL_POSITION"
+	rows, err := db.Query(query, dbName, tableName)
 	if err != nil {
 		return columns, err
 	}
