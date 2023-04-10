@@ -240,6 +240,7 @@ type QueryAble interface {
 	Prepare(query string) (*gosql.Stmt, error)
 	Query(query string, args ...interface{}) (*gosql.Rows, error)
 	QueryRow(query string, args ...interface{}) *gosql.Row
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *gosql.Row
 }
 
 func GetServerUUID(db QueryAble) (result string, err error) {
@@ -291,7 +292,7 @@ func QueryResultData(db *gosql.DB, query string, args ...interface{}) (ResultDat
 //INSERT INTO {{ .Name }} VALUES {{ .Values }};
 //UNLOCK TABLES;
 
-func ShowDatabases(db *gosql.DB) ([]string, error) {
+func ShowDatabases(db QueryAble) ([]string, error) {
 	dbs := make([]string, 0)
 
 	// Get table list
@@ -317,7 +318,7 @@ func ShowDatabases(db *gosql.DB) ([]string, error) {
 	return dbs, rows.Err()
 }
 
-func ShowCreateSchema(ctx context.Context, db *gosql.DB, dbName string) (r string, err error) {
+func ShowCreateSchema(ctx context.Context, db QueryAble, dbName string) (r string, err error) {
 	query := fmt.Sprintf("SHOW CREATE SCHEMA IF NOT EXISTS %s", mysqlconfig.EscapeName(dbName))
 	g.Logger.Debug("ShowCreateSchema", "query", query)
 	row := db.QueryRowContext(ctx, query)
@@ -330,7 +331,7 @@ func ShowCreateSchema(ctx context.Context, db *gosql.DB, dbName string) (r strin
 	return r, nil
 }
 
-func ShowTables(db *gosql.DB, dbName string, showType bool) (tables []*common.Table, err error) {
+func ShowTables(db QueryAble, dbName string, showType bool) (tables []*common.Table, err error) {
 	// Get table list
 	var query string
 	escapedDbName := mysqlconfig.EscapeName(dbName)
