@@ -1284,6 +1284,10 @@ func (e *Extractor) mysqlDump() (retErr error) {
 		}
 		e.logger.Debug("got gtid")
 	}
+
+	if originVal, err := sql.GetSetWaitTimeout(tx); err != nil {
+		e.logger.Warn("GetSetWaitTimeout. failed. error ignored", "err", err, "originVal", originVal)
+	}
 	step++
 
 	// ------

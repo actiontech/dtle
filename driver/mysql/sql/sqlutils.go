@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	ConnMaxLifetime = 300 * time.Second // #376
+	WaitTimeout = 300 * 60 // #376
 )
 
 // RowMap represents one row in a result set. Its objective is to allow
@@ -140,7 +140,7 @@ func CreateDB(mysql_uri string) (*gosql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetConnMaxLifetime(ConnMaxLifetime)
+	db.SetConnMaxLifetime(WaitTimeout * time.Second)
 
 	return db, nil
 }
@@ -151,6 +151,11 @@ func CreateConns(ctx context.Context, db *gosql.DB, count int) ([]*Conn, error) 
 		conn, err := db.Conn(ctx)
 		if err != nil {
 			return nil, err
+		}
+
+		originVal, err := GetSetWaitTimeout(conn)
+		if err != nil {
+			g.Logger.Warn("CreateConns. GetSetWaitTimeout. failed. error ignored", "err", err, "originVal", originVal)
 		}
 
 		_, err = conn.ExecContext(ctx, "SET @@session.foreign_key_checks = 0")
@@ -404,4 +409,20 @@ func CloseConns(dbs ...*Conn) error {
 		}
 	}
 	return nil
+}
+
+// GetSetWaitTimeout sets session wait_timeout to `WaitTimeout` unless it is larger.
+func GetSetWaitTimeout(db QueryAble) (originVal int, err error) {
+	row := db.QueryRowContext(context.TODO(), "select @@wait_timeout")
+	err = row.Scan(&originVal)
+	if err != nil {
+		return originVal, err
+	}
+	if originVal < WaitTimeout {
+		_, err = db.ExecContext(context.TODO(), fmt.Sprintf("set wait_timeout = %v", WaitTimeout))
+		if err != nil {
+			return originVal, err
+		}
+	}
+	return originVal, nil
 }
