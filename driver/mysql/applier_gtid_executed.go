@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	gosql "database/sql"
 	"fmt"
 	"strconv"
@@ -323,7 +324,7 @@ func SelectAllGtidExecuted(db sql.QueryAble, jid string, gtidSet *mysql.MysqlGTI
 	query := fmt.Sprintf(`SELECT source_uuid,gtid,gtid_set FROM %v.%v where job_name=?`,
 		g.DtleSchemaName, g.GtidExecutedTableV4)
 
-	rows, err := db.Query(query, jid)
+	rows, err := db.QueryContext(context.TODO(), query, jid)
 	if err != nil {
 		return nil, err
 	}

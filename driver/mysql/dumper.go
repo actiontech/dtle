@@ -167,7 +167,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 
 	if d.doChecksum != 0 {
 		if d.doChecksum == 2 || (d.doChecksum == 1 && d.Iteration == 0) {
-			row := d.db.QueryRow(fmt.Sprintf("checksum table %v.%v", d.TableSchema, d.TableName))
+			row := d.db.QueryRowContext(d.Ctx, fmt.Sprintf("checksum table %v.%v", d.TableSchema, d.TableName))
 			var table string
 			var cs int64
 			err := row.Scan(&table, &cs)
@@ -181,7 +181,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 
 	// this must be increased after building query
 	d.Iteration += 1
-	rows, err := d.db.Query(query)
+	rows, err := d.db.QueryContext(context.TODO(), query)
 	if err != nil {
 		d.Logger.Error("error at select chunk", "query", query)
 		return 0, errors.Wrap(err, "select chunk")
@@ -249,7 +249,7 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			case <-timer.C:
 				d.Logger.Debug("resultsChannel full. waiting and ping conn")
 				var dummy int
-				errPing := d.db.QueryRow("select 1").Scan(&dummy)
+				errPing := d.db.QueryRowContext(d.Ctx, "select 1").Scan(&dummy)
 				if errPing != nil {
 					d.Logger.Debug("ping query row got error.", "err", errPing)
 				}

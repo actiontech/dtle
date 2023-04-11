@@ -8,6 +8,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	gosql "database/sql"
 	"fmt"
 	"github.com/hashicorp/go-hclog"
@@ -120,7 +121,7 @@ func GetSomeSysVars(db usql.QueryAble, logger g.LoggerType) (r struct {
 	NetWriteTimeout     int
 }) {
 	query := `select @@version, @@time_zone, @@lower_case_table_names, @@net_write_timeout`
-	r.Err = db.QueryRow(query).Scan(&r.Version, &r.TimeZome, &r.LowerCaseTableNames, &r.NetWriteTimeout)
+	r.Err = db.QueryRowContext(context.TODO(), query).Scan(&r.Version, &r.TimeZome, &r.LowerCaseTableNames, &r.NetWriteTimeout)
 	if r.Err != nil {
 		return
 	}
@@ -141,7 +142,7 @@ func GetSomeSysVars(db usql.QueryAble, logger g.LoggerType) (r struct {
 func ShowCreateTable(db usql.QueryAble, databaseName, tableName string) (statement string, err error) {
 	var dummy, createTableStatement string
 	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
-	err = db.QueryRow(query).Scan(&dummy, &createTableStatement)
+	err = db.QueryRowContext(context.TODO(), query).Scan(&dummy, &createTableStatement)
 	return createTableStatement, err
 }
 

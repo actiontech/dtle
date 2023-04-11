@@ -225,7 +225,7 @@ func QueryRowsMap(db QueryAble, query string, on_row func(RowMap) error, args ..
 		}
 	}()
 
-	rows, err := db.Query(query, args...)
+	rows, err := db.QueryContext(context.TODO(), query, args...)
 	defer rows.Close()
 	if err != nil && err != gosql.ErrNoRows {
 		return err
@@ -236,15 +236,13 @@ func QueryRowsMap(db QueryAble, query string, on_row func(RowMap) error, args ..
 
 // from https://github.com/golang/go/issues/14468
 type QueryAble interface {
-	Exec(query string, args ...interface{}) (gosql.Result, error)
-	Prepare(query string) (*gosql.Stmt, error)
-	Query(query string, args ...interface{}) (*gosql.Rows, error)
-	QueryRow(query string, args ...interface{}) *gosql.Row
+	ExecContext(ctx context.Context, query string, args ...interface{}) (gosql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*gosql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *gosql.Row
 }
 
 func GetServerUUID(db QueryAble) (result string, err error) {
-	err = db.QueryRow(`SELECT @@SERVER_UUID /*dtle*/`).Scan(&result)
+	err = db.QueryRowContext(context.TODO(), `SELECT @@SERVER_UUID /*dtle*/`).Scan(&result)
 	if err != nil {
 		return "", err
 	}
@@ -252,7 +250,7 @@ func GetServerUUID(db QueryAble) (result string, err error) {
 }
 
 func ShowMasterStatus(db QueryAble) *gosql.Row {
-	return db.QueryRow("show master status /*dtle*/")
+	return db.QueryRowContext(context.TODO(), "show master status /*dtle*/")
 }
 
 // queryResultData returns a raw array of rows for a given query, optionally reading and returning column names
@@ -296,7 +294,7 @@ func ShowDatabases(db QueryAble) ([]string, error) {
 	dbs := make([]string, 0)
 
 	// Get table list
-	rows, err := db.Query("SHOW DATABASES")
+	rows, err := db.QueryContext(context.TODO(), "SHOW DATABASES")
 	if err != nil {
 		return dbs, err
 	}
@@ -341,7 +339,7 @@ func ShowTables(db QueryAble, dbName string, showType bool) (tables []*common.Ta
 		query = fmt.Sprintf("SHOW TABLES IN %s", escapedDbName)
 	}
 	g.Logger.Debug("ShowTables", "query", query)
-	rows, err := db.Query(query)
+	rows, err := db.QueryContext(context.TODO(), query)
 	if err != nil {
 		return tables, err
 	}

@@ -863,7 +863,7 @@ func (e *Extractor) CountTableRows(db sql.QueryAble, table *common.Table) (int64
 	// It only requires select privilege on target table to select its information_schema item.
 	query = fmt.Sprintf(`select table_rows from information_schema.tables where table_schema = ? and table_name = ?`)
 	var rowsEstimate int64
-	err := db.QueryRow(query, table.TableSchema, table.TableName).Scan(&rowsEstimate)
+	err := db.QueryRowContext(e.ctx, query, table.TableSchema, table.TableName).Scan(&rowsEstimate)
 	if err != nil {
 		e.logger.Error("error when getting estimated row number (using information_schema)", "err", err,
 			"schema", table.TableSchema, "table", table.TableName)
