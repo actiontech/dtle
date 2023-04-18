@@ -304,9 +304,23 @@ func (a *Applier) Run() {
 			Subject:  a.subject + "_dtrev",
 			StateDir: a.stateDir,
 		}
-		var cfg2 = *a.mysqlContext
+		// cfg2 will be a deepcopy of a.mysqlContext
+		cfg2, err := a.storeManager.GetConfig(a.subject)
+		if err != nil {
+			a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
+			return
+		}
 		cfg2.SrcConnectionConfig = a.mysqlContext.DestConnectionConfig
 		cfg2.DestConnectionConfig = a.mysqlContext.SrcConnectionConfig
+		for _, dbItem := range cfg2.ReplicateDoDb {
+			for _, tbItem := range dbItem.Tables {
+				if len(tbItem.ColumnMapFrom) > 0 && len(tbItem.ColumnMapTo) == 0 {
+					a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
+					return
+				}
+				tbItem.ColumnMapFrom, tbItem.ColumnMapTo = tbItem.ColumnMapTo, tbItem.ColumnMapFrom
+			}
+		}
 
 		if strings.ToLower(a.mysqlContext.TwoWaySyncGtid) == "auto" {
 			cfg2.AutoGtid = true
@@ -318,7 +332,7 @@ func (a *Applier) Run() {
 		cfg2.TwoWaySync = false
 		cfg2.TwoWaySyncGtid = ""
 
-		a.revExtractor, err = NewExtractor(execCtx2, &cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
+		a.revExtractor, err = NewExtractor(execCtx2, cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "reversed Extractor"))
 			return
