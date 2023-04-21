@@ -246,11 +246,9 @@ func (a *GtidExecutedCreater) createTableGtidExecutedV4() error {
 }
 
 func (a *ApplierIncr) cleanGtidExecuted(sid uuid.UUID, txSid string) error {
-	a.logger.Debug("incr. cleanup before WaitForExecution")
-	if !a.mtsManager.WaitForAllCommitted() {
+	if !a.mtsManager.WaitForAllCommitted(a.logger.With("txSid", txSid)) {
 		return nil // shutdown
 	}
-	a.logger.Debug("incr. cleanup after WaitForExecution")
 
 	intervalStr := func() string {
 		a.gtidSetLock.RLock()

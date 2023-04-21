@@ -347,11 +347,9 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 	} else {
 		if binlogEntry.Index == 0 {
 			if rotated {
-				a.logger.Debug("binlog rotated. WaitForAllCommitted before", "file", a.replayingBinlogFile)
-				if !a.mtsManager.WaitForAllCommitted() {
+				if !a.mtsManager.WaitForAllCommitted(a.logger.With("rotate", a.replayingBinlogFile)) {
 					return nil // TODO shutdown
 				}
-				a.logger.Debug("binlog rotated. WaitForAllCommitted after", "file", a.replayingBinlogFile)
 				a.mtsManager.lastCommitted = 0
 				a.mtsManager.lastEnqueue = 0
 				a.wsManager.resetCommonParent(0)
@@ -376,12 +374,11 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 			hasDDL := binlogEntry.HasDDL()
 			inMiddleDDL := hasDDL || a.prevDDL // DDL must be executed separatedly
 			if inMiddleDDL || isBig {
-				a.logger.Info("WaitForAllCommitted",
-					"gno", txGno, "seq", binlogEntry.Coordinates.GetSequenceNumber(),
-					"lc", binlogEntry.Coordinates.GetLastCommit(), "leq", a.mtsManager.lastEnqueue,
+				if !a.mtsManager.WaitForAllCommitted(a.logger.With("gno", txGno,
+					"seq", binlogEntry.Coordinates.GetSequenceNumber(),
+					"lc", binlogEntry.Coordinates.GetLastCommit(),
 					"hasDDL", hasDDL, "prevDDL", a.prevDDL,
-					"bigtx", isBig, "index", binlogEntry.Index)
-				if !a.mtsManager.WaitForAllCommitted() {
+					"bigtx", isBig, "index", binlogEntry.Index)) {
 					return nil // shutdown
 				}
 			}
