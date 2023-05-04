@@ -62,7 +62,7 @@ func (mm *MtsManager) WaitForAllCommitted(logger g.LoggerType) bool {
 	defer t.Stop()
 
 	for {
-		if atomic.LoadInt64(&mm.lastCommitted) == mm.lastEnqueue {
+		if atomic.LoadInt64(&mm.lastCommitted) >= mm.lastEnqueue {
 			return true
 		}
 
