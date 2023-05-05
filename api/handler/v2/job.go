@@ -11,21 +11,16 @@ import (
 	"strings"
 	"time"
 
-	mysql "github.com/actiontech/dtle/driver/mysql"
-
+	nomadApi "github.com/hashicorp/nomad/api"
 	"github.com/hashicorp/nomad/nomad/structs"
-
-	"github.com/actiontech/dtle/driver/kafka"
-
-	"github.com/actiontech/dtle/driver/common"
-
-	"github.com/actiontech/dtle/g"
-
-	"github.com/actiontech/dtle/api/models"
+	"github.com/labstack/echo/v4"
 
 	"github.com/actiontech/dtle/api/handler"
-	nomadApi "github.com/hashicorp/nomad/api"
-	"github.com/labstack/echo/v4"
+	"github.com/actiontech/dtle/api/models"
+	"github.com/actiontech/dtle/driver/common"
+	"github.com/actiontech/dtle/driver/kafka"
+	mysql "github.com/actiontech/dtle/driver/mysql"
+	"github.com/actiontech/dtle/g"
 )
 
 // @Id MigrationJobListV2
@@ -1955,6 +1950,11 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 			return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
 		}
 
+		if originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.TwoWaySync {
+			return c.JSON(http.StatusConflict, models.BuildBaseResp(fmt.Errorf(
+				"job_id=%v; job can't be reversed with TwoWaySync = true", reqParam.JobId)))
+		}
+
 		reverseJobParam := new(models.CreateOrUpdateMysqlToMysqlJobParamV2)
 		reverseJobParam.JobId = fmt.Sprintf("%s-%s", "reverse", consulJobItem.JobId)
 		reverseJobParam.TaskStepName = mysql.JobIncrCopy
@@ -1981,6 +1981,15 @@ func ReverseJobV2(c echo.Context, filterJobType DtleJobType) error {
 				TwoWaySync:          originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.TwoWaySync,
 				TwoWaySyncGtid:      originalJob.BasicTaskProfile.Configuration.SrcConfig.MysqlSrcTaskConfig.TwoWaySyncGtid,
 			},
+		}
+		for _, dbItem := range reverseJobParam.SrcTask.ReplicateDoDb {
+			for _, tbItem := range dbItem.Tables {
+				if len(tbItem.ColumnMapFrom) > 0 && len(tbItem.ColumnMapTo) == 0 {
+					return c.JSON(http.StatusConflict, models.BuildBaseResp(fmt.Errorf(
+						"job_id=%v; job can't be reversed with ColumnMapFrom not matching ColumnMapTo", reqParam.JobId)))
+				}
+				tbItem.ColumnMapFrom, tbItem.ColumnMapTo = tbItem.ColumnMapTo, tbItem.ColumnMapFrom
+			}
 		}
 		reverseJobParam.DestTask = &models.DestTaskConfig{
 			TaskName:         common.TaskTypeDest,

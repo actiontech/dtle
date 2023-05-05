@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"hash/fnv"
 	"sync/atomic"
+	"time"
 
 	"github.com/actiontech/dtle/driver/common"
 	"github.com/actiontech/dtle/g"
@@ -56,14 +57,18 @@ func NewMtsManager(shutdownCh chan struct{}, logger g.LoggerType) *MtsManager {
 }
 
 //  This function must be called sequentially.
-func (mm *MtsManager) WaitForAllCommitted() bool {
-	g.Logger.Debug("WaitForAllCommitted", "lc", mm.lastCommitted, "le", mm.lastEnqueue)
+func (mm *MtsManager) WaitForAllCommitted(logger g.LoggerType) bool {
+	t := time.NewTimer(30 * time.Second)
+	defer t.Stop()
+
 	for {
-		if mm.lastCommitted == mm.lastEnqueue {
+		if atomic.LoadInt64(&mm.lastCommitted) >= mm.lastEnqueue {
 			return true
 		}
 
 		select {
+		case <-t.C: // this will only be triggered once
+			logger.Warn("WaitForAllCommitted has been stuck for 30s")
 		case <-mm.shutdownCh:
 			return false
 		case <-mm.updated:
@@ -75,7 +80,13 @@ func (mm *MtsManager) WaitForAllCommitted() bool {
 // block for waiting. return true for can_execute, false for abortion.
 //  This function must be called sequentially.
 func (mm *MtsManager) WaitForExecution(binlogEntry *common.DataEntry) bool {
-	mm.lastEnqueue = binlogEntry.Coordinates.GetSequenceNumber()
+	return mm.WaitForExecution0(
+		binlogEntry.Coordinates.GetSequenceNumber(),
+		binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted)
+}
+
+func (mm *MtsManager) WaitForExecution0(seq int64, lc int64) bool {
+	mm.lastEnqueue = seq
 
 	if mm.forceMts {
 		return true
@@ -83,7 +94,7 @@ func (mm *MtsManager) WaitForExecution(binlogEntry *common.DataEntry) bool {
 
 	for {
 		currentLC := atomic.LoadInt64(&mm.lastCommitted)
-		if currentLC >= binlogEntry.Coordinates.(*common.MySQLCoordinateTx).LastCommitted {
+		if currentLC >= lc {
 			return true
 		}
 
@@ -130,10 +141,14 @@ func (mm *MtsManager) LcUpdater() {
 }
 
 func (mm *MtsManager) Executed(binlogEntry *common.DataEntry) {
+	mm.Executed0(binlogEntry.Coordinates.GetSequenceNumber())
+}
+
+func (mm *MtsManager) Executed0(seq int64) {
 	select {
 	case <-mm.shutdownCh:
 		return
-	case mm.chExecuted <- binlogEntry.Coordinates.GetSequenceNumber():
+	case mm.chExecuted <- seq:
 	}
 }
 

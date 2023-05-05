@@ -10,6 +10,7 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"math"
 	"strconv"
 	"strings"
@@ -304,9 +305,23 @@ func (a *Applier) Run() {
 			Subject:  a.subject + "_dtrev",
 			StateDir: a.stateDir,
 		}
-		var cfg2 = *a.mysqlContext
+		// cfg2 will be a deepcopy of a.mysqlContext
+		cfg2, err := a.storeManager.GetConfig(a.subject)
+		if err != nil {
+			a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
+			return
+		}
 		cfg2.SrcConnectionConfig = a.mysqlContext.DestConnectionConfig
 		cfg2.DestConnectionConfig = a.mysqlContext.SrcConnectionConfig
+		for _, dbItem := range cfg2.ReplicateDoDb {
+			for _, tbItem := range dbItem.Tables {
+				if len(tbItem.ColumnMapFrom) > 0 && len(tbItem.ColumnMapTo) == 0 {
+					a.onError(common.TaskStateDead, errors.Wrap(err, "GetConfig"))
+					return
+				}
+				tbItem.ColumnMapFrom, tbItem.ColumnMapTo = tbItem.ColumnMapTo, tbItem.ColumnMapFrom
+			}
+		}
 
 		if strings.ToLower(a.mysqlContext.TwoWaySyncGtid) == "auto" {
 			cfg2.AutoGtid = true
@@ -318,7 +333,7 @@ func (a *Applier) Run() {
 		cfg2.TwoWaySync = false
 		cfg2.TwoWaySyncGtid = ""
 
-		a.revExtractor, err = NewExtractor(execCtx2, &cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
+		a.revExtractor, err = NewExtractor(execCtx2, cfg2, a.logger, a.storeManager, a.waitCh, a.ctx)
 		if err != nil {
 			a.onError(common.TaskStateDead, errors.Wrap(err, "reversed Extractor"))
 			return
@@ -422,7 +437,7 @@ func (a *Applier) doFullCopy() {
 				return
 			case copyRows := <-a.dumpEntryQueue:
 				//time.Sleep(20 * time.Second) // #348 stub
-				if err = a.ApplyEventQueries(a.db, copyRows); err != nil {
+				if err = a.ApplyEventQueries(copyRows); err != nil {
 					return
 				}
 				atomic.AddInt64(a.memory1, -int64(copyRows.Size()))
@@ -825,7 +840,7 @@ func (a *Applier) ValidateGrants() error {
 	return fmt.Errorf("user has insufficient privileges for applier. Needed:ALTER, CREATE, DROP, INDEX, REFERENCES, INSERT, DELETE, UPDATE, SELECT, TRIGGER ON *.*")
 }
 
-func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err error) {
+func (a *Applier) ApplyEventQueries(entry *common.DumpEntry) (err error) {
 	a.logger.Debug("ApplyEventQueries", "schema", entry.TableSchema, "table", entry.TableName,
 		"rows", len(entry.ValuesX))
 
@@ -879,29 +894,18 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 
 	queries = append(queries, entry.SqlMode, entry.DbSQL)
 	queries = append(queries, entry.TbSQL...)
-	tx, err := db.BeginTx(a.ctx, &gosql.TxOptions{})
-	if err != nil {
-		return err
-	}
+
+	conn := a.dbs[0].Db
 	nRows := int64(len(entry.ValuesX))
-	defer func() {
-		if err != nil {
-			return
-		}
-		err = tx.Commit()
-		if err == nil {
-			atomic.AddInt64(&a.TotalRowsReplayed, nRows)
-		}
-	}()
-	if _, err := tx.ExecContext(a.ctx, querySetFKChecksOff); err != nil {
+	if _, err := conn.ExecContext(a.ctx, querySetFKChecksOff); err != nil {
 		return err
 	}
 	execQuery := func(query string) error {
 		a.logger.Debug("ApplyEventQueries. exec", "query", g.StrLim(query, 256))
-		_, err := tx.ExecContext(a.ctx, query)
+		_, err := conn.ExecContext(a.ctx, query)
 		if err != nil {
 			queryStart := g.StrLim(query, 10) // avoid printing sensitive information
-			errCtx := errors.Wrapf(err, "tx.Exec. queryStart %v seq", queryStart)
+			errCtx := errors.Wrapf(err, "tx.Exec. queryStart %v", queryStart)
 			if !sql.IgnoreError(err) {
 				a.logger.Error("ApplyEventQueries. exec error", "err", errCtx)
 				return errCtx
@@ -958,13 +962,22 @@ func (a *Applier) ApplyEventQueries(db *gosql.DB, entry *common.DumpEntry) (err 
 		// last rows or sql too large
 
 		if needInsert {
-			err := execQuery(buf.String())
-			buf.Reset()
-			if err != nil {
-				return err
+			for iTry := 0; ; iTry++ {
+				err := execQuery(buf.String())
+				if errIsMysqlDeadlock(err) && iTry < a.mysqlContext.RetryTxLimit {
+					a.logger.Info("found deadlock. will retry tx", "schema", entry.TableSchema, "table", entry.Table,
+						"iTry", iTry)
+					time.Sleep(retryTxDelay)
+					continue
+				} else if err != nil {
+					return err
+				}
+				break
 			}
+			buf.Reset()
 		}
 	}
+	atomic.AddInt64(&a.TotalRowsReplayed, nRows)
 
 	return nil
 }
@@ -1212,5 +1225,17 @@ func (a *Applier) updateDumpProgressLoop() {
 		}
 
 		time.Sleep(time.Duration(interval) * time.Second)
+	}
+}
+func errIsMysqlDeadlock(err error) bool {
+	if err != nil {
+		merr, isME := err.(*mysqldriver.MySQLError)
+		if isME {
+			return merr.Number ==sql.ErrLockDeadlock
+		} else {
+			return false
+		}
+	} else {
+		return false
 	}
 }
