@@ -404,7 +404,9 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 
 		if isBig {
 			if binlogEntry.Index == 0 {
-				a.mtsManager.lastEnqueue = binlogEntry.Coordinates.GetSequenceNumber()
+				if !a.mtsManager.WaitForExecution(binlogEntry) {
+					return nil // shutdown
+				}
 			}
 			a.logger.Info("bigtx ApplyBinlogEvent", "gno", txGno, "index", binlogEntry.Index)
 			err = a.ApplyBinlogEvent(0, entryCtx)

@@ -42,3 +42,31 @@ func TestMtsManager(t *testing.T) {
 		t.Fatal("might be stuck")
 	}
 }
+
+func TestMtsManager2(t *testing.T) {
+	logger := hclog.Default()
+	shutdownCh := make(chan struct{})
+	defer close(shutdownCh)
+
+	mm := NewMtsManager(shutdownCh, logger)
+	go mm.LcUpdater()
+
+	mm.WaitForExecution0(1, 0)
+	logger.Info("wait 1 0")
+	mm.Executed0(1)
+	mm.WaitForExecution0(2, 1)
+	logger.Info("wait 2 1")
+	go func() {
+		// execute later
+		time.Sleep(100 * time.Millisecond)
+		mm.Executed0(2)
+	}()
+
+	// entry resent
+	mm.WaitForExecution0(1, 0)
+	mm.WaitForAllCommitted(logger)
+	if mm.lastCommitted < 2 {
+		t.Fatal("WaitForAllCommitted should not return before 2-executed")
+	}
+}
+
