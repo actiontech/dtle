@@ -27,7 +27,7 @@ for details on submitting patches and the contribution workflow.
 
 ## Contact us
 
-*dtle* has enterprise support plan, you may contact our sales team: 
+*dtle* has an enterprise support plan. You may contact our sales team: 
 * Global Sales: 400-820-6580
 * North China: 86-13718877200, Mr.Wang
 * South China: 86-18503063188, Mr.Cao

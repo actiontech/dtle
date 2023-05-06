@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-
-	"github.com/actiontech/dtle/driver/common"
 )
 
 type taskStore struct {
@@ -56,32 +54,6 @@ func (ts *TaskStoreForApi) Set(allocId, taskName, taskId string, handle *taskHan
 	defer ts.lock.Unlock()
 	key := fmt.Sprintf("%v-%v-%v", allocId, taskName, taskId)
 	ts.store[key] = handle
-}
-
-// it can only use allocId and taskName to identify the task from http api
-func (ts *TaskStoreForApi) GetTaskStatistics(allocId, taskName string) (*common.TaskStatistics, bool, error) {
-	ts.lock.RLock()
-	defer ts.lock.RUnlock()
-
-	prefix := fmt.Sprintf("%v-%v-", allocId, taskName)
-	for k, _ := range ts.store {
-		if strings.HasPrefix(k, prefix) {
-			t, ok := ts.store[k]
-
-			var stats *common.TaskStatistics
-			if t.runner != nil {
-				var err error
-				stats, err = t.runner.Stats()
-				if nil != err {
-					return nil, false, fmt.Errorf("get stats from taskHandle failed: %v", err)
-				}
-			} else {
-				stats = &common.TaskStatistics{}
-			}
-			return stats, ok, nil
-		}
-	}
-	return nil, false, nil
 }
 
 func (ts *TaskStoreForApi) Delete(id string) {

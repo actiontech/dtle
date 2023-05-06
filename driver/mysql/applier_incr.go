@@ -282,6 +282,7 @@ func (a *ApplierIncr) handleEntry(entryCtx *common.EntryContext) (err error) {
 		if err != nil {
 			return errors.Wrapf(err, "rollback on resent big tx")
 		}
+		// let WaitForAllCommitted() pass
 		a.mtsManager.lastEnqueue = 0
 		a.inBigTx = false
 	}
