@@ -86,7 +86,9 @@ func (mm *MtsManager) WaitForExecution(binlogEntry *common.DataEntry) bool {
 }
 
 func (mm *MtsManager) WaitForExecution0(seq int64, lc int64) bool {
-	mm.lastEnqueue = seq
+	if mm.lastEnqueue < seq {
+		mm.lastEnqueue = seq
+	}
 
 	if mm.forceMts {
 		return true
