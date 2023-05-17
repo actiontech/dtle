@@ -54,7 +54,7 @@ package-common: driver
 
 package: package-common
 	mkdir -p dist/install/usr/bin
-	curl -o dist/nomad.zip "ftp://${RELEASE_FTPD_HOST}/binary/nomad_1.1.2_linux_amd64.zip"
+	curl -o dist/nomad.zip "ftp://${RELEASE_FTPD_HOST}/binary/nomad_1.5.5_linux_amd64.zip"
 	curl -o dist/consul.zip "ftp://${RELEASE_FTPD_HOST}/binary/consul_1.7.2_linux_amd64.zip"
 	mkdir -p dist/install/usr/bin
 	cd dist/install/usr/bin && unzip ../../../nomad.zip && unzip ../../../consul.zip

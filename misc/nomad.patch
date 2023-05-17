@@ -1,0 +1,13 @@
+diff --git a/client/allocrunner/taskrunner/task_runner.go b/client/allocrunner/taskrunner/task_runner.go
+index aae6a314d8..8aac851036 100644
+--- a/client/allocrunner/taskrunner/task_runner.go
++++ b/client/allocrunner/taskrunner/task_runner.go
+@@ -44,7 +44,7 @@ import (
+ const (
+        // defaultMaxEvents is the default max capacity for task events on the
+        // task state. Overrideable for testing.
+-       defaultMaxEvents = 10
++       defaultMaxEvents = 100
+
+        // killBackoffBaseline is the baseline time for exponential backoff while
+        // killing a task.
