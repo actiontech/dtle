@@ -1278,7 +1278,7 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 					if !ok || !okGNO {
 						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid or gno type",
 							"type", hclog.Fmt("%T %T", sidValue, gnoI))
-					} else {
+					} else if gno != 0 { // not gtid summary tx
 						var sid uuid.UUID     // will be initialized to 0
 						copy(sid[:], sidByte) // len(sidByte) might be less than 16 #1034
 						coordinate := b.entryContext.Entry.Coordinates.(*common.MySQLCoordinateTx)
