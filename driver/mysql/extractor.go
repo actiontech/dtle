@@ -1145,10 +1145,9 @@ func (e *Extractor) sendSysVarAndSqlMode() error {
 }
 
 //Perform the snapshot using the same logic as the "mysqldump" utility.
-func (e *Extractor) mysqlDump() (retErr error) {
+func (e *Extractor) mysqlDump() (err error) {
 	defer e.singletonDB.Close()
 	var tx sql.QueryAble
-	var err error
 	step := 0
 	// ------
 	// STEP 0
@@ -1254,18 +1253,6 @@ func (e *Extractor) mysqlDump() (retErr error) {
 				e.initialBinlogCoordinates = binlogCoordinates2
 				e.logger.Info("Step: read binlog coordinates of MySQL master", "n", step,
 					"coordinate", hclog.Fmt("%+v", *e.initialBinlogCoordinates))
-
-				defer func() {
-					/*e.logger.Info("Step %d: releasing global read lock to enable MySQL writes", step)
-					query := "UNLOCK TABLES"
-					_, err := tx.Exec(query)
-					if err != nil {
-						e.logger.Info("exec %+v, error: %v", query, err)
-					}
-					step++*/
-					e.logger.Info("Step: committing transaction", "n", step)
-					retErr = realTx.Commit()
-				}()
 			} else {
 				e.logger.Warn("Failed to get a consistenct TX with GTID. Will retry.", "gtidMatchRound", gtidMatchRound)
 				err = realTx.Rollback()
@@ -1383,45 +1370,44 @@ func (e *Extractor) mysqlDump() (retErr error) {
 	e.logger.Info("Step: scanning contents of x tables", "n", step, "x", e.tableCount)
 	startScan := g.CurrentTimeMillis()
 	counter := 0
+
+	// dump no-PK table in the snapshot TX
 	for _, db := range e.replicateDoDb {
 		for _, tbCtx := range db.TableMap {
 			t := tbCtx.Table
-			counter++
-			// Obtain a record maker for this table, which knows about the schema ...
-			// Choose how we create statements based on the # of rows ...
-			e.logger.Info("Step n: - scanning table (i of N tables)",
-				"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
+			if t.UseUniqueKey == nil {
+				counter++
+				e.logger.Info("Step n: - scanning table (i of N tables)",
+					"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
+				err = e.handleDumpTable(tx, t)
+				if err != nil {
+					return err
+				}
+			}
 
-			d := NewDumper(e.ctx, tx, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1,
-				e.mysqlContext.DumpEntryLimit)
-			if err := d.Dump(); err != nil {
-				return errors.Wrapf(err, "d.Dump %v.%v", t.TableSchema, t.TableName)
-			}
-			e.dumpers = append(e.dumpers, d)
-			// Scan the rows in the table ...
-			for entry := range d.ResultsChannel {
-				memSize := int64(entry.Size())
-				if !d.sentTableDef {
-					tableBs, err := common.EncodeTable(d.Table)
-					if err != nil {
-						return errors.Wrap(err, "full copy: EncodeTable")
-					} else {
-						entry.Table = tableBs
-						d.sentTableDef = true
-					}
-				}
-				if err = e.encodeAndSendDumpEntry(entry); err != nil {
-					return errors.Wrap(err, "encodeAndSendDumpEntry. dump")
-				}
-				atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
-				atomic.AddInt64(d.Memory, -memSize)
-			}
-			if d.Err != nil {
-				return errors.Wrap(err, "d.Err")
-			}
 		}
 	}
 	step++
+	if needConsistentSnapshot {
+		e.logger.Info("Step: committing transaction", "n", step)
+		err = tx.(*gosql.Tx).Commit()
+		if err != nil {
+			return err
+		}
+	}
+
+	// dump other tables
+	for _, db := range e.replicateDoDb {
+		for _, tbCtx := range db.TableMap {
+			t := tbCtx.Table
+			if t.UseUniqueKey != nil {
+				err = e.handleDumpTable(e.singletonDB, t)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 
 	// We've copied all of the tables, but our buffer holds onto the very last record.
 	// First mark the snapshot as complete and then apply the updated offset to the buffered record ...
@@ -1432,6 +1418,38 @@ func (e *Extractor) mysqlDump() (retErr error) {
 
 	return nil
 }
+
+func (e *Extractor) handleDumpTable(db sql.QueryAble, t *common.Table) (err error) {
+	d := NewDumper(e.ctx, db, t, e.mysqlContext.ChunkSize, e.logger.ResetNamed("dumper"), e.memory1,
+		e.mysqlContext.DumpEntryLimit)
+	if err := d.Dump(); err != nil {
+		return errors.Wrapf(err, "d.Dump %v.%v", t.TableSchema, t.TableName)
+	}
+	e.dumpers = append(e.dumpers, d)
+	// Scan the rows in the table ...
+	for entry := range d.ResultsChannel {
+		memSize := int64(entry.Size())
+		if !d.sentTableDef {
+			tableBs, err := common.EncodeTable(d.Table)
+			if err != nil {
+				return errors.Wrap(err, "full copy: EncodeTable")
+			} else {
+				entry.Table = tableBs
+				d.sentTableDef = true
+			}
+		}
+		if err = e.encodeAndSendDumpEntry(entry); err != nil {
+			return errors.Wrap(err, "encodeAndSendDumpEntry. dump")
+		}
+		atomic.AddInt64(&e.TotalRowsCopied, int64(len(entry.ValuesX)))
+		atomic.AddInt64(d.Memory, -memSize)
+	}
+	if d.Err != nil {
+		return errors.Wrap(err, "d.Err")
+	}
+	return nil
+}
+
 func (e *Extractor) encodeAndSendDumpEntry(entry *common.DumpEntry) error {
 	bs, err := entry.Marshal(nil)
 	if err != nil {
