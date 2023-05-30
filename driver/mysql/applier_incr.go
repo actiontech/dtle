@@ -759,19 +759,7 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 							len(event.Rows), gno)
 					}
 
-					if len(rowBefore) == 0 { // insert
-						pstmt := &tableItem.PsInsert0[workerIdx]
-						query, sharedArgs, err := sql.BuildDMLInsertQuery(event.DatabaseName, event.TableName,
-							tableItem.Columns, tableItem.ColumnMapTo, event.Rows[i+1:i+2], *pstmt)
-						if err != nil {
-							return err
-						}
-
-						err = queueOrExec(&dmlExecItem{true, pstmt, query, sharedArgs, gno})
-						if err != nil {
-							return err
-						}
-					} else if len(rowAfter) == 0 { // delete
+					if len(rowBefore) != 0 {
 						pstmt := &tableItem.PsDelete[workerIdx]
 						query, uniqueKeyArgs, hasUK, err := sql.BuildDMLDeleteQuery(event.DatabaseName, event.TableName,
 							tableItem.Columns, tableItem.ColumnMapTo, rowBefore, *pstmt)
@@ -784,18 +772,17 @@ func (a *ApplierIncr) ApplyBinlogEvent(workerIdx int, binlogEntryCtx *common.Ent
 						if err != nil {
 							return err
 						}
-					} else {
-						pstmt := &tableItem.PsUpdate[workerIdx]
-						query, sharedArgs, uniqueKeyArgs, hasUK, err := sql.BuildDMLUpdateQuery(event.DatabaseName, event.TableName, tableItem.Columns, tableItem.ColumnMapTo, rowAfter, rowBefore, *pstmt)
+					}
+
+					if len(rowAfter) != 0 {
+						pstmt := &tableItem.PsInsert0[workerIdx]
+						query, sharedArgs, err := sql.BuildDMLInsertQuery(event.DatabaseName, event.TableName,
+							tableItem.Columns, tableItem.ColumnMapTo, event.Rows[i+1:i+2], *pstmt)
 						if err != nil {
 							return err
 						}
 
-						var args []interface{}
-						args = append(args, sharedArgs...)
-						args = append(args, uniqueKeyArgs...)
-
-						err = queueOrExec(&dmlExecItem{hasUK, pstmt, query, args, gno})
+						err = queueOrExec(&dmlExecItem{true, pstmt, query, sharedArgs, gno})
 						if err != nil {
 							return err
 						}
