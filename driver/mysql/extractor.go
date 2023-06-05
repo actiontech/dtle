@@ -1376,7 +1376,7 @@ func (e *Extractor) mysqlDump() (err error) {
 		for _, tbCtx := range db.TableMap {
 			t := tbCtx.Table
 			if t.UseUniqueKey == nil {
-				counter++
+				counter += 1
 				e.logger.Info("Step n: - scanning table (i of N tables)",
 					"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 				err = e.handleDumpTable(tx, t)
@@ -1401,6 +1401,9 @@ func (e *Extractor) mysqlDump() (err error) {
 		for _, tbCtx := range db.TableMap {
 			t := tbCtx.Table
 			if t.UseUniqueKey != nil {
+				counter += 1
+				e.logger.Info("Step n: - scanning table (i of N tables)",
+					"n", step, "schema", t.TableSchema, "table", t.TableName, "i", counter, "N", e.tableCount)
 				err = e.handleDumpTable(e.singletonDB, t)
 				if err != nil {
 					return err
@@ -1445,7 +1448,7 @@ func (e *Extractor) handleDumpTable(db sql.QueryAble, t *common.Table) (err erro
 		atomic.AddInt64(d.Memory, -memSize)
 	}
 	if d.Err != nil {
-		return errors.Wrap(err, "d.Err")
+		return errors.Wrap(d.Err, "d.Err")
 	}
 	return nil
 }
