@@ -46,11 +46,11 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 
-replace github.com/go-mysql-org/go-mysql => github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a
+replace github.com/go-mysql-org/go-mysql => github.com/actiontech/go-mysql v0.0.0-20211206100736-edbdc58f729a
 
 //replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
 
-replace github.com/araddon/qlbridge => github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9
+replace github.com/araddon/qlbridge => github.com/actiontech/qlbridge v0.0.0-20220113095321-0b48c80b13e9
 
 replace github.com/pingcap/dm => github.com/actiontech/dm v0.0.0-20211206092524-9e640f6da0ac
 

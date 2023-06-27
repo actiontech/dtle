@@ -126,8 +126,12 @@ github.com/Xeoncross/go-aesctr-with-hmac v0.0.0-20200623134604-12b17a7ff502/go.m
 github.com/abdullin/seq v0.0.0-20160510034733-d5467c17e7af/go.mod h1:5Jv4cbFiHJMsVxt52+i0Ha45fjshj6wxYr1r19tB9bw=
 github.com/actiontech/dm v0.0.0-20211206092524-9e640f6da0ac h1:ZvIS/l64BI7e5saktqTQiUqYDdNrWFnZqEeNjreGazg=
 github.com/actiontech/dm v0.0.0-20211206092524-9e640f6da0ac/go.mod h1:gPUms4Idkajqx6cDBv4xntDrw0u/14FxPLDV1WIlTOg=
+github.com/actiontech/go-mysql v0.0.0-20211206100736-edbdc58f729a h1:W+rIhnsBUqS4nES4xDDcUOVV7r3d+FHnfORDgxO+lk0=
+github.com/actiontech/go-mysql v0.0.0-20211206100736-edbdc58f729a/go.mod h1:3lFZKf7l95Qo70+3XB2WpiSf9wu2s3na3geLMaIIrqQ=
 github.com/actiontech/golang-live-coverage-report v0.0.0-20210902074032-43aa91afdc2c h1:YdIwOxw+7Y9G30zKgzQZM3gwV99Ei4HBjkOFF3O+48g=
 github.com/actiontech/golang-live-coverage-report v0.0.0-20210902074032-43aa91afdc2c/go.mod h1:HrlppUkZZFRbGKdtH3eN2RTzGioB0cf0QMTMg+Bm6Q8=
+github.com/actiontech/qlbridge v0.0.0-20220113095321-0b48c80b13e9 h1:isDlu5/u9aL+QwpjoPZWTlUuS750xcCMe8BzT49CmVE=
+github.com/actiontech/qlbridge v0.0.0-20220113095321-0b48c80b13e9/go.mod h1:48Jyr6LI/jtBpl6+7WSM17E7/hvnKHPQgGFuXb6PnNY=
 github.com/actiontech/tidb v0.0.0-20230330055952-b2be7d4c14e6 h1:1uwcsnLiZDlcg3bZRQA+qQE/HCWyNh+HQ8yBJtI/xMw=
 github.com/actiontech/tidb v0.0.0-20230330055952-b2be7d4c14e6/go.mod h1:Ol8fbcrb8unIuqAYPJCSNi6uWsjcAGo6useI9SXL67E=
 github.com/actiontech/tidb/parser v0.0.0-20230330055952-b2be7d4c14e6 h1:egQhEN7rUsjd9+dCOEHm5Qv/f2Us/8nIQWEeAAgcKxI=
@@ -364,10 +368,6 @@ github.com/fatih/structs v1.1.0/go.mod h1:9NiDSp5zOcgEDl+j00MP/WkGVPOlPRLejGD8Ga
 github.com/fatih/structtag v1.2.0/go.mod h1:mBJUNpUnHmRKrKlQQlmCrh5PuhftFbNv8Ys4/aAZl94=
 github.com/felixge/httpsnoop v1.0.1 h1:lvB5Jl89CsZtGIWuTcDM1E/vkVs49/Ml7JJe07l8SPQ=
 github.com/felixge/httpsnoop v1.0.1/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
-github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a h1:lDbwgaAZcv89/2KUycygu8jxMQFWzro860eRG243wGE=
-github.com/ffffwh/go-mysql v0.0.0-20211206100736-edbdc58f729a/go.mod h1:3lFZKf7l95Qo70+3XB2WpiSf9wu2s3na3geLMaIIrqQ=
-github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9 h1:Ma2ssL8wst/Zmqlep+ocYlpkCD4NOSG3Pg659mObPlQ=
-github.com/ffffwh/qlbridge v0.0.0-20220113095321-0b48c80b13e9/go.mod h1:48Jyr6LI/jtBpl6+7WSM17E7/hvnKHPQgGFuXb6PnNY=
 github.com/flosch/pongo2 v0.0.0-20190707114632-bbf5a6c351f4/go.mod h1:T9YF2M40nIgbVgp3rreNmTged+9HrbNTIQf1PsaIiTA=
 github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=
 github.com/fogleman/gg v1.3.0/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=
