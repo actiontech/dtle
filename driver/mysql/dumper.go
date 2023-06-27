@@ -124,7 +124,7 @@ func (d *dumper) buildQueryOnUniqueKey() string {
 	} else {
 		rangeItems := make([]string, nCol)
 
-		// The form like: (A > a) or (A = a and B > b) or (A = a and B = b and C > c) or ...
+		// The form is like: (A > a) or (A = a and B > b) or (A = a and B = b and C > c) or ...
 		for x := 0; x < nCol; x++ {
 			innerItems := make([]string, x+1)
 

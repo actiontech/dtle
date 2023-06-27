@@ -523,10 +523,20 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 
 	b.logger.Debug("query event", "schema", currentSchema, "query", query0)
 
+	isCommit := queryIsCommit(query0)
 	if queryIsBegin(query0) {
 		b.hasBeginQuery = true
-	} else if queryIsCommit(query0) || !b.hasBeginQuery {
-		// not hasBeginQuery: a single-query transaction.
+		// For a DML TX:
+		//  query_event BEGIN
+		//  rows_event
+		//  xid_event
+	} else if isCommit || !b.hasBeginQuery {
+		// For a DDL TX:
+		//  no query_event BEGIN
+
+		if isCommit {
+			b.logger.Warn("found query_event COMMIT. Please report the case at #1062", "gno", gno)
+		}
 
 		var query8 string
 		var errConvertToUTF8 error
@@ -747,6 +757,8 @@ func (b *BinlogReader) handleQueryEvent(ev *replication.BinlogEvent,
 		b.sendEntry(entriesChannel)
 
 		b.handleEventGSet(evt.GSet)
+	} else { // query_is_not_COMMIT && hasBeginQuery
+		b.logger.Warn("unknown case of query_is_not_COMMIT && hasBeginQuery. Please report.", "gno", gno)
 	}
 	return nil
 }
@@ -1153,6 +1165,8 @@ func (b *BinlogReader) resolveQuery(currentSchema string, sql string,
 		}
 	case *ast.DropTriggerStmt:
 		result.isSkip = true
+	case *ast.CommitStmt:
+		// do nothing
 	default:
 		result.isRecognized = false
 	}
@@ -1274,7 +1288,6 @@ func (b *BinlogReader) skipRowEvent(rowsEvent *replication.RowsEvent, dml int8) 
 					gnoI := rowsEvent.Rows[0][2]
 					gno, okGNO := gnoI.(int64)
 
-					// TODO It will go error if there is zero byte in the UUID.
 					if !ok || !okGNO {
 						b.logger.Error("cycle-prevention: unrecognized gtid_executed table sid or gno type",
 							"type", hclog.Fmt("%T %T", sidValue, gnoI))

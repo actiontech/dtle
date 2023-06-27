@@ -137,7 +137,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		}
 
 		if !uk.IsPrimary() && "FULL" != i.mysqlContext.BinlogRowImage {
-			i.logger.Warn("Will not use the unique key due to not primary when binlog row image is FULL",
+			i.logger.Warn("Will not use the non-primary unique key when binlog row image is not FULL",
 				"name", uk.Name)
 			uniqueKeyIsValid = false
 		}
