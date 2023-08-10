@@ -86,6 +86,7 @@ func SetupApiServer(logger g.LoggerType, driverConfig *dtle.DriverConfig) (err e
 	e.POST("/v2/login/captcha", v2.CaptchaV2)
 	e.GET("/v2/monitor/task", v2.GetTaskProgressV2)
 	e.POST("/v2/log/level", v2.UpdateLogLevelV2)
+	e.GET("/v2/job/diagnosis", v2.DiagnosisJobV2)
 	v2Router.GET("/jobs/migration", v2.MigrationJobListV2)
 	v2Router.GET("/job/migration/detail", v2.GetMigrationJobDetailV2)
 	v2Router.POST("/job/migration/create", v2.CreateMigrationJobV2)

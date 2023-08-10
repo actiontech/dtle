@@ -1067,6 +1067,7 @@ func (e *Extractor) StreamEvents() error {
 	return nil
 }
 
+
 // retryOperation attempts up to `count` attempts at running given function,
 // exiting as soon as it returns with non-error.
 // gno: only for logging
