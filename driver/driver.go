@@ -305,6 +305,10 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 	return configSpec, nil
 }
 
+func (d *Driver) GetDriverConfig() *DriverConfig {
+	return d.config
+}
+
 type DriverConfig struct {
 	NatsBind                string `codec:"nats_bind"`
 	NatsAdvertise           string `codec:"nats_advertise"`

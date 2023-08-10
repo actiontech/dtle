@@ -1,14 +1,23 @@
 package v2
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	nomadApi "github.com/hashicorp/nomad/api"
@@ -2097,6 +2106,188 @@ func checkUpdateJobInfo(c echo.Context, jobId string, create bool) error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+const downLoadFileName = "dump-dtle-%s.tar.gz"
+
+// @Id DiagnosisJobV2
+// @Description diagnosis job.
+// @Tags job
+// @Security ApiKeyAuth
+// @Param job_id formData string false "job id"
+// @Success 200
+// @router /v2/job/diagnosis [get]
+func DiagnosisJobV2(c echo.Context) error {
+	logger := handler.NewLogger().Named("DiagnosisJobV2")
+	reqParam := new(models.DiagnosisJobReqV2)
+	if err := handler.BindAndValidate(logger, c, reqParam); err != nil {
+		return c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+
+	// tar and gzip diagosis file
+	tarFileName := fmt.Sprintf(downLoadFileName, time.Now().UTC().Format(time.RFC3339))
+	driverConfig := handler.DtleDriver.GetDriverConfig()
+	tarFilePath := path.Join(driverConfig.LogFile, tarFileName)
+
+	err := DiagnosisJobAndTarFile(logger, reqParam.JobId, driverConfig.LogFile, tarFilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.BuildBaseResp(err))
+	}
+	return c.Attachment(tarFilePath, tarFileName)
+}
+
+const (
+	ProfileCpu          = "cpu"
+	ProfileHeap         = "heap"
+	ProfileMutex        = "mutex"
+	ProfileBlock        = "block"
+	ProfileGoroutine    = "goroutine"
+	ProfileThreadCreate = "threadcreate"
+	ProfileStatus       = "status"
+)
+
+func DiagnosisJobAndTarFile(logger g.LoggerType, jobId, src, dst string) (err error) {
+	logger.Info("start tar diagnosis job info")
+	fw, err := os.Create(dst)
+	if err != nil {
+		return
+	}
+	defer fw.Close()
+
+	gw := gzip.NewWriter(fw)
+	defer gw.Close()
+
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
+	// create job info file for tar
+	jobInfoFileName := path.Join(src, "dtle-"+jobId+"-info")
+	err = createJobInfoFile(logger, jobId, jobInfoFileName)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(jobInfoFileName)
+
+	// create dump file
+	for _, profile := range []string{ProfileHeap, ProfileMutex, ProfileBlock, ProfileGoroutine, ProfileThreadCreate, ProfileStatus} {
+		fileName := path.Join(src, "dtle-"+profile+".out")
+		err := captureProfile(logger, fileName, profile, 0)
+		if err != nil {
+			return err
+		}
+		// delete when compression is completed
+		defer os.Remove(fileName)
+	}
+
+	// tar file
+	return filepath.Walk(src, func(filePath string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// skip dir and non dtle log/info
+		if !fi.Mode().IsRegular() || !strings.HasPrefix(fi.Name(), "dtle") {
+			return nil
+		}
+		hdr, err := tar.FileInfoHeader(fi, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = strings.TrimPrefix(filePath, string(filepath.Separator))
+
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+
+		fr, err := os.Open(filePath)
+		defer fr.Close()
+		if err != nil {
+			return err
+		}
+
+		_, err = io.Copy(tw, fr)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func captureProfile(logger g.LoggerType, fileName, profileType string, extraInfo int) error {
+	logger.Info("capture profile %v", profileType)
+	f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0640)
+	if nil != err {
+		return fmt.Errorf("write dump error(%v)", err)
+	}
+	defer f.Close()
+	switch profileType {
+	case ProfileHeap, ProfileGoroutine, ProfileThreadCreate:
+		return pprof.Lookup(profileType).WriteTo(f, 1)
+	case ProfileCpu:
+		if extraInfo <= 0 {
+			extraInfo = 30
+		}
+		if err := pprof.StartCPUProfile(f); nil != err {
+			return err
+		}
+		time.Sleep(time.Duration(extraInfo) * time.Second)
+		pprof.StopCPUProfile()
+	case ProfileMutex:
+		runtime.SetMutexProfileFraction(extraInfo)
+		return pprof.Lookup(ProfileMutex).WriteTo(f, 1)
+	case ProfileBlock:
+		runtime.SetBlockProfileRate(extraInfo)
+		return pprof.Lookup(ProfileBlock).WriteTo(f, 1)
+	case ProfileStatus:
+		return recordProcessStatus(logger, f)
+	default:
+		return fmt.Errorf("not support profile %v", profileType)
+	}
+	return nil
+}
+
+func recordProcessStatus(logger g.LoggerType, w io.Writer) error {
+	logger.Info("record_process_status")
+	pid := syscall.Getpid()
+	status, err := os.ReadFile(fmt.Sprintf("/proc/%v/status", pid))
+	if err != nil {
+		return fmt.Errorf("read /proc/%v/status error: %v", pid, err)
+	}
+
+	if _, err = w.Write(status); err != nil {
+		return fmt.Errorf("record status error: %v", err)
+	}
+	return nil
+}
+
+func createJobInfoFile(logger g.LoggerType, jobId, fileName string) error {
+	logger.Info("create job %v info file", jobId)
+	f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0640)
+	if nil != err {
+		return fmt.Errorf("capture job info error(%v)", err)
+	}
+	defer f.Close()
+	// get job info from nomad
+	_, jobInfo, allocations, err := getJobDetailFromNomad(logger, jobId, GetJobTypeFromJobId(jobId))
+	if err != nil {
+		return fmt.Errorf("get job detail failed")
+	}
+
+	jobByts, err := json.Marshal(jobInfo)
+	if err != nil {
+		return err
+	}
+	fileInfo := append([]byte("jobInfo \n"), jobByts...)
+	allocationsByts, err := json.Marshal(allocations)
+	if err != nil {
+		return err
+	}
+	fileInfo = append(fileInfo, []byte("allocations \n")...)
+	fileInfo = append(fileInfo, allocationsByts...)
+	err = os.WriteFile(fileName, fileInfo, 0644)
+	if err != nil {
+		return fmt.Errorf("write info to file err: %v", err)
 	}
 	return nil
 }
