@@ -16,6 +16,7 @@ import (
 // @accept application/x-www-form-urlencoded
 // @Security ApiKeyAuth
 // @Param dtle_log_level formData string true "dtle log level" Enums(TRACE, DEBUG, INFO, WARN, ERROR)
+// @Param dtle_debug_job formData string false "dtle debug job"
 // @Success 200 {object} models.UpdataLogLevelRespV2
 // @router /v2/log/level [post]
 func UpdateLogLevelV2(c echo.Context) error {
@@ -32,8 +33,11 @@ func UpdateLogLevelV2(c echo.Context) error {
 			reqParam.DtleLogLevel, err))
 	}
 
+	debugJob := handler.DtleDriver.ResetDebugJob(reqParam.DebugJob)
+
 	return c.JSON(http.StatusOK, &models.UpdataLogLevelRespV2{
 		DtleLogLevel: strings.ToUpper(reqParam.DtleLogLevel),
+		DebugJob:     debugJob,
 		BaseResp:     models.BuildBaseResp(nil),
 	})
 }

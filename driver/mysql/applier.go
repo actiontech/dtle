@@ -10,13 +10,14 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
-	mysqldriver "github.com/go-sql-driver/mysql"
 	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 
 	"github.com/actiontech/dtle/driver/common"
 	"github.com/actiontech/dtle/driver/mysql/base"
@@ -1231,7 +1232,7 @@ func errIsMysqlDeadlock(err error) bool {
 	if err != nil {
 		merr, isME := err.(*mysqldriver.MySQLError)
 		if isME {
-			return merr.Number ==sql.ErrLockDeadlock
+			return merr.Number == sql.ErrLockDeadlock
 		} else {
 			return false
 		}
