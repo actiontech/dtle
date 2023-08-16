@@ -347,3 +347,4 @@ func connectDatabase(reqParam *models.ConnectionReqV2) error {
 
 	return nil
 }
+

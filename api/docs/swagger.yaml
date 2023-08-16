@@ -591,11 +591,11 @@ definitions:
         type: integer
       bulk_insert2:
         type: integer
-      retry_tx_limit:
-        type: integer
       dependency_history_size:
         type: integer
       parallel_workers:
+        type: integer
+      retry_tx_limit:
         type: integer
       set_gtid_next:
         type: boolean
@@ -1071,7 +1071,8 @@ definitions:
   models.ValidateJobRespV2:
     properties:
       driver_config_validated:
-        description: DriverConfigValidated indicates whether the agent validated the driver
+        description: DriverConfigValidated indicates whether the agent validated the
+          driver
         type: boolean
       job_validation_error:
         type: string
@@ -1250,6 +1251,22 @@ paths:
       - ApiKeyAuth: []
       tags:
       - database
+  /v2/job/diagnosis:
+    get:
+      description: diagnosis job.
+      operationId: DiagnosisJobV2
+      parameters:
+      - description: job id
+        in: formData
+        name: job_id
+        type: string
+      responses:
+        "200":
+          description: ""
+      security:
+      - ApiKeyAuth: []
+      tags:
+      - job
   /v2/job/migration/create:
     post:
       consumes:
@@ -1993,7 +2010,8 @@ paths:
         name: task_name
         required: true
         type: string
-      - description: nomad_http_address is the http address of the nomad that the target dtle is running with. ignore it if you are not sure what to provide
+      - description: nomad_http_address is the http address of the nomad that the
+          target dtle is running with. ignore it if you are not sure what to provide
         in: query
         name: nomad_http_address
         type: string

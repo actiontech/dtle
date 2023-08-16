@@ -74,6 +74,8 @@ var (
 			hclspec.NewLiteral(`"Info"`)),
 		"ui_dir": hclspec.NewDefault(hclspec.NewAttr("ui_dir", "string", false),
 			hclspec.NewLiteral(`""`)),
+		"debug_job": hclspec.NewDefault(hclspec.NewAttr("debug_job", "string", false),
+			hclspec.NewLiteral(`""`)),
 		"rsa_private_key_path": hclspec.NewDefault(hclspec.NewAttr("rsa_private_key_path", "string", false),
 			hclspec.NewLiteral(`""`)),
 		"cert_file_path": hclspec.NewDefault(hclspec.NewAttr("cert_file_path", "string", false),
@@ -151,9 +153,9 @@ var (
 		"SkipIncrementalCopy":  hclspec.NewAttr("SkipIncrementalCopy", "bool", false),
 		"SlaveNetWriteTimeout": hclspec.NewDefault(hclspec.NewAttr("SlaveNetWriteTimeout", "number", false),
 			hclspec.NewLiteral(`28800`)), // 8 hours
-		"SrcConnectionConfig": hclspec.NewBlock("SrcConnectionConfig", false, connectionConfigSpec),
+		"SrcConnectionConfig":  hclspec.NewBlock("SrcConnectionConfig", false, connectionConfigSpec),
 		"DestConnectionConfig": hclspec.NewBlock("DestConnectionConfig", false, connectionConfigSpec),
-		"WaitOnJob": hclspec.NewAttr("WaitOnJob", "string", false),
+		"WaitOnJob":            hclspec.NewAttr("WaitOnJob", "string", false),
 		"TwoWaySync": hclspec.NewDefault(hclspec.NewAttr("TwoWaySync", "bool", false),
 			hclspec.NewLiteral(`false`)),
 		"BulkInsert1": hclspec.NewDefault(hclspec.NewAttr("BulkInsert1", "number", false),
@@ -192,7 +194,7 @@ var (
 			hclspec.NewLiteral(`67108864`)),
 		"SetGtidNext": hclspec.NewDefault(hclspec.NewAttr("SetGtidNext", "bool", false),
 			hclspec.NewLiteral(`false`)),
-		"DestType": hclspec.NewAttr("DestType", "string", false),
+		"DestType":        hclspec.NewAttr("DestType", "string", false),
 		"SrcOracleConfig": hclspec.NewBlock("SrcOracleConfig", false, oracleConfigSpec),
 	})
 
@@ -305,6 +307,10 @@ func (d *Driver) ConfigSchema() (*hclspec.Spec, error) {
 	return configSpec, nil
 }
 
+func (d *Driver) GetDriverConfig() *DriverConfig {
+	return d.config
+}
+
 type DriverConfig struct {
 	NatsBind                string `codec:"nats_bind"`
 	NatsAdvertise           string `codec:"nats_advertise"`
@@ -316,6 +322,7 @@ type DriverConfig struct {
 	StatsCollectionInterval int    `codec:"stats_collection_interval"`
 	PublishMetrics          bool   `codec:"publish_metrics"`
 	LogLevel                string `codec:"log_level"`
+	DebugJob                string `codec:"debug_job"`
 	LogFile                 string `codec:"log_file"`
 	UiDir                   string `codec:"ui_dir"`
 	RsaPrivateKeyPath       string `codec:"rsa_private_key_path"`
@@ -334,29 +341,13 @@ func (d *Driver) setupLogger() (err error) {
 	if d.config.LogFile == "" {
 		d.logger.Info("use nomad logger", "level", d.config.LogLevel)
 	} else {
-		err = os.MkdirAll(filepath.Dir(d.config.LogFile), 0755)
+		err := os.MkdirAll(filepath.Dir(d.config.LogFile), 0755)
 		if err != nil {
 			return err
 		}
-
-		logFileName := d.config.LogFile
-		if strings.HasSuffix(logFileName, "/") {
-			logFileName += "dtle.log"
-		}
-
-		rotateFile := &lumberjack.Logger{
-			Filename: logFileName,
-			MaxSize:  512, // MB
-			Compress: true,
-		}
+		d.logger = setupLogger(d.config.LogFile, "dtle.log")
 
 		d.logger.Info("switching to dtle logger", "file", d.config.LogFile, "level", d.config.LogLevel)
-
-		d.logger = hclog.New(&hclog.LoggerOptions{
-			Name:   "",
-			Level:  hclog.Info,
-			Output: rotateFile,
-		})
 		g.Logger = d.logger
 
 		err = d.SetLogLevel(d.config.LogLevel)
@@ -366,6 +357,26 @@ func (d *Driver) setupLogger() (err error) {
 	}
 
 	return nil
+}
+
+func setupLogger(logFilePath, fileName string) hclog.Logger {
+
+	logFileName := logFilePath
+	if strings.HasSuffix(logFileName, "/") {
+		logFileName += fileName
+	}
+
+	rotateFile := &lumberjack.Logger{
+		Filename: logFileName,
+		MaxSize:  512, // MB
+		Compress: true,
+	}
+
+	return hclog.New(&hclog.LoggerOptions{
+		Name:   "",
+		Level:  hclog.Info,
+		Output: rotateFile,
+	})
 }
 
 func (d *Driver) SetConfig(c *base.Config) (err error) {
@@ -493,7 +504,7 @@ func (d *Driver) Fingerprint(ctx context.Context) (<-chan *drivers.Fingerprint, 
 	return ch, nil
 }
 
-//It allows the driver to indicate its health to the client.
+// It allows the driver to indicate its health to the client.
 // The channel returned should immediately send an initial Fingerprint,
 // then send periodic updates at an interval that is appropriate for the driver until the context is canceled.
 func (d *Driver) handleFingerprint(ctx context.Context, ch chan *drivers.Fingerprint) {
@@ -511,7 +522,7 @@ func (d *Driver) handleFingerprint(ctx context.Context, ch chan *drivers.Fingerp
 	}
 }
 
-//get the driver status
+// get the driver status
 func (d *Driver) buildFingerprint() *drivers.Fingerprint {
 
 	var health drivers.HealthState
@@ -867,6 +878,14 @@ func (d *Driver) SetLogLevel(level string) error {
 	d.logger.SetLevel(logLevel)
 
 	return nil
+}
+
+func (d *Driver) ResetDebugJob(job *string) string {
+	if job != nil {
+		d.config.DebugJob = *job
+	}
+
+	return d.config.DebugJob
 }
 
 func (d *Driver) SetSetupApiServerFn(fn func(logger g.LoggerType, driverConfig *DriverConfig) (err error)) {

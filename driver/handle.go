@@ -17,6 +17,7 @@ import (
 	"github.com/armon/go-metrics"
 	"github.com/pkg/errors"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/nomad/plugins/drivers"
 )
 
@@ -36,8 +37,8 @@ type taskHandle struct {
 
 	ctx        context.Context
 	cancelFunc context.CancelFunc
-	waitCh chan *drivers.ExitResult
-	stats  *common.TaskStatistics
+	waitCh     chan *drivers.ExitResult
+	stats      *common.TaskStatistics
 
 	driverConfig *common.MySQLDriverConfig
 	shutdown     bool
@@ -153,7 +154,9 @@ func (h *taskHandle) run(d *Driver) {
 		for {
 			select {
 			case <-h.ctx.Done():
-				if !t.Stop() { <-t.C }
+				if !t.Stop() {
+					<-t.C
+				}
 				return
 			case <-t.C:
 				if h.runner != nil {
@@ -180,16 +183,23 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 		StateDir: d.config.DataDir,
 	}
 
+	logger := h.logger
+	// create a new log file for debug job
+	if d.config.DebugJob == h.taskConfig.JobName && hclog.LevelFromString(d.config.LogLevel) != hclog.Debug {
+		logger = setupLogger(d.config.LogFile, "dtle_debug_job.log")
+		logger.SetLevel(hclog.Debug)
+	}
+
 	switch common.TaskTypeFromString(h.taskConfig.Name) {
 	case common.TaskTypeSrc:
 		if h.driverConfig.SrcOracleConfig != nil {
 			h.logger.Debug("found oracle src", "SrcOracleConfig", h.driverConfig.SrcOracleConfig)
-			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
+			runner, err = extractor.NewExtractorOracle(ctx, h.driverConfig, logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewExtractor")
 			}
 		} else {
-			e, err := mysql.NewExtractor(ctx, h.driverConfig, h.logger, d.storeManager, h.waitCh, h.ctx)
+			e, err := mysql.NewExtractor(ctx, h.driverConfig, logger, d.storeManager, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewOracleExtractor")
 			}
@@ -200,11 +210,11 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 					StateDir: d.config.DataDir,
 				}
 				cfg2 := &common.MySQLDriverConfig{
-					DtleTaskConfig:   common.DtleTaskConfig{
+					DtleTaskConfig: common.DtleTaskConfig{
 						DestType: "mysql",
 					},
 				}
-				e.RevApplier, err = mysql.NewApplier(ctx2, cfg2, h.logger, d.storeManager, d.config.NatsAdvertise,
+				e.RevApplier, err = mysql.NewApplier(ctx2, cfg2, logger, d.storeManager, d.config.NatsAdvertise,
 					h.waitCh, d.eventer, h.taskConfig, h.ctx)
 			}
 
@@ -213,13 +223,13 @@ func (h *taskHandle) NewRunner(d *Driver) (runner DriverHandle, err error) {
 		h.logger.Debug("found dest", "allConfig", h.driverConfig)
 		switch strings.ToLower(h.driverConfig.DestType) {
 		case "kafka":
-			runner, err = kafka.NewKafkaRunner(ctx, h.logger,
+			runner, err = kafka.NewKafkaRunner(ctx, logger,
 				d.storeManager, d.config.NatsAdvertise, h.waitCh, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewKafkaRunner")
 			}
 		case "mysql":
-			runner, err = mysql.NewApplier(ctx, h.driverConfig, h.logger, d.storeManager,
+			runner, err = mysql.NewApplier(ctx, h.driverConfig, logger, d.storeManager,
 				d.config.NatsAdvertise, h.waitCh, d.eventer, h.taskConfig, h.ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "NewApplier")

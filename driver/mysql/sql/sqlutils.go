@@ -426,3 +426,16 @@ func GetSetWaitTimeout(db QueryAble) (originVal int, err error) {
 	}
 	return originVal, nil
 }
+
+func ShowCreateTable(ctx context.Context, db QueryAble, dbName, tbName string) (r string, err error) {
+	query := fmt.Sprintf("SHOW CREATE TABLE %s.%s", mysqlconfig.EscapeName(dbName), mysqlconfig.EscapeName(tbName))
+	g.Logger.Debug("ShowCreateTable", "query", query)
+	row := db.QueryRowContext(ctx, query)
+	var dummy interface{}
+	// | Table | Create Table |
+	err = row.Scan(&dummy, &r)
+	if err != nil {
+		return "", errors.Wrap(err, "ShowCreateTable")
+	}
+	return r, nil
+}
