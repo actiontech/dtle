@@ -2216,10 +2216,9 @@ func DiagnosisJobAndTarFile(logger g.LoggerType, jobId, src, dst string) (err er
 		if err != nil {
 			return err
 		}
-
-		_, err = io.Copy(tw, fr)
+		_, err = io.CopyN(tw, fr, fi.Size())
 		if err != nil {
-			return err
+			return fmt.Errorf("write file %s err: %v", hdr.Name, err)
 		}
 		return nil
 	})
