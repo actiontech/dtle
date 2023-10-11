@@ -5,7 +5,6 @@ go 1.16
 require (
 	github.com/Shopify/sarama v1.26.4
 	github.com/actiontech/golang-live-coverage-report v0.0.0-20210902074032-43aa91afdc2c
-	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/araddon/qlbridge v0.0.0-00010101000000-000000000000
 	github.com/armon/go-metrics v0.3.4
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
@@ -41,8 +40,8 @@ require (
 	github.com/swaggo/echo-swagger v1.1.0
 	github.com/swaggo/swag v1.7.0
 	github.com/thinkeridea/go-extend v1.3.2
-	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
-	golang.org/x/text v0.3.7
+	golang.org/x/net v0.17.0
+	golang.org/x/text v0.13.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 
