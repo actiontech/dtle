@@ -1,4 +1,4 @@
-// Copyright 2018-2019 The NATS Authors
+// Copyright 2018-2022 The NATS Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,8 +15,8 @@ package server
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -34,7 +34,7 @@ func ReadOperatorJWT(jwtfile string) (*jwt.OperatorClaims, error) {
 }
 
 func readOperatorJWT(jwtfile string) (string, *jwt.OperatorClaims, error) {
-	contents, err := ioutil.ReadFile(jwtfile)
+	contents, err := os.ReadFile(jwtfile)
 	if err != nil {
 		// Check to see if the JWT has been inlined.
 		if !strings.HasPrefix(jwtfile, jwtPrefix) {
@@ -69,9 +69,6 @@ func wipeSlice(buf []byte) {
 func validateTrustedOperators(o *Options) error {
 	if len(o.TrustedOperators) == 0 {
 		return nil
-	}
-	if o.AllowNewAccounts {
-		return fmt.Errorf("operators do not allow dynamic creation of new accounts")
 	}
 	if o.AccountResolver == nil {
 		return fmt.Errorf("operators require an account resolver to be configured")

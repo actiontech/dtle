@@ -48,7 +48,7 @@ func (a *Activation) IsStream() bool {
 // Validate checks the exports and limits in an activation JWT
 func (a *Activation) Validate(vr *ValidationResults) {
 	if !a.IsService() && !a.IsStream() {
-		vr.AddError("invalid export type: %q", a.ImportType)
+		vr.AddError("invalid import type: %q", a.ImportType)
 	}
 
 	a.ImportSubject.Validate(vr)

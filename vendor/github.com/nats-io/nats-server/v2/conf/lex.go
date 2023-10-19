@@ -17,7 +17,7 @@
 
 // The format supported is less restrictive than today's formats.
 // Supports mixed Arrays [], nested Maps {}, multiple comment types (# and //)
-// Also supports key value assigments using '=' or ':' or whiteSpace()
+// Also supports key value assignments using '=' or ':' or whiteSpace()
 //   e.g. foo = 2, foo : 2, foo 2
 // maps can be assigned with no key separator as well
 // semicolons as value terminators in key/value assignments are optional
@@ -78,6 +78,7 @@ const (
 	topOptTerm        = '}'
 	blockStart        = '('
 	blockEnd          = ')'
+	mapEndString      = string(mapEnd)
 )
 
 type stateFn func(lx *lexer) stateFn
@@ -681,7 +682,7 @@ func lexMapQuotedKey(lx *lexer) stateFn {
 	return lexMapQuotedKey
 }
 
-// lexMapQuotedKey consumes the text of a key between quotes.
+// lexMapDubQuotedKey consumes the text of a key between quotes.
 func lexMapDubQuotedKey(lx *lexer) stateFn {
 	if r := lx.peek(); r == eof {
 		return lx.errorf("Unexpected EOF processing double quoted map key.")
@@ -1010,8 +1011,13 @@ func lexConvenientNumber(lx *lexer) stateFn {
 		return lexConvenientNumber
 	}
 	lx.backup()
-	lx.emit(itemInteger)
-	return lx.pop()
+	if isNL(r) || r == eof || r == mapEnd || r == optValTerm || r == mapValTerm || isWhitespace(r) || unicode.IsDigit(r) {
+		lx.emit(itemInteger)
+		return lx.pop()
+	}
+	// This is not a number, so treat it as a string.
+	lx.stringStateFn = lexString
+	return lexString
 }
 
 // lexDateAfterYear consumes a full Zulu Datetime in ISO8601 format.
@@ -1056,7 +1062,7 @@ func lexNegNumberStart(lx *lexer) stateFn {
 	return lexNegNumber
 }
 
-// lexNumber consumes a negative integer or a float after seeing the first digit.
+// lexNegNumber consumes a negative integer or a float after seeing the first digit.
 func lexNegNumber(lx *lexer) stateFn {
 	r := lx.next()
 	switch {

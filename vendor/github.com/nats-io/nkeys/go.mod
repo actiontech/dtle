@@ -1,5 +1,7 @@
 module github.com/nats-io/nkeys
 
-go 1.16
+go 1.19
 
-require golang.org/x/crypto v0.0.0-20210314154223-e6e6c4f2bb5b
+require golang.org/x/crypto v0.6.0
+
+require golang.org/x/sys v0.5.0 // indirect
