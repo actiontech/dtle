@@ -18,7 +18,7 @@ package conf
 
 // The format supported is less restrictive than today's formats.
 // Supports mixed Arrays [], nested Maps {}, multiple comment types (# and //)
-// Also supports key value assigments using '=' or ':' or whiteSpace()
+// Also supports key value assignments using '=' or ':' or whiteSpace()
 //   e.g. foo = 2, foo : 2, foo 2
 // maps can be assigned with no key separator as well
 // semicolons as value terminators in key/value assignments are optional
@@ -27,7 +27,6 @@ package conf
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -72,7 +71,7 @@ func Parse(data string) (map[string]interface{}, error) {
 
 // ParseFile is a helper to open file, etc. and parse the contents.
 func ParseFile(fp string) (map[string]interface{}, error) {
-	data, err := ioutil.ReadFile(fp)
+	data, err := os.ReadFile(fp)
 	if err != nil {
 		return nil, fmt.Errorf("error opening config file: %v", err)
 	}
@@ -86,7 +85,7 @@ func ParseFile(fp string) (map[string]interface{}, error) {
 
 // ParseFileWithChecks is equivalent to ParseFile but runs in pedantic mode.
 func ParseFileWithChecks(fp string) (map[string]interface{}, error) {
-	data, err := ioutil.ReadFile(fp)
+	data, err := os.ReadFile(fp)
 	if err != nil {
 		return nil, err
 	}
@@ -138,16 +137,22 @@ func parse(data, fp string, pedantic bool) (p *parser, err error) {
 	}
 	p.pushContext(p.mapping)
 
+	var prevItem item
 	for {
 		it := p.next()
 		if it.typ == itemEOF {
+			// Here we allow the final character to be a bracket '}'
+			// in order to support JSON like configurations.
+			if prevItem.typ == itemKey && prevItem.val != mapEndString {
+				return nil, fmt.Errorf("config is invalid (%s:%d:%d)", fp, it.line, it.pos)
+			}
 			break
 		}
+		prevItem = it
 		if err := p.processItem(it, fp); err != nil {
 			return nil, err
 		}
 	}
-
 	return p, nil
 }
 

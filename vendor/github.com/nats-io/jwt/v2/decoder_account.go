@@ -45,6 +45,9 @@ func loadAccount(data []byte, version int) (*AccountClaims, error) {
 		if err := json.Unmarshal(data, &v2a); err != nil {
 			return nil, err
 		}
+		if len(v2a.Limits.JetStreamTieredLimits) > 0 {
+			v2a.Limits.JetStreamLimits = JetStreamLimits{}
+		}
 		return &v2a, nil
 	default:
 		return nil, fmt.Errorf("library supports version %d or less - received %d", libVersion, version)
@@ -73,7 +76,7 @@ func (oa v1AccountClaims) migrateV1() (*AccountClaims, error) {
 	a.Account.Exports = oa.v1NatsAccount.Exports
 	a.Account.Limits.AccountLimits = oa.v1NatsAccount.Limits.AccountLimits
 	a.Account.Limits.NatsLimits = oa.v1NatsAccount.Limits.NatsLimits
-	a.Account.Limits.JetStreamLimits = JetStreamLimits{0, 0, 0, 0, false}
+	a.Account.Limits.JetStreamLimits = JetStreamLimits{}
 	a.Account.SigningKeys = make(SigningKeys)
 	for _, v := range oa.SigningKeys {
 		a.Account.SigningKeys.Add(v)

@@ -75,6 +75,13 @@ var (
 	// attempted to connect to the leaf node listen port.
 	ErrClientConnectedToLeafNodePort = errors.New("attempted to connect to leaf node port")
 
+	// ErrLeafNodeHasSameClusterName represents an error condition when a leafnode is a cluster
+	// and it has the same cluster name as the hub cluster.
+	ErrLeafNodeHasSameClusterName = errors.New("remote leafnode has same cluster name")
+
+	// ErrLeafNodeDisabled is when we disable leafnodes.
+	ErrLeafNodeDisabled = errors.New("leafnodes disabled")
+
 	// ErrConnectedToWrongPort represents an error condition when a connection is attempted
 	// to the wrong listen port (for instance a LeafNode to a client port, etc...)
 	ErrConnectedToWrongPort = errors.New("attempted to connect to wrong port")
@@ -181,7 +188,52 @@ var (
 
 	// ErrCertNotPinned is returned when pinned certs are set and the certificate is not in it
 	ErrCertNotPinned = errors.New("certificate not pinned")
+
+	// ErrDuplicateServerName is returned when processing a server remote connection and
+	// the server reports that this server name is already used in the cluster.
+	ErrDuplicateServerName = errors.New("duplicate server name")
+
+	// ErrMinimumVersionRequired is returned when a connection is not at the minimum version required.
+	ErrMinimumVersionRequired = errors.New("minimum version required")
+
+	// ErrInvalidMappingDestination is used for all subject mapping destination errors
+	ErrInvalidMappingDestination = errors.New("invalid mapping destination")
+
+	// ErrInvalidMappingDestinationSubject is used to error on a bad transform destination mapping
+	ErrInvalidMappingDestinationSubject = fmt.Errorf("%w: invalid subject", ErrInvalidMappingDestination)
+
+	// ErrMappingDestinationNotUsingAllWildcards is used to error on a transform destination not using all of the token wildcards
+	ErrMappingDestinationNotUsingAllWildcards = fmt.Errorf("%w: not using all of the token wildcard(s)", ErrInvalidMappingDestination)
+
+	// ErrUnknownMappingDestinationFunction is returned when a subject mapping destination contains an unknown mustache-escaped mapping function.
+	ErrUnknownMappingDestinationFunction = fmt.Errorf("%w: unknown function", ErrInvalidMappingDestination)
+
+	// ErrorMappingDestinationFunctionWildcardIndexOutOfRange is returned when the mapping destination function is passed an out of range wildcard index value for one of it's arguments
+	ErrorMappingDestinationFunctionWildcardIndexOutOfRange = fmt.Errorf("%w: wildcard index out of range", ErrInvalidMappingDestination)
+
+	// ErrorMappingDestinationFunctionNotEnoughArguments is returned when the mapping destination function is not passed enough arguments
+	ErrorMappingDestinationFunctionNotEnoughArguments = fmt.Errorf("%w: not enough arguments passed to the function", ErrInvalidMappingDestination)
+
+	// ErrorMappingDestinationFunctionInvalidArgument is returned when the mapping destination function is passed and invalid argument
+	ErrorMappingDestinationFunctionInvalidArgument = fmt.Errorf("%w: function argument is invalid or in the wrong format", ErrInvalidMappingDestination)
+
+	// ErrorMappingDestinationFunctionTooManyArguments is returned when the mapping destination function is passed too many arguments
+	ErrorMappingDestinationFunctionTooManyArguments = fmt.Errorf("%w: too many arguments passed to the function", ErrInvalidMappingDestination)
 )
+
+// mappingDestinationErr is a type of subject mapping destination error
+type mappingDestinationErr struct {
+	token string
+	err   error
+}
+
+func (e *mappingDestinationErr) Error() string {
+	return fmt.Sprintf("%s in %s", e.err, e.token)
+}
+
+func (e *mappingDestinationErr) Is(target error) bool {
+	return target == ErrInvalidMappingDestination
+}
 
 // configErr is a configuration error.
 type configErr struct {
