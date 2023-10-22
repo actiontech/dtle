@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/md5"
 	"database/sql"
-	gosql "database/sql"
 	"encoding/hex"
 	"fmt"
 	"regexp"
@@ -1320,7 +1319,7 @@ func findTableConfig(schema *common.DataSource, tableName string) *common.Table 
 	return loadTableConfig(schema, tableName)
 }
 
-func Query(db *gosql.DB, querySQL string, args ...interface{}) ([]map[string]string, error) {
+func Query(db *sql.DB, querySQL string, args ...interface{}) ([]map[string]string, error) {
 	var (
 		cols []string
 		res  []map[string]string

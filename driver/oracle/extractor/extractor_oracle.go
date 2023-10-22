@@ -9,7 +9,6 @@ package extractor
 import (
 	"context"
 	"database/sql"
-	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -61,8 +60,8 @@ type ExtractorOracle struct {
 
 	mysqlVersionDigit int
 	oracleDB          *config.OracleDB
-	db                *gosql.DB
-	singletonDB       *gosql.DB
+	db                *sql.DB
+	singletonDB       *sql.DB
 	//dumpers           []*mysql.dumper
 	// db.tb exists when creating the job, for full-copy.
 	// vs e.mysqlContext.ReplicateDoDb: all user assigned db.tb

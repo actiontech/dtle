@@ -9,7 +9,6 @@ package base
 import (
 	"bytes"
 	"context"
-	gosql "database/sql"
 	"fmt"
 	"github.com/hashicorp/go-hclog"
 	"github.com/pingcap/tidb/types"
@@ -146,7 +145,7 @@ func ShowCreateTable(db usql.QueryAble, databaseName, tableName string) (stateme
 	return createTableStatement, err
 }
 
-func ShowCreateView(db *gosql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
+func ShowCreateView(db *sql.DB, databaseName, tableName string, dropTableIfExists bool) (createTableStatement string, err error) {
 	var dummy, character_set_client, collation_connection string
 	query := fmt.Sprintf(`show create table %s.%s`, umconf.EscapeName(databaseName), umconf.EscapeName(tableName))
 	err = db.QueryRow(query).Scan(&dummy, &createTableStatement, &character_set_client, &collation_connection)
