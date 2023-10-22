@@ -17,7 +17,6 @@ import (
 	"github.com/actiontech/dtle/driver/common"
 
 	ubase "github.com/actiontech/dtle/driver/mysql/base"
-	uconf "github.com/actiontech/dtle/driver/mysql/mysqlconfig"
 	umconf "github.com/actiontech/dtle/driver/mysql/mysqlconfig"
 	usql "github.com/actiontech/dtle/driver/mysql/sql"
 	hclog "github.com/hashicorp/go-hclog"
@@ -101,7 +100,7 @@ func (i *Inspector) ValidateOriginalTable(databaseName, tableName string, table 
 		return err
 	}
 	// TODO why assign OriginalTableColumns twice (later getSchemaTablesAndMeta->readTableColumns)?
-	table.ColumnMap, err = uconf.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
+	table.ColumnMap, err = umconf.BuildColumnMapIndex(table.ColumnMapFrom, table.OriginalTableColumns.Ordinals)
 	if err != nil {
 		return err
 	}
