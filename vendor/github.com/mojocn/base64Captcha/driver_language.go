@@ -1,13 +1,14 @@
 package base64Captcha
 
 import (
-	"fmt"
-	"github.com/golang/freetype/truetype"
 	"image/color"
+	"log"
 	"math/rand"
+
+	"github.com/golang/freetype/truetype"
 )
 
-//https://en.wikipedia.org/wiki/Unicode_block
+// https://en.wikipedia.org/wiki/Unicode_block
 var langMap = map[string][]int{
 	//"zh-CN": []int{19968, 40869},
 	"latin":  {0x0000, 0x007f},
@@ -25,7 +26,7 @@ var langMap = map[string][]int{
 func generateRandomRune(size int, code string) string {
 	lang, ok := langMap[code]
 	if !ok {
-		fmt.Sprintf("can not font language of %s", code)
+		log.Printf("can not font language of %s \n", code)
 		lang = langMap["latin"]
 	}
 	start := lang[0]
@@ -38,7 +39,7 @@ func generateRandomRune(size int, code string) string {
 	return string(randRune)
 }
 
-//DriverLanguage generates language unicode by lanuage
+// DriverLanguage generates language unicode by lanuage
 type DriverLanguage struct {
 	// Height png height in pixel.
 	Height int
@@ -57,24 +58,27 @@ type DriverLanguage struct {
 	//BgColor captcha image background color (optional)
 	BgColor *color.RGBA
 
+	//fontsStorage font storage (optional)
+	fontsStorage FontsStorage
+
 	//Fonts loads by name see fonts.go's comment
 	Fonts        []*truetype.Font
 	LanguageCode string
 }
 
-//NewDriverLanguage creates a driver
-func NewDriverLanguage(height int, width int, noiseCount int, showLineOptions int, length int, bgColor *color.RGBA, fonts []*truetype.Font, languageCode string) *DriverLanguage {
-	return &DriverLanguage{Height: height, Width: width, NoiseCount: noiseCount, ShowLineOptions: showLineOptions, Length: length, BgColor: bgColor, Fonts: fonts, LanguageCode: languageCode}
+// NewDriverLanguage creates a driver
+func NewDriverLanguage(height int, width int, noiseCount int, showLineOptions int, length int, bgColor *color.RGBA, fontsStorage FontsStorage, fonts []*truetype.Font, languageCode string) *DriverLanguage {
+	return &DriverLanguage{Height: height, Width: width, NoiseCount: noiseCount, ShowLineOptions: showLineOptions, Length: length, BgColor: bgColor, fontsStorage: fontsStorage, Fonts: fonts, LanguageCode: languageCode}
 }
 
-//GenerateIdQuestionAnswer creates content and answer
+// GenerateIdQuestionAnswer creates content and answer
 func (d *DriverLanguage) GenerateIdQuestionAnswer() (id, content, answer string) {
 	id = RandomId()
 	content = generateRandomRune(d.Length, d.LanguageCode)
 	return id, content, content
 }
 
-//DrawCaptcha creates item
+// DrawCaptcha creates item
 func (d *DriverLanguage) DrawCaptcha(content string) (item Item, err error) {
 	var bgc color.RGBA
 	if d.BgColor != nil {

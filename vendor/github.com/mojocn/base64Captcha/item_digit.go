@@ -29,7 +29,7 @@ type ItemDigit struct {
 	//rng      siprng
 }
 
-//NewItemDigit create a instance of item-digit
+// NewItemDigit create a instance of item-digit
 func NewItemDigit(width int, height int, dotCount int, maxSkew float64) *ItemDigit {
 	itemDigit := &ItemDigit{width: width, height: height, dotCount: dotCount, maxSkew: maxSkew}
 	//init image.Paletted
@@ -48,6 +48,12 @@ func createRandPaletteColors(dotCount int) color.Palette {
 		uint8(rand.Intn(129)),
 		0xFF,
 	}
+
+	if dotCount == 0 {
+		p[0] = prim
+		return p
+	}
+
 	p[1] = prim
 	// Circle colors.
 	for i := 2; i <= dotCount; i++ {
@@ -157,7 +163,7 @@ func (m *ItemDigit) strikeThrough() {
 	}
 }
 
-//draw digit
+// draw digit
 func (m *ItemDigit) drawDigit(digit []byte, x, y int) {
 	skf := randFloat64Range(-m.maxSkew, m.maxSkew)
 	xs := float64(x)
