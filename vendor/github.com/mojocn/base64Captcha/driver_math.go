@@ -2,13 +2,14 @@ package base64Captcha
 
 import (
 	"fmt"
-	"github.com/golang/freetype/truetype"
 	"image/color"
 	"math/rand"
 	"strings"
+
+	"github.com/golang/freetype/truetype"
 )
 
-//DriverMath captcha config for captcha math
+// DriverMath captcha config for captcha math
 type DriverMath struct {
 	//Height png height in pixel.
 	Height int
@@ -25,39 +26,53 @@ type DriverMath struct {
 	//BgColor captcha image background color (optional)
 	BgColor *color.RGBA
 
+	//fontsStorage font storage (optional)
+	fontsStorage FontsStorage
+
 	//Fonts loads by name see fonts.go's comment
 	Fonts      []string
 	fontsArray []*truetype.Font
 }
 
-//NewDriverMath creates a driver of math
-func NewDriverMath(height int, width int, noiseCount int, showLineOptions int, bgColor *color.RGBA, fonts []string) *DriverMath {
+// NewDriverMath creates a driver of math
+func NewDriverMath(height int, width int, noiseCount int, showLineOptions int, bgColor *color.RGBA, fontsStorage FontsStorage, fonts []string) *DriverMath {
+	if fontsStorage == nil {
+		fontsStorage = DefaultEmbeddedFonts
+	}
+
 	tfs := []*truetype.Font{}
 	for _, fff := range fonts {
-		tf := loadFontByName("fonts/" + fff)
+		tf := fontsStorage.LoadFontByName("fonts/" + fff)
 		tfs = append(tfs, tf)
 	}
+
 	if len(tfs) == 0 {
 		tfs = fontsAll
 	}
+
 	return &DriverMath{Height: height, Width: width, NoiseCount: noiseCount, ShowLineOptions: showLineOptions, fontsArray: tfs, BgColor: bgColor, Fonts: fonts}
 }
 
-//ConvertFonts loads fonts from names
+// ConvertFonts loads fonts from names
 func (d *DriverMath) ConvertFonts() *DriverMath {
+	if d.fontsStorage == nil {
+		d.fontsStorage = DefaultEmbeddedFonts
+	}
+
 	tfs := []*truetype.Font{}
 	for _, fff := range d.Fonts {
-		tf := loadFontByName("fonts/" + fff)
+		tf := d.fontsStorage.LoadFontByName("fonts/" + fff)
 		tfs = append(tfs, tf)
 	}
 	if len(tfs) == 0 {
 		tfs = fontsAll
 	}
 	d.fontsArray = tfs
+
 	return d
 }
 
-//GenerateIdQuestionAnswer creates id,captcha content and answer
+// GenerateIdQuestionAnswer creates id,captcha content and answer
 func (d *DriverMath) GenerateIdQuestionAnswer() (id, question, answer string) {
 	id = RandomId()
 	operators := []string{"+", "-", "x"}
@@ -85,7 +100,7 @@ func (d *DriverMath) GenerateIdQuestionAnswer() (id, question, answer string) {
 	return
 }
 
-//DrawCaptcha creates math captcha item
+// DrawCaptcha creates math captcha item
 func (d *DriverMath) DrawCaptcha(question string) (item Item, err error) {
 	var bgc color.RGBA
 	if d.BgColor != nil {

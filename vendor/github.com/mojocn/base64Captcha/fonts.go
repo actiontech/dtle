@@ -1,12 +1,12 @@
 package base64Captcha
 
 import (
-	"github.com/golang/freetype"
-	"github.com/golang/freetype/truetype"
 	"math/rand"
+
+	"github.com/golang/freetype/truetype"
 )
 
-var fontsSimple = loadFontsByNames([]string{
+var fontsSimple = DefaultEmbeddedFonts.LoadFontsByNames([]string{
 	"fonts/3Dumb.ttf",
 	"fonts/ApothecaryFont.ttf",
 	"fonts/Comismsh.ttf",
@@ -18,35 +18,11 @@ var fontsSimple = loadFontsByNames([]string{
 	"fonts/chromohv.ttf",
 })
 
-//var fontemoji = loadFontByName("fonts/seguiemj.ttf")
+// var fontemoji = loadFontByName("fonts/seguiemj.ttf")
 var fontsAll = append(fontsSimple, fontChinese)
-var fontChinese = loadFontByName("fonts/wqy-microhei.ttc")
+var fontChinese = DefaultEmbeddedFonts.LoadFontByName("fonts/wqy-microhei.ttc")
 
-func loadFontByName(name string) *truetype.Font {
-	fontBytes, err := Asset(name)
-	if err != nil {
-		panic(err)
-	}
-	//font file bytes to trueTypeFont
-	trueTypeFont, err := freetype.ParseFont(fontBytes)
-	if err != nil {
-		panic(err)
-	}
-	return trueTypeFont
-}
-
-//loadFontsByNames import fonts from dir.
-//make the simple-font(RitaSmith.ttf) the first font of trueTypeFonts.
-func loadFontsByNames(assetFontNames []string) []*truetype.Font {
-	fonts := make([]*truetype.Font, 0)
-	for _, assetName := range assetFontNames {
-		f := loadFontByName(assetName)
-		fonts = append(fonts, f)
-	}
-	return fonts
-}
-
-//randFontFrom choose random font family.选择随机的字体
+// randFontFrom choose random font family.选择随机的字体
 func randFontFrom(fonts []*truetype.Font) *truetype.Font {
 	fontCount := len(fonts)
 
