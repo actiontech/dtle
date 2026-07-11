@@ -11,11 +11,12 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
-	"github.com/hashicorp/go-hclog"
-	"github.com/pingcap/tidb/types"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
+	"github.com/pingcap/tidb/types"
 
 	"github.com/actiontech/dtle/driver/common"
 	"github.com/actiontech/dtle/g"
@@ -98,6 +99,10 @@ func GetTableColumns(db usql.QueryAble, databaseName, tableName string) (*common
 			if d.Valid {
 				aColumn.Default = d.String
 			}
+		}
+		extra := strings.ToUpper(rowMap.GetString("Extra"))
+		if strings.Contains(extra, "VIRTUAL") || strings.Contains(extra, "GENERATED") {
+			aColumn.IsVirtual = true
 		}
 		aColumn.EscapedName = umconf.EscapeName(aColumn.RawName)
 		columns = append(columns, aColumn)
@@ -226,6 +231,12 @@ func ApplyColumnTypes(db usql.QueryAble, databaseName, tableName string, columns
 	err := usql.QueryRowsMap(db, query, func(m usql.RowMap) error {
 		columnName := m.GetString("COLUMN_NAME")
 		columnType := m.GetString("COLUMN_TYPE")
+		virtrualFlag := m.GetString("GENERATION_EXPRESSION")
+		if virtrualFlag != "" {
+			for _, columnsList := range columnsLists {
+				columnsList.SetVirtual(columnName)
+			}
+		}
 		if strings.Contains(columnType, "unsigned") {
 			for _, columnsList := range columnsLists {
 				columnsList.SetUnsigned(columnName)
@@ -580,6 +591,7 @@ func GetTableColumnsSqle(sqleContext *sqle.Context, schema string,
 			case ast.ColumnOptionFulltext:
 			case ast.ColumnOptionComment:
 			case ast.ColumnOptionGenerated:
+				newColumn.IsVirtual = true
 			case ast.ColumnOptionReference:
 			}
 		}

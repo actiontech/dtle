@@ -901,6 +901,40 @@ func (a *Applier) ApplyEventQueries(entry *common.DumpEntry) (err error) {
 	if _, err := conn.ExecContext(a.ctx, querySetFKChecksOff); err != nil {
 		return err
 	}
+
+	//check virtual column on dest table
+	var ColumnMapTpVirtualIndex []int
+	var insertColumns []string
+	if len(entry.ValuesX) != 0 {
+		orignalColumns, err := base.GetTableColumns(conn, entry.TableSchema, entry.TableName)
+		if err != nil {
+			a.logger.Error("err get dest table column info", "err", err)
+			return err
+		}
+		if len(entry.ColumnMapTo) > 0 {
+			ColumnMapTpVirtualIndex = make([]int, len(entry.ColumnMapTo))
+			for i, col := range entry.ColumnMapTo {
+				destCol := orignalColumns.GetColumn(col)
+				if destCol != nil && destCol.IsVirtual {
+					ColumnMapTpVirtualIndex[i] = 1
+					continue
+				}
+				insertColumns = append(insertColumns, col)
+			}
+		} else {
+			ColumnMapTpVirtualIndex = make([]int, len(orignalColumns.Columns))
+			for i, col := range orignalColumns.Columns {
+				if col.IsVirtual {
+					ColumnMapTpVirtualIndex[i] = 1
+					continue
+				}
+				insertColumns = append(insertColumns, col.RawName)
+			}
+		}
+	} else {
+		a.logger.Info("data entry is create sql")
+	}
+
 	execQuery := func(query string) error {
 		a.logger.Debug("ApplyEventQueries. exec", "query", g.StrLim(query, 256))
 		_, err := conn.ExecContext(a.ctx, query)
@@ -935,13 +969,16 @@ func (a *Applier) ApplyEventQueries(entry *common.DumpEntry) (err error) {
 	for i := range entry.ValuesX {
 		if buf.Len() == 0 {
 			buf.WriteString(fmt.Sprintf(`replace into %s.%s %s values (`,
-				umconf.EscapeName(entry.TableSchema), umconf.EscapeName(entry.TableName), umconf.BuildInsertColumnList(entry.ColumnMapTo)))
+				umconf.EscapeName(entry.TableSchema), umconf.EscapeName(entry.TableName), umconf.BuildInsertColumnList(insertColumns)))
 		} else {
 			buf.WriteString(",(")
 		}
 
 		firstCol := true
 		for j := range entry.ValuesX[i] {
+			if ColumnMapTpVirtualIndex[j] == 1 {
+				continue
+			}
 			if firstCol {
 				firstCol = false
 			} else {

@@ -9,10 +9,11 @@ package mysql
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/pkg/errors"
 
 	"github.com/actiontech/dtle/driver/common"
 
@@ -71,8 +72,15 @@ func NewDumper(ctx context.Context, db usql.QueryAble, table *common.Table, chun
 
 func (d *dumper) prepareForDumping() error {
 	needPm := false
+	// filterVirtualColumnFlag := false
 	columns := make([]string, 0)
 	for _, col := range d.Table.OriginalTableColumns.Columns {
+		// if len(d.Table.ColumnMapFrom) == 0 {
+		// 	if col.IsVirtual {
+		// 		filterVirtualColumnFlag = true
+		// 		continue
+		// 	}
+		// }
 		switch col.Type {
 		case umconf.FloatColumnType, umconf.DoubleColumnType,
 			umconf.MediumIntColumnType, umconf.BigIntColumnType,
@@ -197,9 +205,19 @@ func (d *dumper) getChunkData() (nRows int64, err error) {
 			return nil
 		}
 
+		// columnMapTo := d.Table.ColumnMapTo
+		// if len(columnMapTo) == 0 {
+		// 	for _, col := range d.Table.OriginalTableColumns.Columns {
+		// 		if !col.IsVirtual {
+		// 			columnMapTo = append(columnMapTo, col.EscapedName)
+		// 		}
+		// 	}
+		// }
+
 		entry := &common.DumpEntry{
 			TableSchema: g.StringElse(d.Table.TableSchemaRename, d.TableSchema),
 			TableName:   g.StringElse(d.Table.TableRename, d.TableName),
+			// ColumnMapTo: columnMapTo,
 			ColumnMapTo: d.Table.ColumnMapTo,
 			ValuesX:     valuesX,
 		}

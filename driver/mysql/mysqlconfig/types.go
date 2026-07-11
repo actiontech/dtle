@@ -64,11 +64,12 @@ type TimezoneConvertion struct {
 
 type Column struct {
 	// Every time you set this, you must also set `EscapedName`.
-	RawName            string
-	EscapedName        string
-	IsUnsigned         bool
-	Charset            string
-	Type               ColumnType
+	RawName     string
+	EscapedName string
+	IsUnsigned  bool
+	IsVirtual   bool
+	Charset     string
+	Type        ColumnType
 	// Default is currently only used for kafka and limited to basic types.
 	Default            interface{}
 	ColumnType         string
@@ -83,6 +84,7 @@ type Column struct {
 func (c *Column) IsPk() bool {
 	return c.Key == "PRI"
 }
+
 // type of arg: see type.schema
 func (c *Column) ConvertArg(arg interface{}) interface{} {
 	switch v := arg.(type) {

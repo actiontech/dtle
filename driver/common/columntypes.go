@@ -28,8 +28,8 @@ func RowGetBytesColumn(row []interface{}, index int) []byte {
 
 // ColumnList makes for a named list of columns
 type ColumnList struct {
-	Columns  []mysqlconfig.Column
-	Ordinals mysqlconfig.ColumnsMap
+	Columns    []mysqlconfig.Column
+	Ordinals   mysqlconfig.ColumnsMap
 	UniqueKeys []*UniqueKey
 }
 
@@ -77,6 +77,10 @@ func (c *ColumnList) GetColumn(columnName string) *mysqlconfig.Column {
 
 func (c *ColumnList) SetUnsigned(columnName string) {
 	c.GetColumn(columnName).IsUnsigned = true
+}
+
+func (c *ColumnList) SetVirtual(columnName string) {
+	c.GetColumn(columnName).IsVirtual = true
 }
 
 func (c *ColumnList) IsUnsigned(columnName string) bool {

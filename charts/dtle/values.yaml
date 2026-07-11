@@ -1,0 +1,145 @@
+# Default values for dtle.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  #imageRegistry: cfuture-harbor-registry-vpc.cn-hangzhou.cr.aliyuncs.com
+  imageRegistry: harbor.cfuture.shop
+  storageClassName: "aliyun-nas"
+  ingressClassName: "traefik"
+  
+replicaCount: 1
+
+image:
+  registry: cfuture-harbor-registry-vpc.cn-hangzhou.cr.aliyuncs.com
+  repository: "test/dtle"
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "4.23.04.2-seenew"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: "dtle"
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+#if server should be deployed ,please to set enable true.otherwise, setting false
+server:
+  enable: true
+
+config:
+  # dtle nodeName. unique
+  nodeName: "carrot"
+  # dtle datacenter.it is a symbol that the node is affliated which datacenter
+  datacenter: "dc1"
+  externalIp: "192.168.54.207"
+  consulAddr: "consul:8500"
+
+serviceMonitor:
+  release: prometheus 
+  
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  natsAdvertiseNodePort: "32193"
+  httpNodePort: "32646"
+  rpcNodePort: "32647"
+  serfNodePort: "32648"
+  monitorNodePort: "32190"
+  port: 4646
+
+storage:
+  log:
+    size: 10Gi
+  data:
+    size: 50Gi
+  storageClassName: "aliyun-nas"
+
+ingress:
+  enabled: true
+  className: "traefik"
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: normad.cfuture.shop
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources:
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  limits:
+    cpu: "4"
+    memory: 8Gi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: 
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: dtle.k8s.cfuture/service
+          operator: Exists
+consul:
+  image:
+    registry: cfuture-harbor-registry-vpc.cn-hangzhou.cr.aliyuncs.com
+    repository: "test/consul"
+    tag: "1.15.4"
+  service:
+    port: 8500
+    nodePort: 30085
+  storage:
+    size: 10Gi
+    storageClassName: "aliyun-nas"
+  ingress:
+    enabled: true
+    hosts:
+      - host: dtle-consul.cfuture.shop
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+  resources:
+    limits:
+      cpu: "2" 
+      memory: 4Gi 
+    requests:
+      cpu: 100m
+      memory: 128Mi

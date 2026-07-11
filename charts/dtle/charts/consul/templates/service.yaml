@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "consul.fullname" . }}
+  labels:
+    {{- include "consul.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 8500
+      protocol: TCP
+      name: consul
+      nodePort: {{ .Values.service.nodePort }}
+  selector:
+    {{- include "consul.selectorLabels" . | nindent 4 }}

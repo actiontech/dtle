@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    {{- toYaml .Values.serviceMonitor | nindent 4 }}
+  name: dtle 
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpoints:
+  - path: /metrics
+    port: monitor
+  selector:
+    matchLabels:
+      app: dtle
+      monitor: "true"

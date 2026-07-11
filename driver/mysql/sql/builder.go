@@ -10,8 +10,9 @@ import (
 	"bytes"
 	gosql "database/sql"
 	"fmt"
-	"github.com/actiontech/dtle/g"
 	"strings"
+
+	"github.com/actiontech/dtle/g"
 
 	"github.com/actiontech/dtle/driver/common"
 
@@ -39,7 +40,7 @@ func EscapeColRawToString(col *[]byte) string {
 }
 
 func EscapeValue(colValue string) string {
-    // https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
+	// https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
 	var esc string
 	colBuffer := *new(bytes.Buffer)
 	last := 0
@@ -103,7 +104,9 @@ func BuildDMLDeleteQuery(databaseName, tableName string, tableColumns *common.Co
 				"columnMapTo", columnMapTo, "i", i, "len", tableColumns.Len())
 			continue
 		}
-
+		if column.IsVirtual {
+			continue
+		}
 		if args[i] == nil {
 			comparison, err := BuildValueComparison(column.EscapedName, "NULL", IsEqualsComparisonSign)
 			if err != nil {
@@ -164,9 +167,15 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 	if len(rows) == 0 {
 		return "", nil, fmt.Errorf("BuildDMLInsertQuery: rows is empty %v.%v", databaseName, tableName)
 	}
+	if len(columnMapTo) == 0 && tableColumns.Len() != 0 {
+		columnMapTo = tableColumns.Names()
 
+	}
 	var placeholders []string
-
+	// virtual column index list
+	virtualColumnIndex := make([]int, 0)
+	// virtaul finish flag
+	virtualColumnFinish := false
 	for iRow := range rows {
 		args := rows[iRow]
 
@@ -184,6 +193,14 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 
 		for i := range args {
 			column := getColumnWithMapTo(i, columnMapTo, tableColumns)
+			// skip virtual column
+			if column != nil && column.IsVirtual {
+				// record trim virtual column index
+				if !virtualColumnFinish {
+					virtualColumnIndex = append(virtualColumnIndex, i)
+				}
+				continue
+			}
 
 			if iRow == 0 {
 				if column != nil && column.TimezoneConversion != nil {
@@ -200,6 +217,10 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 				sharedArgs = append(sharedArgs, args[i])
 			}
 		}
+		virtualColumnFinish = true
+	}
+	if len(virtualColumnIndex) > 0 {
+		columnMapTo = filterVirtualcolumnFromColumnMap(columnMapTo, virtualColumnIndex)
 	}
 
 	if stmt != nil {
@@ -226,6 +247,22 @@ func BuildDMLInsertQuery(databaseName, tableName string, tableColumns *common.Co
 		result = sb.String()
 	}
 	return result, sharedArgs, nil
+}
+
+func filterVirtualcolumnFromColumnMap(columnMapTo []string, virtualColumnIndexList []int) []string {
+	if len(virtualColumnIndexList) == 0 {
+		return columnMapTo
+	}
+	var res []string
+	var flag = 0
+	for i := range columnMapTo {
+		if flag < len(virtualColumnIndexList) && i == virtualColumnIndexList[flag] {
+			flag++
+			continue
+		}
+		res = append(res, columnMapTo[i])
+	}
+	return res
 }
 
 func getColumnWithMapTo(columnIndex int, columnMapTo []string, tableColumns *common.ColumnList) *umconf.Column {

@@ -1,0 +1,71 @@
+apiVersion: v1
+data:
+  nomad.hcl: |
+    name = "{{ .Values.config.nodeName }}" # rename for each node
+    datacenter = "{{ .Values.config.datacenter }}"
+    data_dir  = "/dtle/var/lib/nomad"
+    plugin_dir = "/dtle/usr/share/dtle/nomad-plugin"
+
+    log_level = "Info"
+    log_file = "/dtle/var/log/nomad/"
+
+    disable_update_check = true
+
+    bind_addr = "0.0.0.0"
+    # change ports if multiple nodes run on a same machine
+    ports {
+      http = 4646
+      rpc  = 4647
+      serf = 4648
+    }
+    addresses {
+      # Default to `bind_addr`. Or set individually here.
+      #http = "127.0.0.1"
+      #rpc  = "127.0.0.1"
+      #serf = "127.0.0.1"
+    }
+    advertise {
+      http = "{{ .Values.config.externalIp }}:{{ .Values.service.httpNodePort }}"
+      rpc = "{{ .Values.config.externalIp }}:{{ .Values.service.rpcNodePort }}"
+      serf = "{{ .Values.config.externalIp }}:{{ .Values.service.serfNodePort }}"
+      #http = "192.168.54.207:31405"
+      #rpc  = "192.168.54.207:30565"
+      #serf = "192.168.54.207:31550"
+    }
+
+    server {
+      enabled          = {{ .Values.server.enable }}
+      bootstrap_expect = 1
+    }
+
+    client {
+      enabled = true
+      options = {
+        "driver.blacklist" = "docker,exec,java,mock,qemu,rawexec,rkt"
+      }
+    }
+
+    consul {
+      address = "{{ .Values.config.consulAddr }}"
+      checks_use_advertise = true
+    }
+
+    plugin "dtle" {
+      config {
+        log_level = "INFO"
+        log_file = "/dtle/var/log/dtle/"
+        data_dir = "/dtle/var/lib/nomad"
+        nats_bind = "0.0.0.0:8193"
+        nats_advertise = "{{ .Values.config.externalIp }}:{{ .Values.service.natsAdvertiseNodePort }}"
+        # Repeat the consul address above.
+        consul = "{{ .Values.config.consulAddr }}"
+        api_addr = "0.0.0.0:8190"   # for compatibility API
+        nomad_addr = "127.0.0.1:4646" # compatibility API need to access a nomad server
+        publish_metrics = true
+        stats_collection_interval = 15
+      }
+    }
+kind: ConfigMap
+metadata:
+  name: dtle-conf
+  namespace: {{ .Release.Namespace }}

@@ -52,8 +52,28 @@ func (sm *StoreManager) DestroyJob(jobId string) error {
 }
 func (sm *StoreManager) SaveGtidForJob(jobName string, gtid string) error {
 	key := fmt.Sprintf("dtle/%v/Gtid", jobName)
-	err := sm.consulStore.Put(key, []byte(gtid), nil)
+	mysqlGtidInterface, err := mysql.ParseMysqlGTIDSet(gtid)
+	if err != nil {
+		return err
+	}
+	mysqlGtidSetObj := mysqlGtidInterface.(*mysql.MysqlGTIDSet)
+	for _, mysqlGtidSet := range mysqlGtidSetObj.Sets {
+		compressGtid(mysqlGtidSet)
+	}
+	err = sm.consulStore.Put(key, []byte(mysqlGtidSetObj.String()), nil)
 	return err
+}
+func compressGtid(gtid *mysql.UUIDSet) {
+	gtidIntervalLen := len(gtid.Intervals)
+	if gtidIntervalLen <= 2048 {
+		return
+	}
+	intervalTmp := mysql.Interval{
+		Start: gtid.Intervals[1].Start,
+		Stop:  gtid.Intervals[gtidIntervalLen-2046-1].Stop,
+	}
+	intervalTmpList := mysql.IntervalSlice{intervalTmp}
+	gtid.AddInterval(intervalTmpList)
 }
 
 const binlogFilePosSeparator = "//dtle//"
@@ -650,7 +670,7 @@ func (sm *StoreManager) PutDumpProgress(jobName string, exec int64, total int64)
 // return: ExecRowCount, TotalRowCount
 func (sm *StoreManager) GetDumpProgress(jobName string) (int64, int64, error) {
 	key := fmt.Sprintf("dtle/%v/DumpProgress", jobName)
-	kv, err:= sm.consulStore.Get(key)
+	kv, err := sm.consulStore.Get(key)
 	if err == store.ErrKeyNotFound {
 		return 0, 0, nil
 	} else if err != nil {

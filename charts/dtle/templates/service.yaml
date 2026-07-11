@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dtle.fullname" . }}
+  labels:
+    app: dtle
+    monitor: "true"
+    {{- include "dtle.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  ports:
+    - port: 4646
+      targetPort: 4646
+      protocol: TCP
+      name: http
+      nodePort: {{ .Values.service.httpNodePort }}
+    - port: 4647
+      targetPort: 4647
+      protocol: TCP
+      name: rpc
+      nodePort: {{ .Values.service.rpcNodePort }}
+    - port: 4648
+      targetPort: 4648
+      protocol: TCP
+      name: serf
+      nodePort: {{ .Values.service.serfNodePort }}
+    - port: 8193
+      targetPort: 8193
+      protocol: TCP
+      name: nats-advertise
+      nodePort: {{ .Values.service.natsAdvertiseNodePort }}
+    - port: 8190
+      targetPort: 8190
+      protocol: TCP
+      name: monitor
+      nodePort: {{ .Values.service.monitorNodePort }}
+  selector:
+    {{- include "dtle.selectorLabels" . | nindent 4 }}
